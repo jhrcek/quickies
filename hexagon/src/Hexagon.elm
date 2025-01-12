@@ -1,4 +1,4 @@
-module Main exposing (main)
+module Hexagon exposing (main)
 
 import Browser
 import Browser.Events

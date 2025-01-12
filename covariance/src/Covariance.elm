@@ -62,7 +62,7 @@ update msg model =
                     String.toInt str
                         |> Maybe.andThen
                             (\n ->
-                                if 2 <= n && n <= 100 then
+                                if 1 <= n && n <= 100 then
                                     Just n
 
                                 else
@@ -189,7 +189,8 @@ view model =
         , HA.style "display" "flex"
         , HA.style "flex-direction" "column"
         ]
-        [ controlsView model
+        [ Html.h1 [] [ Html.text "Covariance" ]
+        , controlsView model
         , div
             [ HA.style "display" "flex"
             , HA.style "flex" "1"
@@ -213,11 +214,11 @@ view model =
 controlsView : Model -> Html Msg
 controlsView model =
     div [ HA.style "padding" "1rem" ]
-        [ text "Number of points (2..100): "
+        [ text "Number of points "
         , input
             [ HA.type_ "number"
             , HA.value (String.fromInt model.numPoints)
-            , HA.min "2"
+            , HA.min "1"
             , HA.max "100"
             , HE.onInput ChangeNumPoints
             ]
@@ -229,7 +230,7 @@ controlsView model =
 viewGraph : Model -> Html Msg
 viewGraph model =
     let
-        ( meanX, meanY, n ) =
+        ( meanX, meanY, _ ) =
             meanXY model.points
 
         meanXSvg =
@@ -281,10 +282,10 @@ viewGraph model =
                                     abs (pySvg - meanYSvg)
                             in
                             [ Svg.rect
-                                [ SA.x (toStr rectX)
-                                , SA.y (toStr rectY)
-                                , SA.width (toStr rectWidth)
-                                , SA.height (toStr rectHeight)
+                                [ SA.x (String.fromFloat rectX)
+                                , SA.y (String.fromFloat rectY)
+                                , SA.width (String.fromFloat rectWidth)
+                                , SA.height (String.fromFloat rectHeight)
                                 , SA.fill fillColor
                                 , SA.fillOpacity "0.3"
                                 ]
@@ -304,37 +305,37 @@ viewGraph model =
         , SA.style "background-color:white"
         ]
         ([ Svg.line
-            [ SA.x1 (toStr svgMargin)
-            , SA.y1 (toStr (svgHeight - svgMargin))
-            , SA.x2 (toStr (svgWidth - svgMargin))
-            , SA.y2 (toStr (svgHeight - svgMargin))
+            [ SA.x1 (String.fromFloat svgMargin)
+            , SA.y1 (String.fromFloat (svgHeight - svgMargin))
+            , SA.x2 (String.fromFloat (svgWidth - svgMargin))
+            , SA.y2 (String.fromFloat (svgHeight - svgMargin))
             , SA.stroke "black"
             , SA.strokeWidth "2"
             ]
             []
          , Svg.line
-            [ SA.x1 (toStr svgMargin)
-            , SA.y1 (toStr svgMargin)
-            , SA.x2 (toStr svgMargin)
-            , SA.y2 (toStr (svgHeight - svgMargin))
+            [ SA.x1 (String.fromFloat svgMargin)
+            , SA.y1 (String.fromFloat svgMargin)
+            , SA.x2 (String.fromFloat svgMargin)
+            , SA.y2 (String.fromFloat (svgHeight - svgMargin))
             , SA.stroke "black"
             , SA.strokeWidth "2"
             ]
             []
          , Svg.line
-            [ SA.x1 (toStr meanXSvg)
-            , SA.y1 (toStr svgMargin)
-            , SA.x2 (toStr meanXSvg)
-            , SA.y2 (toStr (svgHeight - svgMargin))
+            [ SA.x1 (String.fromFloat meanXSvg)
+            , SA.y1 (String.fromFloat svgMargin)
+            , SA.x2 (String.fromFloat meanXSvg)
+            , SA.y2 (String.fromFloat (svgHeight - svgMargin))
             , SA.stroke "grey"
             , SA.strokeDasharray "4,4"
             ]
             []
          , Svg.line
-            [ SA.x1 (toStr svgMargin)
-            , SA.y1 (toStr meanYSvg)
-            , SA.x2 (toStr (svgWidth - svgMargin))
-            , SA.y2 (toStr meanYSvg)
+            [ SA.x1 (String.fromFloat svgMargin)
+            , SA.y1 (String.fromFloat meanYSvg)
+            , SA.x2 (String.fromFloat (svgWidth - svgMargin))
+            , SA.y2 (String.fromFloat meanYSvg)
             , SA.stroke "grey"
             , SA.strokeDasharray "4,4"
             ]
@@ -358,11 +359,11 @@ viewPoint idx ( x, y ) =
             scaleY y
 
         titleText =
-            "(" ++ round3DecPlaces x ++ ", " ++ round3DecPlaces y ++ ")"
+            "(" ++ round3DP x ++ ", " ++ round3DP y ++ ")"
     in
     Svg.circle
-        [ SA.cx (toStr cx_)
-        , SA.cy (toStr cy_)
+        [ SA.cx (String.fromFloat cx_)
+        , SA.cy (String.fromFloat cy_)
         , SA.r "5"
         , SA.fill "black"
         , onMouseDownPos (StartDrag idx)
@@ -409,7 +410,7 @@ viewExpandedFormula model =
     in
     div [ HA.style "margin" "1rem" ]
         [ div []
-            [ text ("Cov(X,Y) = 1/n * Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DecPlaces totalCov) ]
+            [ text ("Cov(X,Y) = 1/n * Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DP totalCov) ]
         , div []
             (List.indexedMap (viewTerm meanX meanY model.hoveredIndex) model.points)
         ]
@@ -453,11 +454,11 @@ viewTerm meanX meanY hoveredIndex i ( x, y ) =
 
         content =
             "("
-                ++ round3DecPlaces dx
+                ++ round3DP dx
                 ++ ")·("
-                ++ round3DecPlaces dy
+                ++ round3DP dy
                 ++ ") = "
-                ++ round3DecPlaces product
+                ++ round3DP product
     in
     div
         [ HA.style "margin" "6px 0"
@@ -514,7 +515,7 @@ scaleX x =
 
 scaleY : Float -> Float
 scaleY y =
-    (svgHeight - svgMargin) - y * (svgHeight - 2 * svgMargin)
+    svgHeight - svgMargin - y * (svgHeight - 2 * svgMargin)
 
 
 svgWidth : Float
@@ -532,13 +533,8 @@ svgMargin =
     40
 
 
-toStr : Float -> String
-toStr =
-    String.fromFloat
-
-
-round3DecPlaces : Float -> String
-round3DecPlaces val =
+round3DP : Float -> String
+round3DP val =
     let
         rounded =
             round (val * 1000)
