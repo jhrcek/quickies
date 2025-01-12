@@ -6,7 +6,7 @@ import Html exposing (Html, button, div, input, text)
 import Html.Attributes as HA
 import Html.Events as HE
 import Json.Decode as D
-import List exposing (sum)
+import List
 import Maybe exposing (Maybe(..))
 import Random
 import Svg
@@ -132,7 +132,7 @@ update msg model =
                             mouseY + d.offsetY
 
                         ( newDataX, newDataY ) =
-                            screenToData model newScreenX newScreenY
+                            screenToData newScreenX newScreenY
 
                         clampedX =
                             clamp 0 1 newDataX
@@ -229,34 +229,14 @@ controlsView model =
 viewGraph : Model -> Html Msg
 viewGraph model =
     let
-        width =
-            800
-
-        height =
-            600
-
-        margin =
-            40
-
-        meanX =
-            if List.isEmpty model.points then
-                0
-
-            else
-                sum (List.map Tuple.first model.points) / toFloat (List.length model.points)
-
-        meanY =
-            if List.isEmpty model.points then
-                0
-
-            else
-                sum (List.map Tuple.second model.points) / toFloat (List.length model.points)
+        ( meanX, meanY, n ) =
+            meanXY model.points
 
         meanXSvg =
-            scaleX margin width meanX
+            scaleX meanX
 
         meanYSvg =
-            scaleY margin height meanY
+            scaleY meanY
 
         highlightedIndex =
             case model.dragState of
@@ -273,10 +253,10 @@ viewGraph model =
                         Just ( px, py ) ->
                             let
                                 pxSvg =
-                                    scaleX margin width px
+                                    scaleX px
 
                                 pySvg =
-                                    scaleY margin height py
+                                    scaleY py
 
                                 sign =
                                     (px - meanX) * (py - meanY)
@@ -318,42 +298,42 @@ viewGraph model =
                     []
     in
     Svg.svg
-        [ SA.width (String.fromInt width)
-        , SA.height (String.fromInt height)
-        , SA.viewBox ("0 0 " ++ String.fromInt width ++ " " ++ String.fromInt height)
+        [ SA.width (String.fromFloat svgWidth)
+        , SA.height (String.fromFloat svgHeight)
+        , SA.viewBox ("0 0 " ++ String.fromFloat svgWidth ++ " " ++ String.fromFloat svgHeight)
         , SA.style "background-color:white"
         ]
         ([ Svg.line
-            [ SA.x1 (toStr margin)
-            , SA.y1 (toStr (height - margin))
-            , SA.x2 (toStr (width - margin))
-            , SA.y2 (toStr (height - margin))
+            [ SA.x1 (toStr svgMargin)
+            , SA.y1 (toStr (svgHeight - svgMargin))
+            , SA.x2 (toStr (svgWidth - svgMargin))
+            , SA.y2 (toStr (svgHeight - svgMargin))
             , SA.stroke "black"
             , SA.strokeWidth "2"
             ]
             []
          , Svg.line
-            [ SA.x1 (toStr margin)
-            , SA.y1 (toStr margin)
-            , SA.x2 (toStr margin)
-            , SA.y2 (toStr (height - margin))
+            [ SA.x1 (toStr svgMargin)
+            , SA.y1 (toStr svgMargin)
+            , SA.x2 (toStr svgMargin)
+            , SA.y2 (toStr (svgHeight - svgMargin))
             , SA.stroke "black"
             , SA.strokeWidth "2"
             ]
             []
          , Svg.line
             [ SA.x1 (toStr meanXSvg)
-            , SA.y1 (toStr margin)
+            , SA.y1 (toStr svgMargin)
             , SA.x2 (toStr meanXSvg)
-            , SA.y2 (toStr (height - margin))
+            , SA.y2 (toStr (svgHeight - svgMargin))
             , SA.stroke "grey"
             , SA.strokeDasharray "4,4"
             ]
             []
          , Svg.line
-            [ SA.x1 (toStr margin)
+            [ SA.x1 (toStr svgMargin)
             , SA.y1 (toStr meanYSvg)
-            , SA.x2 (toStr (width - margin))
+            , SA.x2 (toStr (svgWidth - svgMargin))
             , SA.y2 (toStr meanYSvg)
             , SA.stroke "grey"
             , SA.strokeDasharray "4,4"
@@ -361,25 +341,21 @@ viewGraph model =
             []
          ]
             ++ highlightRect
-            ++ List.indexedMap (viewPoint margin width margin height) model.points
+            ++ List.indexedMap viewPoint model.points
         )
 
 
 viewPoint :
     Int
-    -> Int
-    -> Int
-    -> Int
-    -> Int
     -> ( Float, Float )
     -> Svg.Svg Msg
-viewPoint margin w margin2 h i ( x, y ) =
+viewPoint idx ( x, y ) =
     let
         cx_ =
-            scaleX margin w x
+            scaleX x
 
         cy_ =
-            scaleY margin2 h y
+            scaleY y
 
         titleText =
             "(" ++ round3DecPlaces x ++ ", " ++ round3DecPlaces y ++ ")"
@@ -389,8 +365,8 @@ viewPoint margin w margin2 h i ( x, y ) =
         , SA.cy (toStr cy_)
         , SA.r "5"
         , SA.fill "black"
-        , onMouseDownPos (StartDrag i)
-        , SE.onMouseOver (Hover i)
+        , onMouseDownPos (StartDrag idx)
+        , SE.onMouseOver (Hover idx)
         , SE.onMouseOut Unhover
         ]
         [ Svg.title []
@@ -398,34 +374,42 @@ viewPoint margin w margin2 h i ( x, y ) =
         ]
 
 
+meanXY : List ( Float, Float ) -> ( Float, Float, Float )
+meanXY points =
+    if List.isEmpty points then
+        ( 0, 0, 0 )
+
+    else
+        let
+            n =
+                toFloat (List.length points)
+
+            ( sumX, sumY ) =
+                List.foldl (\( x, y ) ( accX, accY ) -> ( x + accX, y + accY )) ( 0, 0 ) points
+        in
+        ( sumX / n, sumY / n, n )
+
+
 viewExpandedFormula : Model -> Html Msg
 viewExpandedFormula model =
     let
-        meanX =
-            if List.isEmpty model.points then
-                0
-
-            else
-                sum (List.map Tuple.first model.points)
-                    / toFloat (List.length model.points)
-
-        meanY =
-            if List.isEmpty model.points then
-                0
-
-            else
-                sum (List.map Tuple.second model.points)
-                    / toFloat (List.length model.points)
+        ( meanX, meanY, n ) =
+            meanXY model.points
 
         totalCov =
-            List.foldl
-                (\( x, y ) acc -> acc + (x - meanX) * (y - meanY))
+            if n == 0 then
                 0
-                model.points
+
+            else
+                List.foldl
+                    (\( x, y ) acc -> acc + (x - meanX) * (y - meanY))
+                    0
+                    model.points
+                    / n
     in
     div [ HA.style "margin" "1rem" ]
         [ div []
-            [ text ("Cov(X,Y) = Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DecPlaces totalCov) ]
+            [ text ("Cov(X,Y) = 1/n * Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DecPlaces totalCov) ]
         , div []
             (List.indexedMap (viewTerm meanX meanY model.hoveredIndex) model.points)
         ]
@@ -504,51 +488,48 @@ onMouseDownPos toMsg =
 pointToScreen : Model -> Int -> ( Float, Float )
 pointToScreen model i =
     let
-        width =
-            800
-
-        height =
-            600
-
-        margin =
-            40
-
         ( x, y ) =
             List.head (List.drop i model.points)
                 |> Maybe.withDefault ( 0, 0 )
     in
-    ( scaleX margin width x, scaleY margin height y )
+    ( scaleX x, scaleY y )
 
 
-screenToData : Model -> Float -> Float -> ( Float, Float )
-screenToData model screenX screenY =
+screenToData : Float -> Float -> ( Float, Float )
+screenToData screenX screenY =
     let
-        width =
-            800
-
-        height =
-            600
-
-        margin =
-            40
-
         dataX =
-            (screenX - toFloat margin) / toFloat (width - 2 * margin)
+            (screenX - svgMargin) / (svgWidth - 2 * svgMargin)
 
         dataY =
-            (toFloat height - toFloat margin - screenY) / toFloat (height - 2 * margin)
+            (svgHeight - svgMargin - screenY) / (svgHeight - 2 * svgMargin)
     in
     ( dataX, dataY )
 
 
-scaleX : Int -> Int -> Float -> Float
-scaleX margin width x =
-    toFloat margin + x * toFloat (width - 2 * margin)
+scaleX : Float -> Float
+scaleX x =
+    svgMargin + x * (svgWidth - 2 * svgMargin)
 
 
-scaleY : Int -> Int -> Float -> Float
-scaleY margin height y =
-    (toFloat height - toFloat margin) - y * toFloat (height - 2 * margin)
+scaleY : Float -> Float
+scaleY y =
+    (svgHeight - svgMargin) - y * (svgHeight - 2 * svgMargin)
+
+
+svgWidth : Float
+svgWidth =
+    800
+
+
+svgHeight : Float
+svgHeight =
+    600
+
+
+svgMargin : Float
+svgMargin =
+    40
 
 
 toStr : Float -> String
@@ -563,18 +544,6 @@ round3DecPlaces val =
             round (val * 1000)
     in
     String.fromFloat (toFloat rounded / 1000)
-
-
-clamp : Float -> Float -> Float -> Float
-clamp low high x =
-    if x < low then
-        low
-
-    else if x > high then
-        high
-
-    else
-        x
 
 
 main : Program () Model Msg
