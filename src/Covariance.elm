@@ -14,10 +14,6 @@ import Svg.Attributes as SA
 import Svg.Events as SE
 
 
-
--- MODEL
-
-
 type alias Model =
     { numPoints : Int
     , points : List ( Float, Float )
@@ -44,23 +40,17 @@ init _ =
     )
 
 
-
--- MESSAGES
-
-
 type Msg
     = ChangeNumPoints String
     | Generate
     | GotRandomPoints (List ( Float, Float ))
     | Hover Int
     | Unhover
-    | StartDrag Int Float Float -- (point index, mouseX, mouseY)
-    | Move Float Float -- (mouseX, mouseY)
+    | SummationHover Int
+    | SummationUnhover
+    | StartDrag Int Float Float
+    | Move Float Float
     | StopDrag
-
-
-
--- UPDATE
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -79,25 +69,42 @@ update msg model =
                                     Nothing
                             )
             in
-            pure <|
-                case maybeInt of
-                    Just validN ->
-                        { model | numPoints = validN }
+            ( case maybeInt of
+                Just validN ->
+                    { model | numPoints = validN }
 
-                    Nothing ->
-                        model
+                Nothing ->
+                    model
+            , Cmd.none
+            )
 
         Generate ->
             ( model, generatePoints model.numPoints )
 
         GotRandomPoints newPoints ->
-            pure { model | points = newPoints, hoveredIndex = Nothing }
+            ( { model | points = newPoints, hoveredIndex = Nothing }, Cmd.none )
 
         Hover idx ->
-            pure { model | hoveredIndex = Just idx }
+            ( { model | hoveredIndex = Just idx }, Cmd.none )
 
         Unhover ->
-            pure { model | hoveredIndex = Nothing }
+            case model.dragState of
+                Just _ ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    ( { model | hoveredIndex = Nothing }, Cmd.none )
+
+        SummationHover idx ->
+            ( { model | hoveredIndex = Just idx }, Cmd.none )
+
+        SummationUnhover ->
+            case model.dragState of
+                Just _ ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    ( { model | hoveredIndex = Nothing }, Cmd.none )
 
         StartDrag index mouseX mouseY ->
             let
@@ -110,24 +117,23 @@ update msg model =
                 offsetY =
                     screenY - mouseY
             in
-            pure { model | dragState = Just { index = index, offsetX = offsetX, offsetY = offsetY } }
+            ( { model | dragState = Just { index = index, offsetX = offsetX, offsetY = offsetY } }
+            , Cmd.none
+            )
 
         Move mouseX mouseY ->
             case model.dragState of
-                Just dragState ->
+                Just d ->
                     let
-                        -- new (screen) coordinates for that point
                         newScreenX =
-                            mouseX + dragState.offsetX
+                            mouseX + d.offsetX
 
                         newScreenY =
-                            mouseY + dragState.offsetY
+                            mouseY + d.offsetY
 
-                        -- convert screen coords back into data coords
                         ( newDataX, newDataY ) =
                             screenToData model newScreenX newScreenY
 
-                        -- clamp 0..1 if you wish:
                         clampedX =
                             clamp 0 1 newDataX
 
@@ -137,7 +143,7 @@ update msg model =
                         updatedPoints =
                             List.indexedMap
                                 (\i ( oldX, oldY ) ->
-                                    if i == dragState.index then
+                                    if i == d.index then
                                         ( clampedX, clampedY )
 
                                     else
@@ -145,45 +151,31 @@ update msg model =
                                 )
                                 model.points
                     in
-                    pure { model | points = updatedPoints }
+                    ( { model | points = updatedPoints }, Cmd.none )
 
                 Nothing ->
-                    -- Not currently dragging, ignore Move
                     ( model, Cmd.none )
 
         StopDrag ->
-            -- Let go of the point
-            pure { model | dragState = Nothing }
-
-
-pure : a -> ( a, Cmd msg )
-pure a =
-    ( a, Cmd.none )
+            ( { model | dragState = Nothing }, Cmd.none )
 
 
 generatePoints : Int -> Cmd Msg
 generatePoints numPoints =
-    let
-        gen =
-            Random.list numPoints (Random.pair (Random.float 0 1) (Random.float 0 1))
-    in
-    Random.generate GotRandomPoints gen
-
-
-
--- SUBSCRIPTIONS
+    Random.generate GotRandomPoints (Random.list numPoints (Random.pair (Random.float 0 1) (Random.float 0 1)))
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.batch
-        [ Events.onMouseMove (D.map2 Move (D.field "clientX" D.float) (D.field "clientY" D.float))
-        , Events.onMouseUp (D.succeed StopDrag)
-        ]
+    case model.dragState of
+        Just _ ->
+            Sub.batch
+                [ Events.onMouseMove (D.map2 Move (D.field "clientX" D.float) (D.field "clientY" D.float))
+                , Events.onMouseUp (D.succeed StopDrag)
+                ]
 
-
-
--- VIEW
+        Nothing ->
+            Sub.none
 
 
 view : Model -> Html Msg
@@ -194,10 +186,27 @@ view model =
         , HA.style "box-sizing" "border-box"
         , HA.style "margin" "0"
         , HA.style "padding" "0"
+        , HA.style "display" "flex"
+        , HA.style "flex-direction" "column"
         ]
         [ controlsView model
-        , viewGraph model
-        , viewExpandedFormula model
+        , div
+            [ HA.style "display" "flex"
+            , HA.style "flex" "1"
+            , HA.style "flex-direction" "row"
+            , HA.style "padding" "1rem"
+            ]
+            [ div
+                [ HA.style "flex" "0 0 auto" -- chart gets natural width from the SVG
+                ]
+                [ viewGraph model ]
+            , div
+                [ HA.style "flex" "1"
+                , HA.style "margin-left" "1rem"
+                , HA.style "overflow" "auto"
+                ]
+                [ viewExpandedFormula model ]
+            ]
         ]
 
 
@@ -213,7 +222,7 @@ controlsView model =
             , HE.onInput ChangeNumPoints
             ]
             []
-        , button [ HE.onClick Generate ] [ text "Generate / Regenerate Random Points" ]
+        , button [ HE.onClick Generate ] [ text "Generate Random Points" ]
         ]
 
 
@@ -234,22 +243,14 @@ viewGraph model =
                 0
 
             else
-                let
-                    totalX =
-                        List.map Tuple.first model.points |> sum
-                in
-                totalX / toFloat (List.length model.points)
+                sum (List.map Tuple.first model.points) / toFloat (List.length model.points)
 
         meanY =
             if List.isEmpty model.points then
                 0
 
             else
-                let
-                    totalY =
-                        List.map Tuple.second model.points |> sum
-                in
-                totalY / toFloat (List.length model.points)
+                sum (List.map Tuple.second model.points) / toFloat (List.length model.points)
 
         meanXSvg =
             scaleX margin width meanX
@@ -257,10 +258,18 @@ viewGraph model =
         meanYSvg =
             scaleY margin height meanY
 
-        hoverRect =
-            case model.hoveredIndex of
+        highlightedIndex =
+            case model.dragState of
+                Just d ->
+                    Just d.index
+
+                Nothing ->
+                    model.hoveredIndex
+
+        highlightRect =
+            case highlightedIndex of
                 Just i ->
-                    case List.drop i model.points |> List.head of
+                    case List.head (List.drop i model.points) of
                         Just ( px, py ) ->
                             let
                                 pxSvg =
@@ -314,8 +323,7 @@ viewGraph model =
         , SA.viewBox ("0 0 " ++ String.fromInt width ++ " " ++ String.fromInt height)
         , SA.style "background-color:white"
         ]
-        ([ -- Axes
-           Svg.line
+        ([ Svg.line
             [ SA.x1 (toStr margin)
             , SA.y1 (toStr (height - margin))
             , SA.x2 (toStr (width - margin))
@@ -333,8 +341,7 @@ viewGraph model =
             , SA.strokeWidth "2"
             ]
             []
-         , -- Mean lines
-           Svg.line
+         , Svg.line
             [ SA.x1 (toStr meanXSvg)
             , SA.y1 (toStr margin)
             , SA.x2 (toStr meanXSvg)
@@ -353,23 +360,20 @@ viewGraph model =
             ]
             []
          ]
-            ++ hoverRect
-            ++ List.indexedMap (viewPoint model margin width margin height) model.points
+            ++ highlightRect
+            ++ List.indexedMap (viewPoint margin width margin height) model.points
         )
 
 
-{-| Each point as an SVG circle. We add a custom onMouseDown that gives us the (mouseX, mouseY).
--}
 viewPoint :
-    Model
-    -> Int
+    Int
     -> Int
     -> Int
     -> Int
     -> Int
     -> ( Float, Float )
     -> Svg.Svg Msg
-viewPoint model margin w margin2 h i ( x, y ) =
+viewPoint margin w margin2 h i ( x, y ) =
     let
         cx_ =
             scaleX margin w x
@@ -378,7 +382,7 @@ viewPoint model margin w margin2 h i ( x, y ) =
             scaleY margin2 h y
 
         titleText =
-            "(" ++ truncateFloat x ++ ", " ++ truncateFloat y ++ ")"
+            "(" ++ round3DecPlaces x ++ ", " ++ round3DecPlaces y ++ ")"
     in
     Svg.circle
         [ SA.cx (toStr cx_)
@@ -394,9 +398,6 @@ viewPoint model margin w margin2 h i ( x, y ) =
         ]
 
 
-{-| Show the expanded covariance formula and each summand (xᵢ - meanX)(yᵢ - meanY).
-Color them based on sign, and highlight the hovered item with a border.
--}
 viewExpandedFormula : Model -> Html Msg
 viewExpandedFormula model =
     let
@@ -415,22 +416,22 @@ viewExpandedFormula model =
             else
                 sum (List.map Tuple.second model.points)
                     / toFloat (List.length model.points)
+
+        totalCov =
+            List.foldl
+                (\( x, y ) acc -> acc + (x - meanX) * (y - meanY))
+                0
+                model.points
     in
     div [ HA.style "margin" "1rem" ]
         [ div []
-            [ text "Cov(X,Y) = Σ (xᵢ -  x̄) (yᵢ -  ȳ), for i = 1..n" ]
+            [ text ("Cov(X,Y) = Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DecPlaces totalCov) ]
         , div []
             (List.indexedMap (viewTerm meanX meanY model.hoveredIndex) model.points)
         ]
 
 
-viewTerm :
-    Float
-    -> Float
-    -> Maybe Int
-    -> Int
-    -> ( Float, Float )
-    -> Html Msg
+viewTerm : Float -> Float -> Maybe Int -> Int -> ( Float, Float ) -> Html Msg
 viewTerm meanX meanY hoveredIndex i ( x, y ) =
     let
         dx =
@@ -449,37 +450,44 @@ viewTerm meanX meanY hoveredIndex i ( x, y ) =
             else
                 "red"
 
-        border =
+        -- If this term is hovered, pick a light background color
+        bg =
             case hoveredIndex of
                 Just hI ->
                     if hI == i then
-                        "2px solid black"
+                        if product >= 0 then
+                            "lightblue"
+
+                        else
+                            "pink"
 
                     else
-                        "none"
+                        "transparent"
 
                 Nothing ->
-                    "none"
+                    "transparent"
 
         content =
             "("
-                ++ truncateFloat dx
+                ++ round3DecPlaces dx
                 ++ ")·("
-                ++ truncateFloat dy
+                ++ round3DecPlaces dy
                 ++ ") = "
-                ++ truncateFloat product
+                ++ round3DecPlaces product
     in
     div
         [ HA.style "margin" "6px 0"
-        , HA.style "color" color
-        , HA.style "border" border
-        , HA.style "padding" "4px"
+        , HE.onMouseOver (SummationHover i)
+        , HE.onMouseOut SummationUnhover
         ]
-        [ text content ]
-
-
-
--- HELPER FUNCTIONS
+        [ Html.span
+            [ HA.style "display" "inline-block"
+            , HA.style "color" color
+            , HA.style "background-color" bg
+            , HA.style "padding" "4px"
+            ]
+            [ text content ]
+        ]
 
 
 onMouseDownPos : (Float -> Float -> msg) -> Svg.Attribute msg
@@ -506,16 +514,10 @@ pointToScreen model i =
             40
 
         ( x, y ) =
-            case List.drop i model.points |> List.head of
-                Just ( px, py ) ->
-                    ( px, py )
-
-                Nothing ->
-                    ( 0, 0 )
+            List.head (List.drop i model.points)
+                |> Maybe.withDefault ( 0, 0 )
     in
-    ( scaleX margin width x
-    , scaleY margin height y
-    )
+    ( scaleX margin width x, scaleY margin height y )
 
 
 screenToData : Model -> Float -> Float -> ( Float, Float )
@@ -534,7 +536,7 @@ screenToData model screenX screenY =
             (screenX - toFloat margin) / toFloat (width - 2 * margin)
 
         dataY =
-            (toFloat height - margin - screenY) / toFloat (height - 2 * margin)
+            (toFloat height - toFloat margin - screenY) / toFloat (height - 2 * margin)
     in
     ( dataX, dataY )
 
@@ -554,13 +556,13 @@ toStr =
     String.fromFloat
 
 
-truncateFloat : Float -> String
-truncateFloat val =
+round3DecPlaces : Float -> String
+round3DecPlaces val =
     let
         rounded =
-            round (val * 100)
+            round (val * 1000)
     in
-    String.fromFloat (toFloat rounded / 100)
+    String.fromFloat (toFloat rounded / 1000)
 
 
 clamp : Float -> Float -> Float -> Float
