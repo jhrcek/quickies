@@ -5,8 +5,23 @@ import Html exposing (Html, div, h2, text)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onInput)
 import String
-import Svg exposing (path, svg, text_)
-import Svg.Attributes exposing (d, fill, height, stroke, strokeWidth, viewBox, width)
+import Svg exposing (line, path, rect, svg, text_)
+import Svg.Attributes
+    exposing
+        ( d
+        , fill
+        , height
+        , stroke
+        , strokeWidth
+        , viewBox
+        , width
+        , x
+        , x1
+        , x2
+        , y
+        , y1
+        , y2
+        )
 
 
 
@@ -38,7 +53,6 @@ type alias Model =
 
 init : Model
 init =
-    -- Defaults: Circle-like or ellipse-like
     { a = 1
     , b = 0
     , c = 1
@@ -144,31 +158,26 @@ type_ =
 
 
 
--- VIEW: SVG PLOTTING
+-- VIEW: SVG
 
 
 viewSvg : Model -> Html Msg
 viewSvg model =
     let
-        -- We'll sample the curve in x and y ∈ [-10..10], looking for real solutions,
-        -- to guess a bounding box for the relevant portion of the curve.
-        pointsFound =
-            findPoints model.a model.b model.c model.d model.e model.f 100
+        -- We'll gather polylines by sweeping X and Y across [-10..10].
+        polylines =
+            sampleConic model 400
 
-        ( ( minX, maxX ), ( minY, maxY ) ) =
-            autoBounds pointsFound
+        -- 1) Break polylines on "no solution" as before.
+        -- 2) ALSO break if consecutive points are too far apart => remove bridging lines.
+        polylinesNoGaps =
+            polylines
+                |> List.concatMap (distanceSplitAll 1.0)
 
-        -- Then we sample in the final x-range to draw the curve.
-        -- We'll produce up to two branches (since up to 2 real solutions in y).
-        curvePaths =
-            conicPaths model.a model.b model.c model.d model.e model.f minX maxX 400
-
-        -- We'll convert them to SVG path commands. Each root is a separate path.
-        d1 =
-            pathFromPoints (List.map .root1 curvePaths) minX maxX minY maxY
-
-        d2 =
-            pathFromPoints (List.map .root2 curvePaths) minX maxX minY maxY
+        -- threshold = 1.0 in domain coords
+        -- Convert final polylines into one path with subpaths.
+        pathStr =
+            polylinesToPath polylinesNoGaps
     in
     svg
         [ width "600"
@@ -176,134 +185,207 @@ viewSvg model =
         , viewBox "0 0 600 600"
         , style "border" "1px solid black"
         ]
-        [ path
-            [ d d1
+        [ -- Draw a light bounding box for reference
+          rect
+            [ x "0"
+            , y "0"
+            , Svg.Attributes.width "600"
+            , Svg.Attributes.height "600"
             , fill "none"
-            , stroke "red"
+            , stroke "#ccc"
+            , strokeWidth "1"
+            ]
+            []
+        , -- X-axis
+          line
+            [ x1 "0"
+            , y1 "300"
+            , x2 "600"
+            , y2 "300"
+            , stroke "black"
+            , strokeWidth "1"
+            ]
+            []
+        , -- Y-axis
+          line
+            [ x1 "300"
+            , y1 "0"
+            , x2 "300"
+            , y2 "600"
+            , stroke "black"
+            , strokeWidth "1"
+            ]
+            []
+        , -- The entire conic in black
+          path
+            [ d pathStr
+            , fill "none"
+            , stroke "black"
             , strokeWidth "2"
             ]
             []
-        , path
-            [ d d2
-            , fill "none"
-            , stroke "blue"
-            , strokeWidth "2"
-            ]
-            []
-
-        -- Optionally, show some text with bounding box info:
         , text_
-            [ fill "black"
-            , Svg.Attributes.x "10"
-            , Svg.Attributes.y "20"
-            ]
-            [ text
-                ("x∈["
-                    ++ String.fromFloat minX
-                    ++ ","
-                    ++ String.fromFloat maxX
-                    ++ "], y∈["
-                    ++ String.fromFloat minY
-                    ++ ","
-                    ++ String.fromFloat maxY
-                    ++ "]"
-                )
-            ]
+            [ x "10", y "20", fill "black" ]
+            [ text "Domain: x, y ∈ [-10,10]" ]
         ]
 
 
 
--- 1) FIND POINTS IN [-10..10]^2 TO DETERMINE BOUNDING BOX
+--  SAMPLE THE CONIC  ----------------------------------------------------
 
 
-findPoints : Float -> Float -> Float -> Float -> Float -> Float -> Int -> List ( Float, Float )
-findPoints a b c d e f steps =
+{-| Sample the conic in two ways:
+
+1.  For x from -10..10, solve for y (0..2 solutions).
+    => up to 2 polylines going left->right
+2.  For y from -10..10, solve for x (0..2 solutions).
+    => up to 2 polylines going bottom->top
+
+-}
+sampleConic : Model -> Int -> List (List ( Float, Float ))
+sampleConic model steps =
     let
-        -- We'll gather real solutions for x in [-10..10], then y in [-10..10].
-        -- This tries to capture vertical/horizontal sections.
-        domain i =
-            -10 + 20 * (toFloat i / toFloat steps)
+        xSweep =
+            sampleSweepX model steps
 
-        xs =
+        ySweep =
+            sampleSweepY model steps
+    in
+    xSweep ++ ySweep
+
+
+
+-- For x-sweep, we pick steps from -10..10, solve for y, keep root1, root2 as separate polylines.
+
+
+sampleSweepX : Model -> Int -> List (List ( Float, Float ))
+sampleSweepX model steps =
+    let
+        domain i =
+            -10 + (20 * toFloat i / toFloat steps)
+
+        xValues =
             List.map domain (List.range 0 steps)
 
-        -- For each x, solve for y in the conic:
-        pointsX =
-            List.concatMap
-                (\xx ->
-                    let
-                        ys =
-                            solveForY a b c d e f xx
-                    in
-                    List.map (\yy -> ( xx, yy )) ys
-                )
-                xs
+        solutionsForX x =
+            solveQuadratic model.c
+                (model.b * x + model.e)
+                (model.a * x ^ 2 + model.d * x + model.f)
 
-        -- For each y, solve for x in the conic:
-        pointsY =
-            List.concatMap
-                (\yy ->
-                    let
-                        xs_ =
-                            solveForX a b c d e f yy
-                    in
-                    List.map (\xx -> ( xx, yy )) xs
-                )
-                xs
+        accumulate ( x, roots ) ( poly1, poly2 ) =
+            case roots of
+                [] ->
+                    -- no real solutions => break
+                    ( poly1 ++ [ [] ], poly2 ++ [ [] ] )
+
+                [ y1 ] ->
+                    ( appendPoint poly1 ( x, y1 ), poly2 ++ [ [] ] )
+
+                [ y1, y2 ] ->
+                    ( appendPoint poly1 ( x, y1 ), appendPoint poly2 ( x, y2 ) )
+
+                _ ->
+                    ( poly1, poly2 )
+
+        initial =
+            ( [ [] ], [ [] ] )
+
+        ( polylines1, polylines2 ) =
+            List.foldl accumulate
+                initial
+                (List.map (\xx -> ( xx, solutionsForX xx )) xValues)
+
+        final1 =
+            cleanup polylines1
+
+        final2 =
+            cleanup polylines2
     in
-    pointsX ++ pointsY
+    final1 ++ final2
 
 
 
--- Solve for Y given X in A x^2 + B x y + C y^2 + D x + E y + F = 0
--- This is a quadratic in y: C y^2 + (B x + E) y + (A x^2 + D x + F) = 0
+-- For y-sweep, we do similarly: for y in [-10..10], solve for x.
 
 
-solveForY : Float -> Float -> Float -> Float -> Float -> Float -> Float -> List Float
-solveForY a b c d e f x =
+sampleSweepY : Model -> Int -> List (List ( Float, Float ))
+sampleSweepY model steps =
     let
-        aQ =
-            c
+        domain i =
+            -10 + (20 * toFloat i / toFloat steps)
 
-        bQ =
-            b * x + e
+        yValues =
+            List.map domain (List.range 0 steps)
 
-        cQ =
-            a * x ^ 2 + d * x + f
+        solutionsForY y =
+            solveQuadratic model.a
+                (model.b * y + model.d)
+                (model.c * y ^ 2 + model.e * y + model.f)
+
+        accumulate ( y, roots ) ( poly1, poly2 ) =
+            case roots of
+                [] ->
+                    ( poly1 ++ [ [] ], poly2 ++ [ [] ] )
+
+                [ x1 ] ->
+                    ( appendPoint poly1 ( x1, y ), poly2 ++ [ [] ] )
+
+                [ x1, x2 ] ->
+                    ( appendPoint poly1 ( x1, y ), appendPoint poly2 ( x2, y ) )
+
+                _ ->
+                    ( poly1, poly2 )
+
+        initial =
+            ( [ [] ], [ [] ] )
+
+        ( polylines1, polylines2 ) =
+            List.foldl accumulate
+                initial
+                (List.map (\yy -> ( yy, solutionsForY yy )) yValues)
+
+        final1 =
+            cleanup polylines1
+
+        final2 =
+            cleanup polylines2
     in
-    solveQuadratic aQ bQ cQ
+    final1 ++ final2
 
 
 
--- Solve for X given Y similarly:
--- A x^2 + (B y + D) x + (C y^2 + E y + F) = 0
+--  POLYLINE UTILITIES  --------------------------------------------------
 
 
-solveForX : Float -> Float -> Float -> Float -> Float -> Float -> Float -> List Float
-solveForX a b c d e f y =
-    let
-        aQ =
-            a
+{-| Append a point to the last sub‐list (which is stored reversed).
+-}
+appendPoint : List (List ( Float, Float )) -> ( Float, Float ) -> List (List ( Float, Float ))
+appendPoint polys pt =
+    case polys of
+        [] ->
+            [ [ pt ] ]
 
-        bQ =
-            b * y + d
-
-        cQ =
-            c * y ^ 2 + e * y + f
-    in
-    solveQuadratic aQ bQ cQ
+        current :: rest ->
+            (pt :: current) :: rest
 
 
+{-| Drop any empty sublists and reverse each sublist so it goes in natural order.
+-}
+cleanup : List (List ( Float, Float )) -> List (List ( Float, Float ))
+cleanup polylines =
+    polylines
+        |> List.filter (\sub -> not (List.isEmpty sub))
+        |> List.map List.reverse
 
--- Standard quadratic formula solver:
--- aQ x^2 + bQ x + cQ = 0
--- return 0,1,2 real solutions
+
+
+-- Solve aQ*z^2 + bQ*z + cQ = 0, returning up to 2 real solutions.
 
 
 solveQuadratic : Float -> Float -> Float -> List Float
 solveQuadratic aQ bQ cQ =
     if abs aQ < 1.0e-12 then
-        -- then it's linear bQ x + cQ = 0 => x = -cQ/bQ if bQ ≠ 0
+        -- linear
         if abs bQ < 1.0e-12 then
             []
 
@@ -323,192 +405,121 @@ solveQuadratic aQ bQ cQ =
 
         else
             let
-                sqrtDisc =
+                r =
                     sqrt disc
             in
-            [ (-bQ + sqrtDisc) / (2 * aQ)
-            , (-bQ - sqrtDisc) / (2 * aQ)
+            [ (-bQ + r) / (2 * aQ)
+            , (-bQ - r) / (2 * aQ)
             ]
 
 
 
--- 2) DETERMINE AUTOMATIC BOUNDS (xmin,xmax,ymin,ymax)
+--  DISTANCE‐BASED GAP SPLITTING  ----------------------------------------
+-- If two consecutive points in a polyline are farther apart than `threshold`,
+-- we split into separate sub‐polylines (to avoid spurious straight lines).
 
 
-autoBounds : List ( Float, Float ) -> ( ( Float, Float ), ( Float, Float ) )
-autoBounds points =
-    case points of
-        [] ->
-            -- No real intersections => default to [-1..1]
-            ( ( -1, 1 ), ( -1, 1 ) )
-
-        _ ->
-            let
-                xs =
-                    List.map Tuple.first points
-
-                ys =
-                    List.map Tuple.second points
-
-                minX_ =
-                    List.minimum xs |> Maybe.withDefault -1
-
-                maxX_ =
-                    List.maximum xs |> Maybe.withDefault 1
-
-                minY_ =
-                    List.minimum ys |> Maybe.withDefault -1
-
-                maxY_ =
-                    List.maximum ys |> Maybe.withDefault 1
-            in
-            -- If degenerate (all points the same or nearly so), pad a bit
-            let
-                deltaX =
-                    maxX_ - minX_
-
-                deltaY =
-                    maxY_ - minY_
-
-                pad =
-                    0.2
-            in
-            if abs deltaX < 1.0e-6 && abs deltaY < 1.0e-6 then
-                ( ( minX_ - 1, maxX_ + 1 ), ( minY_ - 1, maxY_ + 1 ) )
-
-            else
-                ( ( minX_ - pad, maxX_ + pad ), ( minY_ - pad, maxY_ + pad ) )
-
-
-
--- 3) SAMPLE THE CURVE FOR RENDERING
--- We'll sample x from [xMin..xMax], find up to 2 real y solutions. We'll store them
--- as `root1` and `root2` so we can connect them in separate paths.
-
-
-type alias XRoots =
-    { x : Float
-    , root1 : Maybe Float
-    , root2 : Maybe Float
-    }
-
-
-conicPaths :
-    Float
-    -> Float
-    -> Float
-    -> Float
-    -> Float
-    -> Float
-    -> Float
-    -> Float
-    -> Int
-    -> List XRoots
-conicPaths a b c d e f xMin xMax steps =
+distanceSplitAll : Float -> List ( Float, Float ) -> List (List ( Float, Float ))
+distanceSplitAll threshold poly =
     let
-        deltaX =
-            (xMax - xMin) / toFloat steps
-
-        sample i =
-            let
-                xCoord =
-                    xMin + toFloat i * deltaX
-
-                ys =
-                    solveForY a b c d e f xCoord
-            in
-            case ys of
+        -- We'll fold over the points, building sublists
+        step pt ( accSubs, currentSub ) =
+            case currentSub of
                 [] ->
-                    { x = xCoord, root1 = Nothing, root2 = Nothing }
+                    -- first point in new sublist
+                    ( accSubs, [ pt ] )
 
-                [ y ] ->
-                    { x = xCoord, root1 = Just y, root2 = Nothing }
-
-                [ y1, y2 ] ->
-                    { x = xCoord, root1 = Just y1, root2 = Just y2 }
-
-                _ ->
-                    -- Should never happen, but just in case
-                    { x = xCoord, root1 = Nothing, root2 = Nothing }
-    in
-    List.map sample (List.range 0 steps)
-
-
-
--- 4) BUILD AN SVG PATH STRING FROM A LIST OF Maybe Float y-values.
-
-
-pathFromPoints : List (Maybe Float) -> Float -> Float -> Float -> Float -> String
-pathFromPoints maybeYs xMin xMax yMin yMax =
-    let
-        len =
-            List.length maybeYs
-
-        dx =
-            if len <= 1 then
-                0
-
-            else
-                (xMax - xMin) / toFloat (len - 1)
-
-        -- We'll build a simple "move/line" sequence.
-        buildPath ( index, maybeY ) =
-            case maybeY of
-                Nothing ->
-                    -- No real solution => "move" out of range (we break continuity)
-                    "M 0 0"
-
-                -- We'll interpret as a jump
-                Just yVal ->
-                    let
-                        xVal =
-                            xMin + dx * toFloat index
-
-                        ( sx, sy ) =
-                            toSvgCoords xVal yVal xMin xMax yMin yMax
-                    in
-                    if index == 0 then
-                        "M " ++ String.fromFloat sx ++ " " ++ String.fromFloat sy
+                lastPt :: _ ->
+                    if distance lastPt pt > threshold then
+                        -- big gap => start a new sublist
+                        ( currentSub :: accSubs, [ pt ] )
 
                     else
-                        "L " ++ String.fromFloat sx ++ " " ++ String.fromFloat sy
+                        -- same sublist
+                        ( accSubs, pt :: currentSub )
 
-        commands =
-            List.map buildPath (List.indexedMap Tuple.pair maybeYs)
+        ( subsSoFar, finalSub ) =
+            List.foldl step ( [], [] ) poly
+
+        allSubs =
+            if List.isEmpty finalSub then
+                subsSoFar
+
+            else
+                finalSub :: subsSoFar
     in
-    String.join " " commands
+    -- reverse them back to normal order
+    allSubs
+        |> List.map List.reverse
+        |> List.reverse
 
 
-toSvgCoords : Float -> Float -> Float -> Float -> Float -> Float -> ( Float, Float )
-toSvgCoords x y xMin xMax yMin yMax =
+distance : ( Float, Float ) -> ( Float, Float ) -> Float
+distance ( x1, y1 ) ( x2, y2 ) =
+    sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+
+
+
+--  BUILD A SINGLE PATH STRING  ------------------------------------------
+
+
+polylinesToPath : List (List ( Float, Float )) -> String
+polylinesToPath polylines =
+    polylines
+        |> List.map polylineToCommands
+        |> String.join " "
+
+
+polylineToCommands : List ( Float, Float ) -> String
+polylineToCommands points =
+    case points of
+        [] ->
+            ""
+
+        ( x0, y0 ) :: rest ->
+            let
+                ( sx0, sy0 ) =
+                    toSvg ( x0, y0 )
+
+                startCmd =
+                    "M " ++ String.fromFloat sx0 ++ " " ++ String.fromFloat sy0
+
+                lineCmds =
+                    rest
+                        |> List.map
+                            (\( x, y ) ->
+                                let
+                                    ( sx, sy ) =
+                                        toSvg ( x, y )
+                                in
+                                "L " ++ String.fromFloat sx ++ " " ++ String.fromFloat sy
+                            )
+                        |> String.join " "
+            in
+            startCmd
+                ++ (if String.isEmpty lineCmds then
+                        ""
+
+                    else
+                        " " ++ lineCmds
+                   )
+
+
+{-| Map (x,y) in [-10,10]^2 to [0..600]^2 with:
+scale = 600 / 20 = 30 px/unit
+sx = 300 + 30_x
+sy = 300 - 30_y
+-}
+toSvg : ( Float, Float ) -> ( Float, Float )
+toSvg ( x, y ) =
     let
-        svgW =
-            600
-
-        svgH =
-            600
-
-        dx =
-            xMax - xMin
-
-        dy =
-            yMax - yMin
-
-        -- Use same scale on x & y to preserve aspect ratio
-        scaleX =
-            toFloat svgW / dx
-
-        scaleY =
-            toFloat svgH / dy
-
         scale =
-            min scaleX scaleY
+            600 / 20
 
-        -- Transform such that (xMin, yMax) is top-left in SVG:
         sx =
-            (x - xMin) * scale
+            300 + scale * x
 
         sy =
-            (yMax - y) * scale
+            300 - scale * y
     in
     ( sx, sy )
