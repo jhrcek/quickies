@@ -50,49 +50,51 @@ type Msg
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        DragStarted whichSlider ->
-            { model | dragState = Just whichSlider }
+        DragStarted slider ->
+            { model | dragState = Just slider }
 
         DragAt x y ->
             case model.dragState of
+                Just drag ->
+                    case drag of
+                        DragA ->
+                            { model | pA = clamp 0 1 ((x - squareLeft) / squareSize) }
+
+                        DragBGivenA ->
+                            { model | pBGivenA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
+
+                        DragBGivenNotA ->
+                            { model | pBGivenNotA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
+
                 Nothing ->
                     model
-
-                Just DragA ->
-                    { model | pA = clamp 0 1 ((x - squareLeft) / squareSize) }
-
-                Just DragBGivenA ->
-                    { model | pBGivenA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
-
-                Just DragBGivenNotA ->
-                    { model | pBGivenNotA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
 
         DragStopped ->
             { model | dragState = Nothing }
 
 
 view : Model -> Html Msg
-view ({ pA } as model) =
+view ({ pA, pBGivenA, pBGivenNotA } as model) =
     let
         pNotA =
             1 - pA
 
         pB =
-            pA * model.pBGivenA + pNotA * model.pBGivenNotA
+            pA * pBGivenA + pNotA * pBGivenNotA
 
         pNotB =
             1 - pB
 
         pAGivenB =
             if pB > 0 then
-                (pA * model.pBGivenA) / pB
+                (pA * pBGivenA) / pB
 
             else
                 0
 
         pAGivenNotB =
             if pNotB > 0 then
-                (pA * (1 - model.pBGivenA)) / pNotB
+                (pA * (1 - pBGivenA)) / pNotB
 
             else
                 0
@@ -101,8 +103,8 @@ view ({ pA } as model) =
         [ Svg.svg
             [ SA.width (String.fromFloat (squareLeft * 2 + squareSize))
             , SA.height (String.fromFloat (squareTop * 2 + squareSize))
+            , SE.onMouseUp DragStopped
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
-            , SE.on "mouseup" (Json.succeed DragStopped)
             ]
             [ Svg.defs [] [ sliderMarker ]
             , drawSquare
@@ -111,8 +113,8 @@ view ({ pA } as model) =
         , Html.div [ HA.style "margin-left" "20px" ]
             [ textLineProb "P(A)" (to2Dec pA) (highlight "pA" model)
             , textLineProb "P(¬A)" (to2Dec pNotA) (highlight "pNotA" model)
-            , textLineProb "P(B|A)" (to2Dec model.pBGivenA) (highlight "pBGivenA" model)
-            , textLineProb "P(B|¬A)" (to2Dec model.pBGivenNotA) (highlight "pBGivenNotA" model)
+            , textLineProb "P(B|A)" (to2Dec pBGivenA) (highlight "pBGivenA" model)
+            , textLineProb "P(B|¬A)" (to2Dec pBGivenNotA) (highlight "pBGivenNotA" model)
             , textLineProb "P(B)" (to2Dec pB) (highlight "pB" model)
             , textLineProb "P(¬B)" (to2Dec (1 - pB)) (highlight "pNotB" model)
             , textLineProb "P(A|B)" (to2Dec pAGivenB) (highlight "pAGivenB" model)
@@ -136,16 +138,16 @@ drawSquare =
 
 
 drawPartitions : Model -> Svg.Svg Msg
-drawPartitions model =
+drawPartitions { pA, pBGivenA, pBGivenNotA } =
     let
         xA =
-            squareLeft + model.pA * squareSize
+            squareLeft + pA * squareSize
 
         yBGivenA =
-            squareTop + (1 - model.pBGivenA) * squareSize
+            squareTop + (1 - pBGivenA) * squareSize
 
         yBGivenNotA =
-            squareTop + (1 - model.pBGivenNotA) * squareSize
+            squareTop + (1 - pBGivenNotA) * squareSize
 
         drawLine x1 y1 x2 y2 slider =
             Svg.g []
@@ -213,19 +215,22 @@ sliderMarker =
 textLineProb : String -> String -> Highlight -> Html msg
 textLineProb label value highlightStatus =
     let
-        highlightStyles =
+        bgColor =
             case highlightStatus of
                 Direct ->
-                    [ HA.style "background-color" "#b2fab4" ]
+                    "#b2fab4"
 
                 Indirect ->
-                    [ HA.style "background-color" "#e0ffe0" ]
+                    "#e0ffe0"
 
                 NoHighlight ->
-                    []
+                    "#fff"
     in
     Html.div []
-        [ Html.span (highlightStyles ++ [ HA.style "padding" "0 4px" ])
+        [ Html.span
+            [ HA.style "padding" "0 4px"
+            , HA.style "background-color" bgColor
+            ]
             [ Html.text (label ++ " = " ++ value) ]
         ]
 
