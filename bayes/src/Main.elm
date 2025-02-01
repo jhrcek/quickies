@@ -141,7 +141,8 @@ view model =
             , SE.on "mousemove" (Json.map2 MouseMove offsetX offsetY)
             , SE.on "mouseup" (Json.succeed MouseUp)
             ]
-            [ drawSquare
+            [ sliderMarkers
+            , drawSquare
             , drawPartitions model
             , drawAllSliders model
             ]
@@ -167,6 +168,7 @@ drawSquare =
         , SA.height (String.fromFloat squareSize)
         , SA.fill "none"
         , SA.stroke "black"
+        , SA.strokeWidth "1"
         ]
         []
 
@@ -182,86 +184,50 @@ drawPartitions model =
 
         yBGivenNotA =
             squareTop + (1 - model.pBGivenNotA) * squareSize
+
+        drawLine : Float -> Float -> Float -> Float -> Svg.Svg Msg
+        drawLine x1 y1 x2 y2 =
+            Svg.line
+                [ SA.x1 (String.fromFloat x1)
+                , SA.y1 (String.fromFloat y1)
+                , SA.x2 (String.fromFloat x2)
+                , SA.y2 (String.fromFloat y2)
+                , SA.stroke "black"
+                , SA.strokeWidth "1"
+                ]
+                []
     in
     Svg.g []
-        [ Svg.line
-            [ SA.x1 (String.fromFloat xA)
-            , SA.y1 (String.fromFloat squareTop)
-            , SA.x2 (String.fromFloat xA)
-            , SA.y2 (String.fromFloat squareBottom)
-            , SA.stroke "black"
-            ]
-            []
-        , Svg.line
-            [ SA.x1 (String.fromFloat squareLeft)
-            , SA.y1 (String.fromFloat yBGivenA)
-            , SA.x2 (String.fromFloat xA)
-            , SA.y2 (String.fromFloat yBGivenA)
-            , SA.stroke "black"
-            ]
-            []
-        , Svg.line
-            [ SA.x1 (String.fromFloat xA)
-            , SA.y1 (String.fromFloat yBGivenNotA)
-            , SA.x2 (String.fromFloat squareRight)
-            , SA.y2 (String.fromFloat yBGivenNotA)
-            , SA.stroke "black"
-            ]
-            []
+        [ drawLine xA squareTop xA squareBottom
+        , drawLine squareLeft yBGivenA xA yBGivenA
+        , drawLine xA yBGivenNotA squareRight yBGivenNotA
         ]
-
-
-type SliderDir
-    = Down
-    | Leftward
-    | Rightward
 
 
 drawSlider : ( Float, Float ) -> SliderDir -> Svg.Svg Msg
 drawSlider ( sx, sy ) direction =
     let
-        size =
-            10
-
-        half =
-            5
-
-        points =
+        ( x1, y1 ) =
             case direction of
                 Down ->
-                    String.join " "
-                        [ -- Apex on the square's bottom edge; triangle extends downward.
-                          String.fromFloat sx ++ "," ++ String.fromFloat sy
-                        , String.fromFloat (sx - half) ++ "," ++ String.fromFloat (sy + size)
-                        , String.fromFloat (sx + half) ++ "," ++ String.fromFloat (sy + size)
-                        ]
+                    ( sx, sy - 5 )
 
                 Leftward ->
-                    String.join " "
-                        [ -- Apex on the left edge; triangle extends left.
-                          String.fromFloat sx ++ "," ++ String.fromFloat sy
-                        , String.fromFloat (sx - size) ++ "," ++ String.fromFloat (sy - half)
-                        , String.fromFloat (sx - size) ++ "," ++ String.fromFloat (sy + half)
-                        ]
+                    ( sx + 5, sy )
 
                 Rightward ->
-                    String.join " "
-                        [ -- Apex on the right edge; triangle extends right.
-                          String.fromFloat sx ++ "," ++ String.fromFloat sy
-                        , String.fromFloat (sx + size) ++ "," ++ String.fromFloat (sy - half)
-                        , String.fromFloat (sx + size) ++ "," ++ String.fromFloat (sy + half)
-                        ]
+                    ( sx - 5, sy )
     in
-    Svg.polygon
-        [ SA.points points
-        , SA.fill "none"
+    Svg.line
+        [ SA.x1 (String.fromFloat x1)
+        , SA.y1 (String.fromFloat y1)
+        , SA.x2 (String.fromFloat sx)
+        , SA.y2 (String.fromFloat sy)
         , SA.stroke "black"
+        , SA.strokeWidth "1"
+        , SA.markerEnd "url(#triangle)"
         ]
         []
-
-
-
--- Create a group of all three sliders at their correct positions/directions.
 
 
 drawAllSliders : Model -> Svg.Svg Msg
@@ -271,6 +237,12 @@ drawAllSliders model =
         , drawSlider (sliderPosBGivenA model) Leftward
         , drawSlider (sliderPosBGivenNotA model) Rightward
         ]
+
+
+type SliderDir
+    = Down
+    | Leftward
+    | Rightward
 
 
 sliderPosA : Model -> ( Float, Float )
@@ -340,3 +312,27 @@ to2Dec f =
             toFloat (round (f * 100)) / 100
     in
     String.fromFloat rounded
+
+
+sliderMarkers : Svg.Svg msg
+sliderMarkers =
+    Svg.defs []
+        [ Svg.marker
+            [ SA.id "triangle"
+            , SA.viewBox "0 0 12 12"
+            , SA.refX "1"
+            , SA.refY "6"
+            , SA.markerWidth "12"
+            , SA.markerHeight "12"
+            , SA.orient "auto"
+            , SA.markerUnits "strokeWidth"
+            ]
+            [ Svg.polygon
+                [ SA.points "11,1 1,6 11,11"
+                , SA.fill "none"
+                , SA.stroke "black"
+                , SA.strokeWidth "1"
+                ]
+                []
+            ]
+        ]
