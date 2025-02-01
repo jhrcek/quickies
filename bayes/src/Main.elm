@@ -144,7 +144,6 @@ view model =
             [ Svg.defs [] [ sliderMarker ]
             , drawSquare
             , drawPartitions model
-            , drawAllSliders model
             ]
         , Html.div [ HA.style "margin-left" "20px" ]
             [ textLineProb "P(A)" (to2Dec pA_) (highlight "pA" model)
@@ -152,7 +151,7 @@ view model =
             , textLineProb "P(B|A)" (to2Dec model.pBGivenA) (highlight "pBGivenA" model)
             , textLineProb "P(B|¬A)" (to2Dec model.pBGivenNotA) (highlight "pBGivenNotA" model)
             , textLineProb "P(B)" (to2Dec pB) (highlight "pB" model)
-            , textLineProb "P(¬B)" (to2Dec pNotB) (highlight "pNotB" model)
+            , textLineProb "P(¬B)" (to2Dec (1 - pB)) (highlight "pNotB" model)
             , textLineProb "P(A|B)" (to2Dec pAGivenB) (highlight "pAGivenB" model)
             , textLineProb "P(A|¬B)" (to2Dec pAGivenNotB) (highlight "pAGivenNotB" model)
             ]
@@ -185,6 +184,7 @@ drawPartitions model =
         yBGivenNotA =
             squareTop + (1 - model.pBGivenNotA) * squareSize
 
+        drawLine : Float -> Float -> Float -> Float -> Svg.Svg Msg
         drawLine x1 y1 x2 y2 =
             Svg.line
                 [ SA.x1 (String.fromFloat x1)
@@ -193,54 +193,23 @@ drawPartitions model =
                 , SA.y2 (String.fromFloat y2)
                 , SA.stroke "black"
                 , SA.strokeWidth "1"
+                , SA.markerEnd "url(#triangle)"
                 ]
                 []
+
+        verticalA =
+            drawLine xA squareTop xA squareBottom
+
+        horizontalBGivenA =
+            drawLine xA yBGivenA squareLeft yBGivenA
+
+        horizontalBGivenNotA =
+            drawLine xA yBGivenNotA squareRight yBGivenNotA
     in
     Svg.g []
-        [ drawLine xA squareTop xA squareBottom
-        , drawLine squareLeft yBGivenA xA yBGivenA
-        , drawLine xA yBGivenNotA squareRight yBGivenNotA
-        ]
-
-
-type SliderDir
-    = Down
-    | Leftward
-    | Rightward
-
-
-drawSlider : ( Float, Float ) -> SliderDir -> Svg.Svg Msg
-drawSlider ( sx, sy ) direction =
-    let
-        ( x1, y1 ) =
-            case direction of
-                Down ->
-                    ( sx, sy - 5 )
-
-                Leftward ->
-                    ( sx + 5, sy )
-
-                Rightward ->
-                    ( sx - 5, sy )
-    in
-    Svg.line
-        [ SA.x1 (String.fromFloat x1)
-        , SA.y1 (String.fromFloat y1)
-        , SA.x2 (String.fromFloat sx)
-        , SA.y2 (String.fromFloat sy)
-        , SA.stroke "black"
-        , SA.strokeWidth "1"
-        , SA.markerEnd "url(#triangle)"
-        ]
-        []
-
-
-drawAllSliders : Model -> Svg.Svg Msg
-drawAllSliders model =
-    Svg.g []
-        [ drawSlider (sliderPosA model) Down
-        , drawSlider (sliderPosBGivenA model) Leftward
-        , drawSlider (sliderPosBGivenNotA model) Rightward
+        [ verticalA
+        , horizontalBGivenA
+        , horizontalBGivenNotA
         ]
 
 
