@@ -4,7 +4,6 @@ import Browser
 import Html exposing (Html)
 import Html.Attributes as HA
 import Json.Decode as Json
-import List.Extra
 import Svg
 import Svg.Attributes as SA
 import Svg.Events as SE
@@ -13,7 +12,7 @@ import Svg.Events as SE
 main : Program () Model Msg
 main =
     Browser.sandbox
-        { init = initialModel
+        { init = init
         , update = update
         , view = view
         }
@@ -33,8 +32,8 @@ type DragSlider
     | DragBGivenNotA
 
 
-initialModel : Model
-initialModel =
+init : Model
+init =
     { pA = 0.5
     , pBGivenA = 0.5
     , pBGivenNotA = 0.3
@@ -43,44 +42,18 @@ initialModel =
 
 
 type Msg
-    = MouseDown Float Float
-    | MouseMove Float Float
-    | MouseUp
+    = DragStarted DragSlider
+    | DragAt Float Float
+    | DragStopped
 
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        MouseDown x y ->
-            let
-                distA =
-                    distance (sliderPosA model) ( x, y )
+        DragStarted whichSlider ->
+            { model | dragState = Just whichSlider }
 
-                distBGivenA =
-                    distance (sliderPosBGivenA model) ( x, y )
-
-                distBGivenNotA =
-                    distance (sliderPosBGivenNotA model) ( x, y )
-
-                closest =
-                    List.Extra.minimumBy .dist
-                        [ { slider = DragA, dist = distA }
-                        , { slider = DragBGivenA, dist = distBGivenA }
-                        , { slider = DragBGivenNotA, dist = distBGivenNotA }
-                        ]
-            in
-            case closest of
-                Just { slider, dist } ->
-                    if dist < 15 then
-                        { model | dragState = Just slider }
-
-                    else
-                        model
-
-                Nothing ->
-                    model
-
-        MouseMove x y ->
+        DragAt x y ->
             case model.dragState of
                 Nothing ->
                     model
@@ -89,46 +62,37 @@ update msg model =
                     { model | pA = clamp 0 1 ((x - squareLeft) / squareSize) }
 
                 Just DragBGivenA ->
-                    { model
-                        | pBGivenA =
-                            clamp 0 1 (1 - ((y - squareTop) / squareSize))
-                    }
+                    { model | pBGivenA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
 
                 Just DragBGivenNotA ->
-                    { model
-                        | pBGivenNotA =
-                            clamp 0 1 (1 - ((y - squareTop) / squareSize))
-                    }
+                    { model | pBGivenNotA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
 
-        MouseUp ->
+        DragStopped ->
             { model | dragState = Nothing }
 
 
 view : Model -> Html Msg
-view model =
+view ({ pA } as model) =
     let
-        pA_ =
-            model.pA
-
         pNotA =
-            1 - pA_
+            1 - pA
 
         pB =
-            pA_ * model.pBGivenA + pNotA * model.pBGivenNotA
+            pA * model.pBGivenA + pNotA * model.pBGivenNotA
 
         pNotB =
             1 - pB
 
         pAGivenB =
             if pB > 0 then
-                (pA_ * model.pBGivenA) / pB
+                (pA * model.pBGivenA) / pB
 
             else
                 0
 
         pAGivenNotB =
             if pNotB > 0 then
-                (pA_ * (1 - model.pBGivenA)) / pNotB
+                (pA * (1 - model.pBGivenA)) / pNotB
 
             else
                 0
@@ -137,16 +101,15 @@ view model =
         [ Svg.svg
             [ SA.width (String.fromFloat (squareLeft * 2 + squareSize))
             , SA.height (String.fromFloat (squareTop * 2 + squareSize))
-            , SE.on "mousedown" (Json.map2 MouseDown offsetX offsetY)
-            , SE.on "mousemove" (Json.map2 MouseMove offsetX offsetY)
-            , SE.on "mouseup" (Json.succeed MouseUp)
+            , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
+            , SE.on "mouseup" (Json.succeed DragStopped)
             ]
             [ Svg.defs [] [ sliderMarker ]
             , drawSquare
             , drawPartitions model
             ]
         , Html.div [ HA.style "margin-left" "20px" ]
-            [ textLineProb "P(A)" (to2Dec pA_) (highlight "pA" model)
+            [ textLineProb "P(A)" (to2Dec pA) (highlight "pA" model)
             , textLineProb "P(¬A)" (to2Dec pNotA) (highlight "pNotA" model)
             , textLineProb "P(B|A)" (to2Dec model.pBGivenA) (highlight "pBGivenA" model)
             , textLineProb "P(B|¬A)" (to2Dec model.pBGivenNotA) (highlight "pBGivenNotA" model)
@@ -184,48 +147,45 @@ drawPartitions model =
         yBGivenNotA =
             squareTop + (1 - model.pBGivenNotA) * squareSize
 
-        drawLine : Float -> Float -> Float -> Float -> Svg.Svg Msg
-        drawLine x1 y1 x2 y2 =
-            Svg.line
-                [ SA.x1 (String.fromFloat x1)
-                , SA.y1 (String.fromFloat y1)
-                , SA.x2 (String.fromFloat x2)
-                , SA.y2 (String.fromFloat y2)
-                , SA.stroke "black"
-                , SA.strokeWidth "1"
-                , SA.markerEnd "url(#triangle)"
+        drawLine x1 y1 x2 y2 slider =
+            Svg.g []
+                [ Svg.line
+                    [ SA.x1 (String.fromFloat x1)
+                    , SA.y1 (String.fromFloat y1)
+                    , SA.x2 (String.fromFloat x2)
+                    , SA.y2 (String.fromFloat y2)
+                    , SA.stroke "black"
+                    , SA.strokeWidth "1"
+                    , SA.markerEnd "url(#triangle)"
+                    ]
+                    []
+                , -- An “invisible circles” around slider triangle
+                  -- so we can catch a direct click => StartDrag.
+                  Svg.circle
+                    [ SA.r (String.fromFloat 10)
+                    , SA.cx (String.fromFloat x2)
+                    , SA.cy (String.fromFloat y2)
+                    , SA.fill "transparent"
+                    , SA.cursor "pointer"
+                    , SE.onMouseDown (DragStarted slider)
+                    ]
+                    []
                 ]
-                []
 
         verticalA =
-            drawLine xA squareTop xA squareBottom
+            drawLine xA squareTop xA squareBottom DragA
 
         horizontalBGivenA =
-            drawLine xA yBGivenA squareLeft yBGivenA
+            drawLine xA yBGivenA squareLeft yBGivenA DragBGivenA
 
         horizontalBGivenNotA =
-            drawLine xA yBGivenNotA squareRight yBGivenNotA
+            drawLine xA yBGivenNotA squareRight yBGivenNotA DragBGivenNotA
     in
     Svg.g []
         [ verticalA
         , horizontalBGivenA
         , horizontalBGivenNotA
         ]
-
-
-sliderPosA : Model -> ( Float, Float )
-sliderPosA model =
-    ( squareLeft + model.pA * squareSize, squareBottom )
-
-
-sliderPosBGivenA : Model -> ( Float, Float )
-sliderPosBGivenA model =
-    ( squareLeft, squareTop + (1 - model.pBGivenA) * squareSize )
-
-
-sliderPosBGivenNotA : Model -> ( Float, Float )
-sliderPosBGivenNotA model =
-    ( squareRight, squareTop + (1 - model.pBGivenNotA) * squareSize )
 
 
 sliderMarker : Svg.Svg msg
@@ -324,11 +284,6 @@ offsetX =
 offsetY : Json.Decoder Float
 offsetY =
     Json.field "offsetY" Json.float
-
-
-distance : ( Float, Float ) -> ( Float, Float ) -> Float
-distance ( x1, y1 ) ( x2, y2 ) =
-    sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
 
 
 squareLeft : Float
