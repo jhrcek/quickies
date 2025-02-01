@@ -141,20 +141,20 @@ view model =
             , SE.on "mousemove" (Json.map2 MouseMove offsetX offsetY)
             , SE.on "mouseup" (Json.succeed MouseUp)
             ]
-            [ sliderMarkers
+            [ Svg.defs [] [ sliderMarker ]
             , drawSquare
             , drawPartitions model
             , drawAllSliders model
             ]
         , Html.div [ HA.style "margin-left" "20px" ]
-            [ textLine ("P(A) = " ++ to2Dec model.pA)
-            , textLine ("P(¬A) = " ++ to2Dec pNotA)
-            , textLine ("P(B|A) = " ++ to2Dec model.pBGivenA)
-            , textLine ("P(B|¬A) = " ++ to2Dec model.pBGivenNotA)
-            , textLine ("P(B) = " ++ to2Dec pB)
-            , textLine ("P(¬B) = " ++ to2Dec pNotB)
-            , textLine ("P(A|B) = " ++ to2Dec pAGivenB)
-            , textLine ("P(A|¬B) = " ++ to2Dec pAGivenNotB)
+            [ textLineProb "P(A)" (to2Dec pA_) (highlight "pA" model)
+            , textLineProb "P(¬A)" (to2Dec pNotA) (highlight "pNotA" model)
+            , textLineProb "P(B|A)" (to2Dec model.pBGivenA) (highlight "pBGivenA" model)
+            , textLineProb "P(B|¬A)" (to2Dec model.pBGivenNotA) (highlight "pBGivenNotA" model)
+            , textLineProb "P(B)" (to2Dec pB) (highlight "pB" model)
+            , textLineProb "P(¬B)" (to2Dec pNotB) (highlight "pNotB" model)
+            , textLineProb "P(A|B)" (to2Dec pAGivenB) (highlight "pAGivenB" model)
+            , textLineProb "P(A|¬B)" (to2Dec pAGivenNotB) (highlight "pAGivenNotB" model)
             ]
         ]
 
@@ -185,7 +185,6 @@ drawPartitions model =
         yBGivenNotA =
             squareTop + (1 - model.pBGivenNotA) * squareSize
 
-        drawLine : Float -> Float -> Float -> Float -> Svg.Svg Msg
         drawLine x1 y1 x2 y2 =
             Svg.line
                 [ SA.x1 (String.fromFloat x1)
@@ -202,6 +201,12 @@ drawPartitions model =
         , drawLine squareLeft yBGivenA xA yBGivenA
         , drawLine xA yBGivenNotA squareRight yBGivenNotA
         ]
+
+
+type SliderDir
+    = Down
+    | Leftward
+    | Rightward
 
 
 drawSlider : ( Float, Float ) -> SliderDir -> Svg.Svg Msg
@@ -239,12 +244,6 @@ drawAllSliders model =
         ]
 
 
-type SliderDir
-    = Down
-    | Leftward
-    | Rightward
-
-
 sliderPosA : Model -> ( Float, Float )
 sliderPosA model =
     ( squareLeft + model.pA * squareSize, squareBottom )
@@ -258,6 +257,94 @@ sliderPosBGivenA model =
 sliderPosBGivenNotA : Model -> ( Float, Float )
 sliderPosBGivenNotA model =
     ( squareRight, squareTop + (1 - model.pBGivenNotA) * squareSize )
+
+
+sliderMarker : Svg.Svg msg
+sliderMarker =
+    Svg.marker
+        [ SA.id "triangle"
+        , SA.viewBox "0 0 12 12"
+        , SA.refX "1"
+        , SA.refY "6"
+        , SA.markerWidth "12"
+        , SA.markerHeight "12"
+        , SA.orient "auto"
+        , SA.markerUnits "strokeWidth"
+        ]
+        [ Svg.polygon
+            [ SA.points "11,1 1,6 11,11"
+            , SA.fill "none"
+            , SA.stroke "black"
+            , SA.strokeWidth "1"
+            ]
+            []
+        ]
+
+
+textLineProb : String -> String -> Highlight -> Html msg
+textLineProb label value highlightStatus =
+    let
+        highlightStyles =
+            case highlightStatus of
+                Direct ->
+                    [ HA.style "background-color" "#b2fab4" ]
+
+                Indirect ->
+                    [ HA.style "background-color" "#e0ffe0" ]
+
+                NoHighlight ->
+                    []
+    in
+    Html.div []
+        [ Html.span (highlightStyles ++ [ HA.style "padding" "0 4px" ])
+            [ Html.text (label ++ " = " ++ value) ]
+        ]
+
+
+type Highlight
+    = Direct
+    | Indirect
+    | NoHighlight
+
+
+highlight : String -> Model -> Highlight
+highlight probName model =
+    case model.dragState of
+        Nothing ->
+            NoHighlight
+
+        Just dragSlider ->
+            let
+                { direct, indirect } =
+                    influencedBy dragSlider
+            in
+            if List.member probName direct then
+                Direct
+
+            else if List.member probName indirect then
+                Indirect
+
+            else
+                NoHighlight
+
+
+influencedBy : DragSlider -> { direct : List String, indirect : List String }
+influencedBy slider =
+    case slider of
+        DragA ->
+            { direct = [ "pA" ]
+            , indirect = [ "pNotA", "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
+            }
+
+        DragBGivenA ->
+            { direct = [ "pBGivenA" ]
+            , indirect = [ "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
+            }
+
+        DragBGivenNotA ->
+            { direct = [ "pBGivenNotA" ]
+            , indirect = [ "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
+            }
 
 
 offsetX : Json.Decoder Float
@@ -300,11 +387,6 @@ squareBottom =
     squareTop + squareSize
 
 
-textLine : String -> Html msg
-textLine str =
-    Html.div [] [ Html.text str ]
-
-
 to2Dec : Float -> String
 to2Dec f =
     let
@@ -312,27 +394,3 @@ to2Dec f =
             toFloat (round (f * 100)) / 100
     in
     String.fromFloat rounded
-
-
-sliderMarkers : Svg.Svg msg
-sliderMarkers =
-    Svg.defs []
-        [ Svg.marker
-            [ SA.id "triangle"
-            , SA.viewBox "0 0 12 12"
-            , SA.refX "1"
-            , SA.refY "6"
-            , SA.markerWidth "12"
-            , SA.markerHeight "12"
-            , SA.orient "auto"
-            , SA.markerUnits "strokeWidth"
-            ]
-            [ Svg.polygon
-                [ SA.points "11,1 1,6 11,11"
-                , SA.fill "none"
-                , SA.stroke "black"
-                , SA.strokeWidth "1"
-                ]
-                []
-            ]
-        ]
