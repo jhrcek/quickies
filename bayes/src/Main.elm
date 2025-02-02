@@ -176,10 +176,10 @@ drawPartitions { pA, pBGivenA, pBGivenNotA } =
             drawLine xA (toSvgY 1) xA (toSvgY 0) DragA
 
         horizontalBGivenA =
-            drawLine xA yBGivenA (toSvgX 0) yBGivenA DragBGivenA
+            drawLine xA yBGivenA (toSvgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
 
         horizontalBGivenNotA =
-            drawLine xA yBGivenNotA (toSvgX 1) yBGivenNotA DragBGivenNotA
+            drawLine xA yBGivenNotA (toSvgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
     in
     Svg.g []
         [ verticalA
