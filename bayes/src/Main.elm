@@ -58,13 +58,13 @@ update msg model =
                 Just drag ->
                     case drag of
                         DragA ->
-                            { model | pA = clamp 0 1 ((x - squareLeft) / squareSize) }
+                            { model | pA = fromSvgX x }
 
                         DragBGivenA ->
-                            { model | pBGivenA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
+                            { model | pBGivenA = fromSvgY y }
 
                         DragBGivenNotA ->
-                            { model | pBGivenNotA = clamp 0 1 (1 - ((y - squareTop) / squareSize)) }
+                            { model | pBGivenNotA = fromSvgY y }
 
                 Nothing ->
                     model
@@ -101,8 +101,8 @@ view ({ pA, pBGivenA, pBGivenNotA } as model) =
     in
     Html.div []
         [ Svg.svg
-            [ SA.width (String.fromFloat (squareLeft * 2 + squareSize))
-            , SA.height (String.fromFloat (squareTop * 2 + squareSize))
+            [ SA.width (toS (squareLeft * 2 + squareSize))
+            , SA.height (toS (squareTop * 2 + squareSize))
             , SE.onMouseUp DragStopped
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
             ]
@@ -116,7 +116,7 @@ view ({ pA, pBGivenA, pBGivenNotA } as model) =
             , textLineProb "P(B|A)" (to2Dec pBGivenA) (highlight "pBGivenA" model)
             , textLineProb "P(B|¬A)" (to2Dec pBGivenNotA) (highlight "pBGivenNotA" model)
             , textLineProb "P(B)" (to2Dec pB) (highlight "pB" model)
-            , textLineProb "P(¬B)" (to2Dec (1 - pB)) (highlight "pNotB" model)
+            , textLineProb "P(¬B)" (to2Dec pNotB) (highlight "pNotB" model)
             , textLineProb "P(A|B)" (to2Dec pAGivenB) (highlight "pAGivenB" model)
             , textLineProb "P(A|¬B)" (to2Dec pAGivenNotB) (highlight "pAGivenNotB" model)
             ]
@@ -126,10 +126,10 @@ view ({ pA, pBGivenA, pBGivenNotA } as model) =
 drawSquare : Svg.Svg Msg
 drawSquare =
     Svg.rect
-        [ SA.x (String.fromFloat squareLeft)
-        , SA.y (String.fromFloat squareTop)
-        , SA.width (String.fromFloat squareSize)
-        , SA.height (String.fromFloat squareSize)
+        [ SA.x (toS squareLeft)
+        , SA.y (toS squareTop)
+        , SA.width (toS squareSize)
+        , SA.height (toS squareSize)
         , SA.fill "none"
         , SA.stroke "black"
         , SA.strokeWidth "1"
@@ -141,32 +141,30 @@ drawPartitions : Model -> Svg.Svg Msg
 drawPartitions { pA, pBGivenA, pBGivenNotA } =
     let
         xA =
-            squareLeft + pA * squareSize
+            toSvgX pA
 
         yBGivenA =
-            squareTop + (1 - pBGivenA) * squareSize
+            toSvgY pBGivenA
 
         yBGivenNotA =
-            squareTop + (1 - pBGivenNotA) * squareSize
+            toSvgY pBGivenNotA
 
         drawLine x1 y1 x2 y2 slider =
             Svg.g []
                 [ Svg.line
-                    [ SA.x1 (String.fromFloat x1)
-                    , SA.y1 (String.fromFloat y1)
-                    , SA.x2 (String.fromFloat x2)
-                    , SA.y2 (String.fromFloat y2)
+                    [ SA.x1 (toS x1)
+                    , SA.y1 (toS y1)
+                    , SA.x2 (toS x2)
+                    , SA.y2 (toS y2)
                     , SA.stroke "black"
                     , SA.strokeWidth "1"
                     , SA.markerEnd "url(#triangle)"
                     ]
                     []
-                , -- An “invisible circles” around slider triangle
-                  -- so we can catch a direct click => StartDrag.
-                  Svg.circle
-                    [ SA.r (String.fromFloat 10)
-                    , SA.cx (String.fromFloat x2)
-                    , SA.cy (String.fromFloat y2)
+                , Svg.circle
+                    [ SA.r "10"
+                    , SA.cx (toS x2)
+                    , SA.cy (toS y2)
                     , SA.fill "transparent"
                     , SA.cursor "pointer"
                     , SE.onMouseDown (DragStarted slider)
@@ -175,13 +173,13 @@ drawPartitions { pA, pBGivenA, pBGivenNotA } =
                 ]
 
         verticalA =
-            drawLine xA squareTop xA squareBottom DragA
+            drawLine xA (toSvgY 1) xA (toSvgY 0) DragA
 
         horizontalBGivenA =
-            drawLine xA yBGivenA squareLeft yBGivenA DragBGivenA
+            drawLine xA yBGivenA (toSvgX 0) yBGivenA DragBGivenA
 
         horizontalBGivenNotA =
-            drawLine xA yBGivenNotA squareRight yBGivenNotA DragBGivenNotA
+            drawLine xA yBGivenNotA (toSvgX 1) yBGivenNotA DragBGivenNotA
     in
     Svg.g []
         [ verticalA
@@ -247,10 +245,10 @@ highlight probName model =
         Nothing ->
             NoHighlight
 
-        Just dragSlider ->
+        Just slider ->
             let
                 { direct, indirect } =
-                    influencedBy dragSlider
+                    influencedBy slider
             in
             if List.member probName direct then
                 Direct
@@ -291,6 +289,35 @@ offsetY =
     Json.field "offsetY" Json.float
 
 
+{-| Maps [0,1] ⇒ [squareLeft, squareLeft + squareSize].
+-}
+toSvgX : Float -> Float
+toSvgX fraction =
+    squareLeft + fraction * squareSize
+
+
+{-| Maps [0,1] ⇒ [squareTop + squareSize, squareTop].
+We invert (1 - fraction) so that fraction=0 => bottom, fraction=1 => top.
+-}
+toSvgY : Float -> Float
+toSvgY fraction =
+    squareTop + (1 - fraction) * squareSize
+
+
+{-| Inverse of toSvgX, clamped to [0,1].
+-}
+fromSvgX : Float -> Float
+fromSvgX rawX =
+    clamp 0 1 ((rawX - squareLeft) / squareSize)
+
+
+{-| Inverse of toSvgY, clamped to [0,1]. fraction=0 => bottom, fraction=1 => top.
+-}
+fromSvgY : Float -> Float
+fromSvgY rawY =
+    clamp 0 1 (1 - ((rawY - squareTop) / squareSize))
+
+
 squareLeft : Float
 squareLeft =
     50
@@ -306,14 +333,9 @@ squareSize =
     300
 
 
-squareRight : Float
-squareRight =
-    squareLeft + squareSize
-
-
-squareBottom : Float
-squareBottom =
-    squareTop + squareSize
+toS : Float -> String
+toS =
+    String.fromFloat
 
 
 to2Dec : Float -> String
