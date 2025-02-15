@@ -1,6 +1,7 @@
 module Main exposing (main)
 
 import Browser
+import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as E
@@ -33,7 +34,20 @@ type alias Model =
     , initialSetSize : Int
     , availableElements : Set Int
     , sampledElements : List Int
+    , elementColors : Dict Int String
+    , nextColorIndex : Int
     }
+
+
+repeatedElementColors : List String
+repeatedElementColors =
+    [ "#ffcdd2" -- light red
+    , "#fff9c4" -- light yellow
+    , "#c8e6c9" -- light green
+    , "#bbdefb" -- light blue
+    , "#e1bee7" -- light purple
+    , "#ffccbc" -- light orange
+    ]
 
 
 init : () -> ( Model, Cmd Msg )
@@ -42,6 +56,8 @@ init _ =
       , initialSetSize = 10
       , availableElements = Set.fromList (List.range 1 10)
       , sampledElements = []
+      , elementColors = Dict.empty
+      , nextColorIndex = 0
       }
     , Cmd.none
     )
@@ -76,6 +92,8 @@ update msg model =
                             | initialSetSize = newSize
                             , availableElements = newElements
                             , sampledElements = []
+                            , elementColors = Dict.empty
+                            , nextColorIndex = 0
                         }
 
                 Nothing ->
@@ -107,9 +125,35 @@ update msg model =
         GotRandomElement element ->
             case model.samplingType of
                 WithReplacement ->
+                    let
+                        newElementColors =
+                            if
+                                not (Dict.member element model.elementColors)
+                                    && List.length (List.filter ((==) element) (element :: model.sampledElements))
+                                    > 1
+                            then
+                                Dict.insert element
+                                    (List.drop (modBy (List.length repeatedElementColors) model.nextColorIndex) repeatedElementColors
+                                        |> List.head
+                                        |> Maybe.withDefault "#e0e0e0"
+                                    )
+                                    model.elementColors
+
+                            else
+                                model.elementColors
+
+                        newNextColorIndex =
+                            if Dict.size newElementColors > Dict.size model.elementColors then
+                                model.nextColorIndex + 1
+
+                            else
+                                model.nextColorIndex
+                    in
                     pure
                         { model
                             | sampledElements = model.sampledElements ++ [ element ]
+                            , elementColors = newElementColors
+                            , nextColorIndex = newNextColorIndex
                         }
 
                 WithoutReplacement ->
@@ -124,6 +168,8 @@ update msg model =
                 { model
                     | availableElements = Set.fromList (List.range 1 model.initialSetSize)
                     , sampledElements = []
+                    , elementColors = Dict.empty
+                    , nextColorIndex = 0
                 }
 
 
@@ -194,7 +240,7 @@ view model =
                 ]
             , Html.div []
                 [ Html.text "Sampled Elements (in order):"
-                , viewSampledList model.sampledElements
+                , viewSampledList model.samplingType model.elementColors model.sampledElements
                 ]
             ]
         ]
@@ -218,22 +264,24 @@ viewSet elements =
         )
 
 
-viewSampledList : List Int -> Html msg
-viewSampledList elements =
+viewSampledList : SamplingType -> Dict Int String -> List Int -> Html msg
+viewSampledList samplingType elementColors elements =
     Html.ul [ HA.style "list-style-type" "none", HA.style "padding" "10px" ]
         (elements
-            |> List.indexedMap
-                (\idx n ->
+            |> List.map
+                (\n ->
                     Html.li
                         [ HA.style "display" "inline-block"
                         , HA.style "margin" "5px"
                         , HA.style "padding" "5px 10px"
                         , HA.style "background-color"
-                            (if List.member n (List.take idx elements) then
-                                "#ffcdd2"
+                            (case samplingType of
+                                WithReplacement ->
+                                    Dict.get n elementColors
+                                        |> Maybe.withDefault "#e0e0e0"
 
-                             else
-                                "#c8e6c9"
+                                WithoutReplacement ->
+                                    "#c8e6c9"
                             )
                         , HA.style "border-radius" "3px"
                         ]
