@@ -1,12 +1,15 @@
 module Main exposing (disabledColor, main)
 
 import Browser
+import Browser.Events
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as HA
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, onMouseEnter, onMouseLeave)
+import Json.Decode as Decode
 import List
 import Random
+import Round
 import String
 
 
@@ -27,6 +30,7 @@ type alias Model =
     , elements : List Element
     , samples : List Element
     , randSeed : Random.Seed
+    , tooltip : Maybe ( Float, Float, String )
     }
 
 
@@ -86,6 +90,7 @@ init seed =
       , elements = initialElements
       , samples = []
       , randSeed = seed
+      , tooltip = Nothing
       }
     , Cmd.none
     )
@@ -99,6 +104,9 @@ type Msg
     | SampleClicked
     | SampleResult Element
     | Reset
+    | ShowTooltip Float Float String
+    | HideTooltip
+    | MouseMoved Float Float
     | NoOp
 
 
@@ -211,6 +219,20 @@ update msg model =
             in
             ( { model | elements = resetElems, samples = [] }, Cmd.none )
 
+        ShowTooltip x y tip ->
+            ( { model | tooltip = Just ( x, y, tip ) }, Cmd.none )
+
+        HideTooltip ->
+            ( { model | tooltip = Nothing }, Cmd.none )
+
+        MouseMoved x y ->
+            case model.tooltip of
+                Just ( _, _, s ) ->
+                    ( { model | tooltip = Just ( x, y, s ) }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -241,7 +263,7 @@ view model =
             , strategyRadio model.strategy WithoutReplacement "Without Replacement"
             ]
         , Html.div [ HA.style "margin-top" "20px" ]
-            [ Html.text "Configuration of distribution to sample from:" ]
+            [ Html.text "Distribution to sample from:" ]
         , Html.div [ HA.style "margin-top" "10px" ]
             [ Html.table [ HA.style "border" "1", HA.style "cellpadding" "5", HA.style "cellspacing" "0" ]
                 [ Html.thead []
@@ -266,6 +288,7 @@ view model =
         , Html.div [ HA.style "margin-top" "20px" ]
             [ Html.text "Distribution visualization:" ]
         , viewDistribution model.elements
+        , viewTooltip model
         , Html.div [ HA.style "margin-top" "20px" ]
             [ Html.button
                 [ onClick SampleClicked
@@ -335,16 +358,53 @@ viewDistribution elems =
 
                     else
                         0
+
+                roundedPct =
+                    Round.round 3 pct
+
+                percentage =
+                    roundedPct ++ "%"
+
+                labelFits =
+                    pct > 4 || (pct > 1 && not (String.contains "." percentage))
+
+                textAlign =
+                    if labelFits then
+                        "center"
+
+                    else
+                        "left"
+
+                tooltipAttribs =
+                    if not labelFits then
+                        [ onMouseEnter (ShowTooltip 0 0 percentage)
+                        , onMouseLeave HideTooltip
+                        ]
+
+                    else
+                        []
             in
             Html.div
-                [ HA.style "width" (String.fromFloat pct ++ "%")
-                , HA.style "background-color" (lookupColor e.id)
-                , HA.style "height" "20px"
-                , HA.style "display" "inline-block"
-                , HA.style "margin" "0"
-                , HA.style "padding" "0"
+                (tooltipAttribs
+                    ++ [ HA.style "width" percentage
+                       , HA.style "background-color" (lookupColor e.id)
+                       , HA.style "height" "20px"
+                       , HA.style "margin" "0"
+                       , HA.style "padding" "0"
+                       , HA.style "display" "flex"
+                       , HA.style "align-items" "center"
+                       ]
+                )
+                [ Html.span
+                    [ HA.style "width" "100%"
+                    , HA.style "text-align" textAlign
+                    , HA.style "white-space" "nowrap"
+                    , HA.style "overflow" "hidden"
+                    , HA.style "mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
+                    , HA.style "-webkit-mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
+                    ]
+                    [ Html.text percentage ]
                 ]
-                []
     in
     Html.div
         [ HA.style "width" "80%"
@@ -352,6 +412,26 @@ viewDistribution elems =
         , HA.style "display" "flex"
         ]
         (List.map viewBar elems)
+
+
+viewTooltip : Model -> Html Msg
+viewTooltip model =
+    case model.tooltip of
+        Just ( x, y, tip ) ->
+            Html.div
+                [ HA.style "position" "absolute"
+                , HA.style "left" (String.fromFloat (x + 15) ++ "px")
+                , HA.style "top" (String.fromFloat (y + 10) ++ "px")
+                , HA.style "margin" "0"
+                , HA.style "padding" "4px"
+                , HA.style "background" "#eee"
+                , HA.style "border" "1px solid #aaa"
+                , HA.style "pointer-events" "none"
+                ]
+                [ Html.text tip ]
+
+        Nothing ->
+            Html.text ""
 
 
 viewSamples : Model -> Html Msg
@@ -374,11 +454,25 @@ viewSample e =
         [ Html.text (String.fromInt e.id) ]
 
 
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    case model.tooltip of
+        Just _ ->
+            Browser.Events.onMouseMove
+                (Decode.map2 MouseMoved
+                    (Decode.field "clientX" Decode.float)
+                    (Decode.field "clientY" Decode.float)
+                )
+
+        Nothing ->
+            Sub.none
+
+
 main : Program () Model Msg
 main =
     Browser.element
         { init = \_ -> init (Random.initialSeed 42)
         , update = update
         , view = view
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         }
