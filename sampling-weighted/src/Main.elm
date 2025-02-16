@@ -10,6 +10,7 @@ import Json.Decode as Decode
 import List
 import Random
 import String
+import Time
 
 
 type SamplingStrategy
@@ -43,6 +44,7 @@ type alias Model =
     , tooltip : Maybe ( Float, Float, String )
     , sortColumn : SortColumn
     , sortOrder : SortOrder
+    , autosampling : Bool
     }
 
 
@@ -105,23 +107,25 @@ init seed =
       , tooltip = Nothing
       , sortColumn = ByElement
       , sortOrder = Asc
+      , autosampling = False
       }
     , Cmd.none
     )
 
 
 type Msg
-    = SetStrategy SamplingStrategy
-    | ChangeWeight Int String
-    | RemoveElement Element
-    | AddElement
-    | SampleClicked
-    | SampleResult Element
-    | Reset
-    | ShowTooltip Float Float String
-    | HideTooltip
+    = StrategyChanged SamplingStrategy
+    | WeightChanged Int String
+    | ElementRemoved Element
+    | ElementAdded
+    | ElementSampled
+    | ReceivedSample Element
+    | ResetClicked
+    | TooltipOpened Float Float String
+    | TooltipClosed
     | MouseMoved Float Float
-    | SortBy SortColumn
+    | SortChanged SortColumn
+    | AutoSampleToggled
 
 
 clampWeight : Int -> Int
@@ -132,10 +136,10 @@ clampWeight n =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SetStrategy strat ->
+        StrategyChanged strat ->
             ( { model | strategy = strat }, Cmd.none )
 
-        ChangeWeight elemId strVal ->
+        WeightChanged elemId strVal ->
             case String.toInt strVal of
                 Just n ->
                     let
@@ -155,7 +159,7 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        RemoveElement elemToRemove ->
+        ElementRemoved elemToRemove ->
             let
                 remove =
                     List.filter (\e -> e.id /= elemToRemove.id)
@@ -167,7 +171,7 @@ update msg model =
             , Cmd.none
             )
 
-        AddElement ->
+        ElementAdded ->
             if List.length model.elements < 10 then
                 let
                     newId =
@@ -184,7 +188,7 @@ update msg model =
             else
                 ( model, Cmd.none )
 
-        SampleClicked ->
+        ElementSampled ->
             let
                 available =
                     case model.strategy of
@@ -195,7 +199,7 @@ update msg model =
                             List.filter (\e -> e.sampleCount == 0) model.elements
             in
             if available == [] then
-                ( model, Cmd.none )
+                ( { model | autosampling = False }, Cmd.none )
 
             else
                 let
@@ -208,10 +212,10 @@ update msg model =
                         Cmd.none
 
                     w :: ws ->
-                        Random.generate SampleResult (Random.weighted w ws)
+                        Random.generate ReceivedSample (Random.weighted w ws)
                 )
 
-        SampleResult sampledElem ->
+        ReceivedSample sampledElem ->
             let
                 newElems =
                     List.map
@@ -231,17 +235,17 @@ update msg model =
             , Cmd.none
             )
 
-        Reset ->
+        ResetClicked ->
             let
                 resetElems =
                     List.map (\e -> { e | sampleCount = 0 }) model.elements
             in
             ( { model | elements = resetElems, samples = [] }, Cmd.none )
 
-        ShowTooltip x y tip ->
+        TooltipOpened x y tip ->
             ( { model | tooltip = Just ( x, y, tip ) }, Cmd.none )
 
-        HideTooltip ->
+        TooltipClosed ->
             ( { model | tooltip = Nothing }, Cmd.none )
 
         MouseMoved x y ->
@@ -252,7 +256,7 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        SortBy col ->
+        SortChanged col ->
             let
                 newSortOrder =
                     if model.sortColumn == col then
@@ -273,6 +277,9 @@ update msg model =
               }
             , Cmd.none
             )
+
+        AutoSampleToggled ->
+            ( { model | autosampling = not model.autosampling }, Cmd.none )
 
 
 sortElements : SortColumn -> SortOrder -> List Element -> List Element
@@ -321,7 +328,7 @@ strategyRadio currentStrat strat label =
                 [ HA.type_ "radio"
                 , HA.name "strategy"
                 , HA.checked (strat == currentStrat)
-                , onClick (SetStrategy strat)
+                , onClick (StrategyChanged strat)
                 ]
                 []
             , Html.text (" " ++ label)
@@ -347,7 +354,7 @@ view model =
                             sortableHeader : SortColumn -> String -> Html Msg
                             sortableHeader col label =
                                 Html.td
-                                    [ onClick (SortBy col)
+                                    [ onClick (SortChanged col)
                                     , HA.style "cursor" "pointer"
                                     ]
                                     [ Html.text label
@@ -370,7 +377,7 @@ view model =
                      List.map (viewRow model.strategy elemCount) model.elements
                     )
                 ]
-            , Html.button [ onClick AddElement, HA.disabled (List.length model.elements >= 10), HA.style "margin-top" "10px" ]
+            , Html.button [ onClick ElementAdded, HA.disabled (List.length model.elements >= 10), HA.style "margin-top" "10px" ]
                 [ Html.text "Add Element" ]
             ]
         , Html.div [ HA.style "margin-top" "20px" ]
@@ -378,14 +385,35 @@ view model =
         , viewDistribution model.elements
         , viewTooltip model
         , Html.div [ HA.style "margin-top" "20px" ]
-            [ Html.button
-                [ onClick SampleClicked
-                , HA.disabled (model.strategy == WithoutReplacement && List.all (\e -> e.sampleCount > 0) model.elements)
+            (let
+                nothingToSample =
+                    model.strategy == WithoutReplacement && List.all (\e -> e.sampleCount > 0) model.elements
+             in
+             [ Html.button
+                [ onClick ElementSampled
+                , HA.disabled nothingToSample
                 ]
                 [ Html.text "Sample Element" ]
-            , Html.button [ onClick Reset, HA.style "margin-left" "20px" ]
+             , Html.button
+                [ onClick AutoSampleToggled
+                , HA.style "margin-left" "5px"
+                , HA.disabled nothingToSample
+                ]
+                [ Html.text
+                    (if model.autosampling then
+                        "Stop Sampling"
+
+                     else
+                        "Auto Sampling"
+                    )
+                ]
+             , Html.button
+                [ onClick ResetClicked
+                , HA.style "margin-left" "5px"
+                ]
                 [ Html.text "Reset" ]
-            ]
+             ]
+            )
         , Html.div [ HA.style "margin-top" "20px" ]
             [ Html.text "Sampled so far:" ]
         , viewSamples model
@@ -411,7 +439,7 @@ viewRow strategy elemCount e =
                 , HA.min "1"
                 , HA.max "100"
                 , HA.value (String.fromInt e.weight)
-                , onInput (ChangeWeight e.id)
+                , onInput (WeightChanged e.id)
                 ]
                 []
             ]
@@ -419,7 +447,7 @@ viewRow strategy elemCount e =
             [ Html.text (String.fromInt e.sampleCount) ]
         , Html.td [ HA.style "text-align" "right" ]
             [ Html.button
-                [ onClick (RemoveElement e)
+                [ onClick (ElementRemoved e)
                 , HA.disabled (elemCount <= 1)
                 , HA.title "Remove"
                 ]
@@ -469,8 +497,8 @@ viewDistribution elems =
 
                 tooltipAttribs =
                     if not labelFits then
-                        [ onMouseEnter (ShowTooltip 0 0 percentage)
-                        , onMouseLeave HideTooltip
+                        [ onMouseEnter (TooltipOpened 0 0 percentage)
+                        , onMouseLeave TooltipClosed
                         ]
 
                     else
@@ -548,16 +576,23 @@ viewSample e =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.tooltip of
-        Just _ ->
-            Browser.Events.onMouseMove
-                (Decode.map2 MouseMoved
-                    (Decode.field "clientX" Decode.float)
-                    (Decode.field "clientY" Decode.float)
-                )
+    Sub.batch
+        [ if model.autosampling then
+            Time.every 200 (\_ -> ElementSampled)
 
-        Nothing ->
+          else
             Sub.none
+        , case model.tooltip of
+            Just _ ->
+                Browser.Events.onMouseMove
+                    (Decode.map2 MouseMoved
+                        (Decode.field "clientX" Decode.float)
+                        (Decode.field "clientY" Decode.float)
+                    )
+
+            Nothing ->
+                Sub.none
+        ]
 
 
 main : Program () Model Msg
