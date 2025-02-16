@@ -1,4 +1,4 @@
-module Main exposing (disabledColor, main)
+module Main exposing (main)
 
 import Browser
 import Browser.Events
@@ -9,7 +9,6 @@ import Html.Events exposing (onClick, onInput, onMouseEnter, onMouseLeave)
 import Json.Decode as Decode
 import List
 import Random
-import Round
 import String
 
 
@@ -25,12 +24,25 @@ type alias Element =
     }
 
 
+type SortColumn
+    = ByElement
+    | ByWeight
+    | BySamples
+
+
+type SortOrder
+    = Asc
+    | Desc
+
+
 type alias Model =
     { strategy : SamplingStrategy
     , elements : List Element
     , samples : List Element
     , randSeed : Random.Seed
     , tooltip : Maybe ( Float, Float, String )
+    , sortColumn : SortColumn
+    , sortOrder : SortOrder
     }
 
 
@@ -91,6 +103,8 @@ init seed =
       , samples = []
       , randSeed = seed
       , tooltip = Nothing
+      , sortColumn = ByElement
+      , sortOrder = Asc
       }
     , Cmd.none
     )
@@ -107,7 +121,7 @@ type Msg
     | ShowTooltip Float Float String
     | HideTooltip
     | MouseMoved Float Float
-    | NoOp
+    | SortBy SortColumn
 
 
 clampWeight : Int -> Int
@@ -143,10 +157,15 @@ update msg model =
 
         RemoveElement elemToRemove ->
             let
-                updatedElems =
-                    List.filter (\e -> e.id /= elemToRemove.id) model.elements
+                remove =
+                    List.filter (\e -> e.id /= elemToRemove.id)
             in
-            ( { model | elements = updatedElems }, Cmd.none )
+            ( { model
+                | elements = remove model.elements
+                , samples = remove model.samples
+              }
+            , Cmd.none
+            )
 
         AddElement ->
             if List.length model.elements < 10 then
@@ -233,8 +252,65 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        NoOp ->
-            ( model, Cmd.none )
+        SortBy col ->
+            let
+                newSortOrder =
+                    if model.sortColumn == col then
+                        case model.sortOrder of
+                            Asc ->
+                                Desc
+
+                            Desc ->
+                                Asc
+
+                    else
+                        Asc
+            in
+            ( { model
+                | elements = sortElements col newSortOrder model.elements
+                , sortColumn = col
+                , sortOrder = newSortOrder
+              }
+            , Cmd.none
+            )
+
+
+sortElements : SortColumn -> SortOrder -> List Element -> List Element
+sortElements col order elems =
+    let
+        keyFn =
+            case col of
+                ByElement ->
+                    .id
+
+                ByWeight ->
+                    .weight
+
+                BySamples ->
+                    .sampleCount
+
+        sorted =
+            List.sortBy keyFn elems
+    in
+    if order == Asc then
+        sorted
+
+    else
+        List.reverse sorted
+
+
+sortIndicator : Model -> SortColumn -> String
+sortIndicator model col =
+    if model.sortColumn == col then
+        case model.sortOrder of
+            Asc ->
+                "▼"
+
+            Desc ->
+                "▲"
+
+    else
+        ""
 
 
 strategyRadio : SamplingStrategy -> SamplingStrategy -> String -> Html Msg
@@ -256,8 +332,7 @@ strategyRadio currentStrat strat label =
 view : Model -> Html Msg
 view model =
     Html.div []
-        [ -- Sampling strategy radio buttons using helper
-          Html.div []
+        [ Html.div []
             [ Html.div [] [ Html.text "Sampling strategy:" ]
             , strategyRadio model.strategy WithReplacement "With Replacement"
             , strategyRadio model.strategy WithoutReplacement "Without Replacement"
@@ -268,11 +343,24 @@ view model =
             [ Html.table [ HA.style "border" "1", HA.style "cellpadding" "5", HA.style "cellspacing" "0" ]
                 [ Html.thead []
                     [ Html.tr []
-                        [ Html.td [] [ Html.text "Element" ]
-                        , Html.td [] [ Html.text "Weight" ]
-                        , Html.td [] [ Html.text "Samples" ]
-                        , Html.td [] [ Html.text "Actions" ]
-                        ]
+                        (let
+                            sortableHeader : SortColumn -> String -> Html Msg
+                            sortableHeader col label =
+                                Html.td
+                                    [ onClick (SortBy col)
+                                    , HA.style "cursor" "pointer"
+                                    ]
+                                    [ Html.text label
+                                    , Html.span [ HA.style "display" "inline-block", HA.style "width" "20px" ]
+                                        [ Html.text (sortIndicator model col) ]
+                                    ]
+                         in
+                         [ sortableHeader ByElement "Element"
+                         , sortableHeader ByWeight "Weight"
+                         , sortableHeader BySamples "Samples"
+                         , Html.td [] [ Html.text "Actions" ]
+                         ]
+                        )
                     ]
                 , Html.tbody []
                     (let
@@ -315,8 +403,9 @@ viewRow strategy elemCount e =
                 lookupColor e.id
             )
         ]
-        [ Html.td [] [ Html.text (String.fromInt e.id) ]
-        , Html.td []
+        [ Html.td [ HA.style "text-align" "right" ]
+            [ Html.text (String.fromInt e.id) ]
+        , Html.td [ HA.style "text-align" "right" ]
             [ Html.input
                 [ HA.type_ "number"
                 , HA.min "1"
@@ -326,13 +415,15 @@ viewRow strategy elemCount e =
                 ]
                 []
             ]
-        , Html.td [] [ Html.text (String.fromInt e.sampleCount) ]
-        , Html.td []
+        , Html.td [ HA.style "text-align" "right" ]
+            [ Html.text (String.fromInt e.sampleCount) ]
+        , Html.td [ HA.style "text-align" "right" ]
             [ Html.button
                 [ onClick (RemoveElement e)
                 , HA.disabled (elemCount <= 1)
+                , HA.title "Remove"
                 ]
-                [ Html.text "Remove" ]
+                [ Html.text "×" ]
             ]
         ]
 
@@ -360,10 +451,11 @@ viewDistribution elems =
                         0
 
                 roundedPct =
-                    Round.round 3 pct
+                    -- round to 3 decimal places
+                    toFloat (round (pct * 1000)) / 1000
 
                 percentage =
-                    roundedPct ++ "%"
+                    String.fromFloat roundedPct ++ "%"
 
                 labelFits =
                     pct > 4 || (pct > 1 && not (String.contains "." percentage))
