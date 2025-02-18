@@ -100,17 +100,16 @@ initialElements =
 
 init : Random.Seed -> ( Model, Cmd Msg )
 init seed =
-    ( { strategy = WithReplacement
-      , elements = initialElements
-      , samples = []
-      , randSeed = seed
-      , tooltip = Nothing
-      , sortColumn = ByElement
-      , sortOrder = Asc
-      , autosampling = False
-      }
-    , Cmd.none
-    )
+    pure
+        { strategy = WithReplacement
+        , elements = initialElements
+        , samples = []
+        , randSeed = seed
+        , tooltip = Nothing
+        , sortColumn = ByElement
+        , sortOrder = Asc
+        , autosampling = False
+        }
 
 
 type Msg
@@ -133,11 +132,20 @@ clampWeight n =
     Basics.clamp 1 100 n
 
 
+cleanSampled : Model -> Model
+cleanSampled model =
+    { model
+        | elements = List.map (\e -> { e | sampleCount = 0 }) model.elements
+        , samples = []
+        , autosampling = False
+    }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         StrategyChanged strat ->
-            ( { model | strategy = strat }, Cmd.none )
+            pure (cleanSampled { model | strategy = strat })
 
         WeightChanged elemId strVal ->
             case String.toInt strVal of
@@ -154,22 +162,21 @@ update msg model =
                                 )
                                 model.elements
                     in
-                    ( { model | elements = newElems }, Cmd.none )
+                    pure { model | elements = newElems }
 
                 Nothing ->
-                    ( model, Cmd.none )
+                    pure model
 
         ElementRemoved elemToRemove ->
             let
                 remove =
                     List.filter (\e -> e.id /= elemToRemove.id)
             in
-            ( { model
-                | elements = remove model.elements
-                , samples = remove model.samples
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | elements = remove model.elements
+                    , samples = remove model.samples
+                }
 
         ElementAdded ->
             if List.length model.elements < 10 then
@@ -183,32 +190,26 @@ update msg model =
                         , sampleCount = 0
                         }
                 in
-                ( { model | elements = model.elements ++ [ newElem ] }, Cmd.none )
+                pure { model | elements = model.elements ++ [ newElem ] }
 
             else
-                ( model, Cmd.none )
+                pure model
 
         ElementSampled ->
             let
-                available =
-                    removeSampled model.strategy model.elements
+                weightedElements =
+                    model.elements
+                        |> removeSampled model.strategy
+                        |> List.map (\e -> ( toFloat e.weight, e ))
             in
-            if available == [] then
-                ( { model | autosampling = False }, Cmd.none )
+            case weightedElements of
+                [] ->
+                    pure { model | autosampling = False }
 
-            else
-                let
-                    weightedList =
-                        List.map (\e -> ( toFloat e.weight, e )) available
-                in
-                ( model
-                , case weightedList of
-                    [] ->
-                        Cmd.none
-
-                    w :: ws ->
-                        Random.generate ReceivedSample (Random.weighted w ws)
-                )
+                w :: ws ->
+                    ( model
+                    , Random.generate ReceivedSample (Random.weighted w ws)
+                    )
 
         ReceivedSample sampledElem ->
             let
@@ -223,33 +224,29 @@ update msg model =
                         )
                         model.elements
             in
-            ( { model
-                | elements = newElems
-                , samples = model.samples ++ [ sampledElem ]
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | elements = newElems
+                    , samples = model.samples ++ [ sampledElem ]
+                }
 
         ResetClicked ->
-            let
-                resetElems =
-                    List.map (\e -> { e | sampleCount = 0 }) model.elements
-            in
-            ( { model | elements = resetElems, samples = [] }, Cmd.none )
+            pure (cleanSampled model)
 
         TooltipOpened x y tip ->
-            ( { model | tooltip = Just ( x, y, tip ) }, Cmd.none )
+            pure { model | tooltip = Just ( x, y, tip ) }
 
         TooltipClosed ->
-            ( { model | tooltip = Nothing }, Cmd.none )
+            pure { model | tooltip = Nothing }
 
         MouseMoved x y ->
-            case model.tooltip of
-                Just ( _, _, s ) ->
-                    ( { model | tooltip = Just ( x, y, s ) }, Cmd.none )
+            pure <|
+                case model.tooltip of
+                    Just ( _, _, s ) ->
+                        { model | tooltip = Just ( x, y, s ) }
 
-                Nothing ->
-                    ( model, Cmd.none )
+                    Nothing ->
+                        model
 
         SortChanged col ->
             let
@@ -265,16 +262,20 @@ update msg model =
                     else
                         Asc
             in
-            ( { model
-                | elements = sortElements col newSortOrder model.elements
-                , sortColumn = col
-                , sortOrder = newSortOrder
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | elements = sortElements col newSortOrder model.elements
+                    , sortColumn = col
+                    , sortOrder = newSortOrder
+                }
 
         AutoSampleToggled ->
-            ( { model | autosampling = not model.autosampling }, Cmd.none )
+            pure { model | autosampling = not model.autosampling }
+
+
+pure : a -> ( a, Cmd msg )
+pure a =
+    ( a, Cmd.none )
 
 
 sortElements : SortColumn -> SortOrder -> List Element -> List Element
@@ -473,73 +474,92 @@ viewDistribution model =
     let
         availableElements =
             removeSampled model.strategy model.elements
-
-        totalWeight =
-            List.foldl (\e acc -> acc + e.weight) 0 availableElements
-
-        viewBar e =
-            let
-                pct =
-                    if totalWeight > 0 then
-                        toFloat e.weight / toFloat totalWeight * 100
-
-                    else
-                        0
-
-                roundedPct =
-                    -- round to 3 decimal places
-                    toFloat (round (pct * 1000)) / 1000
-
-                percentage =
-                    String.fromFloat roundedPct ++ "%"
-
-                labelFits =
-                    pct > 4 || (pct > 1 && not (String.contains "." percentage))
-
-                textAlign =
-                    if labelFits then
-                        "center"
-
-                    else
-                        "left"
-
-                tooltipAttribs =
-                    if not labelFits then
-                        [ onMouseEnter (TooltipOpened 0 0 percentage)
-                        , onMouseLeave TooltipClosed
-                        ]
-
-                    else
-                        []
-            in
-            Html.div
-                (tooltipAttribs
-                    ++ [ HA.style "width" percentage
-                       , HA.style "background-color" (lookupColor e.id)
-                       , HA.style "height" "20px"
-                       , HA.style "margin" "0"
-                       , HA.style "padding" "0"
-                       , HA.style "display" "flex"
-                       , HA.style "align-items" "center"
-                       ]
-                )
-                [ Html.span
-                    [ HA.style "width" "100%"
-                    , HA.style "text-align" textAlign
-                    , HA.style "white-space" "nowrap"
-                    , HA.style "overflow" "hidden"
-                    , HA.style "mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
-                    , HA.style "-webkit-mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
-                    ]
-                    [ Html.text percentage ]
-                ]
     in
-    Html.div
-        [ HA.style "width" "80%"
-        , HA.style "border" "1px solid #000"
-        , HA.style "display" "flex"
-        ]
-        (List.map viewBar availableElements)
+    if List.isEmpty availableElements then
+        Html.div
+            [ HA.style "width" "80%"
+            , HA.style "border" "1px solid #000"
+            , HA.style "display" "flex"
+            ]
+            [ Html.div
+                [ HA.style "width" "100%"
+                , HA.style "height" "20px"
+                , HA.style "background-color" disabledColor
+                , HA.style "display" "flex"
+                , HA.style "align-items" "center"
+                , HA.style "justify-content" "center"
+                ]
+                [ Html.text "No elements available" ]
+            ]
+
+    else
+        let
+            totalWeight =
+                List.foldl (\e acc -> acc + e.weight) 0 availableElements
+
+            viewBar e =
+                let
+                    pct =
+                        if totalWeight > 0 then
+                            toFloat e.weight / toFloat totalWeight * 100
+
+                        else
+                            0
+
+                    roundedPct =
+                        -- Round to 3 decimal places
+                        toFloat (round (pct * 1000)) / 1000
+
+                    percentage =
+                        String.fromFloat roundedPct ++ "%"
+
+                    labelFits =
+                        pct > 4 || (pct > 1 && not (String.contains "." percentage))
+
+                    textAlign =
+                        if labelFits then
+                            "center"
+
+                        else
+                            "left"
+
+                    tooltipAttribs =
+                        if not labelFits then
+                            [ onMouseEnter (TooltipOpened 0 0 percentage)
+                            , onMouseLeave TooltipClosed
+                            ]
+
+                        else
+                            []
+                in
+                Html.div
+                    (tooltipAttribs
+                        ++ [ HA.style "width" percentage
+                           , HA.style "background-color" (lookupColor e.id)
+                           , HA.style "height" "20px"
+                           , HA.style "margin" "0"
+                           , HA.style "padding" "0"
+                           , HA.style "display" "flex"
+                           , HA.style "align-items" "center"
+                           ]
+                    )
+                    [ Html.span
+                        [ HA.style "width" "100%"
+                        , HA.style "text-align" textAlign
+                        , HA.style "white-space" "nowrap"
+                        , HA.style "overflow" "hidden"
+                        , HA.style "mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
+                        , HA.style "-webkit-mask-image" "linear-gradient(to right, black 70%, transparent 100%)"
+                        ]
+                        [ Html.text percentage ]
+                    ]
+        in
+        Html.div
+            [ HA.style "width" "80%"
+            , HA.style "border" "1px solid #000"
+            , HA.style "display" "flex"
+            ]
+            (List.map viewBar availableElements)
 
 
 viewTooltip : Model -> Html Msg
