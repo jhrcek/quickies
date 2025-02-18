@@ -18,6 +18,11 @@ type SamplingStrategy
     | WithoutReplacement
 
 
+type DistributionMode
+    = Uniform
+    | Weighted
+
+
 type alias Element =
     { id : Int
     , weight : Int
@@ -38,6 +43,7 @@ type SortOrder
 
 type alias Model =
     { strategy : SamplingStrategy
+    , distribution : DistributionMode
     , elements : List Element
     , samples : List Element
     , randSeed : Random.Seed
@@ -102,6 +108,7 @@ init : Random.Seed -> ( Model, Cmd Msg )
 init seed =
     pure
         { strategy = WithReplacement
+        , distribution = Weighted
         , elements = initialElements
         , samples = []
         , randSeed = seed
@@ -114,6 +121,7 @@ init seed =
 
 type Msg
     = StrategyChanged SamplingStrategy
+    | DistributionChanged DistributionMode
     | WeightChanged Int String
     | ElementRemoved Element
     | ElementAdded
@@ -146,6 +154,18 @@ update msg model =
     case msg of
         StrategyChanged strat ->
             pure (cleanSampled { model | strategy = strat })
+
+        DistributionChanged dist ->
+            let
+                newElems =
+                    case dist of
+                        Uniform ->
+                            List.map (\e -> { e | weight = 1 }) model.elements
+
+                        Weighted ->
+                            model.elements
+            in
+            pure (cleanSampled { model | distribution = dist, elements = newElems })
 
         WeightChanged elemId strVal ->
             case String.toInt strVal of
@@ -240,13 +260,12 @@ update msg model =
             pure { model | tooltip = Nothing }
 
         MouseMoved x y ->
-            pure <|
-                case model.tooltip of
-                    Just ( _, _, s ) ->
-                        { model | tooltip = Just ( x, y, s ) }
+            case model.tooltip of
+                Just ( _, _, s ) ->
+                    pure { model | tooltip = Just ( x, y, s ) }
 
-                    Nothing ->
-                        model
+                Nothing ->
+                    pure model
 
         SortChanged col ->
             let
@@ -332,13 +351,41 @@ strategyRadio currentStrat strat label =
         ]
 
 
+distributionRadio : DistributionMode -> DistributionMode -> String -> Html Msg
+distributionRadio currentMode mode label =
+    Html.div []
+        [ Html.label []
+            [ Html.input
+                [ HA.type_ "radio"
+                , HA.name "distribution"
+                , HA.checked (mode == currentMode)
+                , onClick (DistributionChanged mode)
+                ]
+                []
+            , Html.text (" " ++ label)
+            ]
+        ]
+
+
 view : Model -> Html Msg
 view model =
     Html.div []
-        [ Html.div []
-            [ Html.div [] [ Html.text "Sampling strategy:" ]
-            , strategyRadio model.strategy WithReplacement "With Replacement"
-            , strategyRadio model.strategy WithoutReplacement "Without Replacement"
+        [ Html.fieldset [ HA.style "display" "inline-block" ]
+            [ Html.legend [] [ Html.text "Replacement" ]
+            , Html.div []
+                [ strategyRadio model.strategy WithReplacement "With Replacement"
+                , strategyRadio model.strategy WithoutReplacement "Without Replacement"
+                ]
+            ]
+        , Html.fieldset
+            [ HA.style "margin-top" "10px"
+            , HA.style "display" "inline-block"
+            ]
+            [ Html.legend [] [ Html.text "Distribution" ]
+            , Html.div []
+                [ distributionRadio model.distribution Uniform "Uniform"
+                , distributionRadio model.distribution Weighted "Weighted"
+                ]
             ]
         , Html.div [ HA.style "margin-top" "20px" ]
             [ Html.text "Distribution to sample from:" ]
@@ -358,11 +405,16 @@ view model =
                                         [ Html.text (sortIndicator model col) ]
                                     ]
                          in
-                         [ sortableHeader ByElement "Element"
-                         , sortableHeader ByWeight "Weight"
-                         , sortableHeader BySamples "Samples"
-                         , Html.td [] [ Html.text "Actions" ]
-                         ]
+                         sortableHeader ByElement "Element"
+                            :: (if model.distribution == Weighted then
+                                    [ sortableHeader ByWeight "Weight" ]
+
+                                else
+                                    []
+                               )
+                            ++ [ sortableHeader BySamples "Samples"
+                               , Html.td [] [ Html.text "Actions" ]
+                               ]
                         )
                     ]
                 , Html.tbody []
@@ -370,7 +422,7 @@ view model =
                         elemCount =
                             List.length model.elements
                      in
-                     List.map (viewRow model.strategy elemCount) model.elements
+                     List.map (viewRow model.strategy model.distribution elemCount) model.elements
                     )
                 ]
             , Html.button [ onClick ElementAdded, HA.disabled (List.length model.elements >= 10), HA.style "margin-top" "10px" ]
@@ -416,8 +468,8 @@ view model =
         ]
 
 
-viewRow : SamplingStrategy -> Int -> Element -> Html Msg
-viewRow strategy elemCount e =
+viewRow : SamplingStrategy -> DistributionMode -> Int -> Element -> Html Msg
+viewRow strategy dist elemCount e =
     Html.tr
         [ HA.style "background-color"
             (if isUnavailable strategy e then
@@ -427,29 +479,36 @@ viewRow strategy elemCount e =
                 lookupColor e.id
             )
         ]
-        [ Html.td [ HA.style "text-align" "right" ]
+        (Html.td [ HA.style "text-align" "right" ]
             [ Html.text (String.fromInt e.id) ]
-        , Html.td [ HA.style "text-align" "right" ]
-            [ Html.input
-                [ HA.type_ "number"
-                , HA.min "1"
-                , HA.max "100"
-                , HA.value (String.fromInt e.weight)
-                , onInput (WeightChanged e.id)
-                ]
-                []
-            ]
-        , Html.td [ HA.style "text-align" "right" ]
-            [ Html.text (String.fromInt e.sampleCount) ]
-        , Html.td [ HA.style "text-align" "right" ]
-            [ Html.button
-                [ onClick (ElementRemoved e)
-                , HA.disabled (elemCount <= 1)
-                , HA.title "Remove"
-                ]
-                [ Html.text "×" ]
-            ]
-        ]
+            :: (if dist == Weighted then
+                    [ Html.td [ HA.style "text-align" "right" ]
+                        [ Html.input
+                            [ HA.type_ "number"
+                            , HA.min "1"
+                            , HA.max "100"
+                            , HA.value (String.fromInt e.weight)
+                            , onInput (WeightChanged e.id)
+                            ]
+                            []
+                        ]
+                    ]
+
+                else
+                    []
+               )
+            ++ [ Html.td [ HA.style "text-align" "right" ]
+                    [ Html.text (String.fromInt e.sampleCount) ]
+               , Html.td [ HA.style "text-align" "right" ]
+                    [ Html.button
+                        [ onClick (ElementRemoved e)
+                        , HA.disabled (elemCount <= 1)
+                        , HA.title "Remove"
+                        ]
+                        [ Html.text "×" ]
+                    ]
+               ]
+        )
 
 
 {-| Has element been already sampled?
