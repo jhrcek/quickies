@@ -191,12 +191,7 @@ update msg model =
         ElementSampled ->
             let
                 available =
-                    case model.strategy of
-                        WithReplacement ->
-                            model.elements
-
-                        WithoutReplacement ->
-                            List.filter (\e -> e.sampleCount == 0) model.elements
+                    removeSampled model.strategy model.elements
             in
             if available == [] then
                 ( { model | autosampling = False }, Cmd.none )
@@ -382,7 +377,7 @@ view model =
             ]
         , Html.div [ HA.style "margin-top" "20px" ]
             [ Html.text "Distribution visualization:" ]
-        , viewDistribution model.elements
+        , viewDistribution model
         , viewTooltip model
         , Html.div [ HA.style "margin-top" "20px" ]
             (let
@@ -463,11 +458,24 @@ isUnavailable strat e =
     strat == WithoutReplacement && e.sampleCount > 0
 
 
-viewDistribution : List Element -> Html Msg
-viewDistribution elems =
+removeSampled : SamplingStrategy -> List Element -> List Element
+removeSampled strat elems =
+    case strat of
+        WithoutReplacement ->
+            List.filter (\e -> e.sampleCount == 0) elems
+
+        WithReplacement ->
+            elems
+
+
+viewDistribution : Model -> Html Msg
+viewDistribution model =
     let
+        availableElements =
+            removeSampled model.strategy model.elements
+
         totalWeight =
-            List.foldl (\e acc -> acc + e.weight) 0 elems
+            List.foldl (\e acc -> acc + e.weight) 0 availableElements
 
         viewBar e =
             let
@@ -531,7 +539,7 @@ viewDistribution elems =
         , HA.style "border" "1px solid #000"
         , HA.style "display" "flex"
         ]
-        (List.map viewBar elems)
+        (List.map viewBar availableElements)
 
 
 viewTooltip : Model -> Html Msg
