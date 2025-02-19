@@ -31,12 +31,12 @@ type alias DragState =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { numPoints = 10
+    ( { numPoints = initNumPoints
       , points = []
       , hoveredIndex = Nothing
       , dragState = Nothing
       }
-    , generatePoints 10
+    , generatePoints initNumPoints
     )
 
 
@@ -57,24 +57,12 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ChangeNumPoints str ->
-            let
-                maybeInt =
+            ( { model
+                | numPoints =
                     String.toInt str
-                        |> Maybe.andThen
-                            (\n ->
-                                if 1 <= n && n <= 100 then
-                                    Just n
-
-                                else
-                                    Nothing
-                            )
-            in
-            ( case maybeInt of
-                Just validN ->
-                    { model | numPoints = validN }
-
-                Nothing ->
-                    model
+                        |> Maybe.map (clamp minNumPoints maxNumPoints)
+                        |> Maybe.withDefault initNumPoints
+              }
             , Cmd.none
             )
 
@@ -218,8 +206,8 @@ controlsView model =
         , input
             [ HA.type_ "number"
             , HA.value (String.fromInt model.numPoints)
-            , HA.min "1"
-            , HA.max "100"
+            , HA.min (String.fromInt minNumPoints)
+            , HA.max (String.fromInt maxNumPoints)
             , HE.onInput ChangeNumPoints
             ]
             []
@@ -402,18 +390,53 @@ viewExpandedFormula model =
                 0
 
             else
-                List.foldl
-                    (\( x, y ) acc -> acc + (x - meanX) * (y - meanY))
-                    0
-                    model.points
-                    / n
+                List.foldl (\( x, y ) acc -> acc + (x - meanX) * (y - meanY)) 0 model.points / n
+
+        sumSquaresX =
+            if n == 0 then
+                0
+
+            else
+                List.foldl (\( x, _ ) acc -> acc + ((x - meanX) ^ 2)) 0 model.points
+
+        sumSquaresY =
+            if n == 0 then
+                0
+
+            else
+                List.foldl (\( _, y ) acc -> acc + ((y - meanY) ^ 2)) 0 model.points
+
+        sigmaX =
+            if n == 0 then
+                0
+
+            else
+                sqrt (sumSquaresX / n)
+
+        sigmaY =
+            if n == 0 then
+                0
+
+            else
+                sqrt (sumSquaresY / n)
+
+        pearson =
+            if sigmaX * sigmaY == 0 then
+                0
+
+            else
+                totalCov / (sigmaX * sigmaY)
     in
     div [ HA.style "margin" "1rem" ]
         [ div []
             [ text ("Cov(X,Y) = 1/n * Σ (xᵢ - x̄)(yᵢ - ȳ) = " ++ round3DP totalCov) ]
         , div []
             (List.indexedMap (viewTerm meanX meanY model.hoveredIndex) model.points)
+        , div [] [ text ("σₓ = " ++ round3DP sigmaX) ]
+        , div [] [ text ("σᵧ = " ++ round3DP sigmaY) ]
+        , div [] [ text ("ρₓᵧ = " ++ round3DP pearson) ]
         ]
+
 
 
 viewTerm : Float -> Float -> Maybe Int -> Int -> ( Float, Float ) -> Html Msg
@@ -531,6 +554,21 @@ svgHeight =
 svgMargin : Float
 svgMargin =
     40
+
+
+initNumPoints : Int
+initNumPoints =
+    10
+
+
+minNumPoints : Int
+minNumPoints =
+    1
+
+
+maxNumPoints : Int
+maxNumPoints =
+    100
 
 
 round3DP : Float -> String
