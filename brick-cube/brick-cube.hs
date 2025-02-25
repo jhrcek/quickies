@@ -4,8 +4,11 @@
 --package brick
 --package vty
 --package vty-crossplatform
+--optimize
+--ghc-options=-threaded
 -}
 
+{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Main where
@@ -187,12 +190,10 @@ bresenhamLine (x0, y0) (x1, y1) = go x0 y0 err0 []
 chooseChar :: Float -> Float -> Float -> Char
 chooseChar z minZ maxZ =
     let range = maxZ - minZ
-     in if z <= minZ + range / 3
-            then 'O'
-            else
-                if z >= maxZ - range / 3
-                    then '.'
-                    else 'o'
+     in if
+            | z <= minZ + range / 3 -> '⏺'
+            | z >= maxZ - range / 3 -> '•'
+            | otherwise -> '●'
 
 --------------------------------------------------------------------------------
 -- Rendering the Cube to an ASCII Grid
