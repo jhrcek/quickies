@@ -15,20 +15,42 @@ import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
+import Control.Monad.IO.Class (liftIO)
 import Graphics.Vty qualified as V
 import Graphics.Vty.CrossPlatform as V
 
 --------------------------------------------------------------------------------
 -- Application State and Events
 
--- Our state keeps track of the current rotation angle.
-newtype AppState = AppState {angle :: Float}
+-- Updated AppState to include terminal dimensions and scale
+data AppState = AppState
+    { angle :: Float
+    , termWidth :: Int
+    , termHeight :: Int
+    , cubeScale :: Float
+    }
 
 -- A tick event to update the animation.
 data Tick = Tick
 
+-- Initialize with placeholder values that will be updated in appStartEvent
 initialState :: AppState
-initialState = AppState{angle = 0}
+initialState =
+    AppState
+        { angle = 0
+        , termWidth = 80 -- Will be updated on start
+        , termHeight = 40 -- Will be updated on start
+        , cubeScale = 20.0 -- Will be updated on start
+        }
+
+-- Calculate the optimal cube scale (95% of smaller dimension)
+calculateCubeScale :: Int -> Int -> Float
+calculateCubeScale width height =
+    let smallerDimension = min width height
+        -- Use 95% of the smaller dimension, and divide by 1.4 since
+        -- the cube vertices range from -1 to 1 (total size is 1.4 units per dimension)
+        scale = 0.95 * fromIntegral smallerDimension / 1.4
+     in scale
 
 --------------------------------------------------------------------------------
 -- Brick App Definition
@@ -39,9 +61,22 @@ app =
         { appDraw = \s -> [drawUI s]
         , appChooseCursor = neverShowCursor
         , appHandleEvent = appEvent
-        , appStartEvent = pure ()
+        , appStartEvent = appStart
         , appAttrMap = const theMap
         }
+
+-- Add startup event handler to get terminal dimensions
+appStart :: EventM n AppState ()
+appStart = do
+    vty <- getVtyHandle
+    (width, height) <- liftIO $ V.displayBounds $ V.outputIface vty
+    let scale = calculateCubeScale width height
+    modify $ \s ->
+        s
+            { termWidth = width
+            , termHeight = height
+            , cubeScale = scale
+            }
 
 theMap :: AttrMap
 theMap = attrMap V.defAttr []
@@ -52,10 +87,19 @@ appEvent (AppEvent Tick) =
     modify $ \s -> s{angle = angle s + 0.1}
 appEvent (VtyEvent (V.EvKey V.KEsc [])) = halt
 appEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
+-- Update scale on terminal resize
+appEvent (VtyEvent (V.EvResize width height)) = do
+    let scale = calculateCubeScale width height
+    modify $ \s ->
+        s
+            { termWidth = width
+            , termHeight = height
+            , cubeScale = scale
+            }
 appEvent _ = pure ()
 
 drawUI :: AppState -> Widget n
-drawUI s = center $ str (renderCube (angle s))
+drawUI s = center $ str (renderCube s)
 
 --------------------------------------------------------------------------------
 -- Cube Definition, Rotation, and Projection
@@ -99,21 +143,21 @@ rotateY theta (x, y, z) =
 rotate :: Float -> (Float, Float, Float) -> (Float, Float, Float)
 rotate theta pt = rotateY theta (rotateX theta pt)
 
--- Project a 3D point to 2D using a simple perspective projection.
-project :: (Float, Float, Float) -> (Int, Int)
-project (x, y, z) =
+-- Updated project to use dynamic scaling from AppState
+project :: AppState -> (Float, Float, Float) -> (Int, Int)
+project s (x, y, z) =
     let d = 3.0 -- Distance from the viewer
-        scale = 20.0 -- Updated scale factor (2x)
+        scale = cubeScale s -- Use dynamic scale from AppState
         factor = scale / (z + d)
         x' = x * factor
         y' = y * factor
-        -- Center the cube in an 80x40 grid.
-        centerX = 40 -- New center for an 80-width grid
-        centerY = 20 -- New center for a 40-height grid
+        -- Center the cube in the terminal
+        centerX = termWidth s `div` 2
+        centerY = termHeight s `div` 2
      in (centerX + round x', centerY - round y')
 
 --------------------------------------------------------------------------------
--- Bresenham’s Line Algorithm
+-- Bresenham's Line Algorithm
 -- Returns a list of points between the start and end points.
 
 bresenhamLine :: (Int, Int) -> (Int, Int) -> [(Int, Int)]
@@ -139,52 +183,64 @@ bresenhamLine (x0, y0) (x1, y1) = go x0 y0 err0 []
              in go x' y' err'' (acc ++ [(x, y)])
 
 --------------------------------------------------------------------------------
--- Rendering the Cube to an ASCII Grid
-
 -- Add helper function to choose a character based on depth.
 chooseChar :: Float -> Float -> Float -> Char
 chooseChar z minZ maxZ =
     let range = maxZ - minZ
-    in if z <= minZ + range/3 then 'O'
-       else if z >= maxZ - range/3 then '.'
-       else 'o'
+     in if z <= minZ + range / 3
+            then 'O'
+            else
+                if z >= maxZ - range / 3
+                    then '.'
+                    else 'o'
 
--- In renderCube, compute rotated vertices and use chooseChar for shading.
-renderCube :: Float -> String
-renderCube theta =
-    let width = 80
-        height = 40
+--------------------------------------------------------------------------------
+-- Rendering the Cube to an ASCII Grid
+
+-- Updated renderCube to take AppState instead of just angle
+renderCube :: AppState -> String
+renderCube s =
+    let width = termWidth s
+        height = termHeight s
+        theta = angle s
         emptyGrid = replicate height (replicate width ' ')
-        -- Compute rotated vertices for depth shading.
+        -- Compute rotated vertices for depth shading
         rotatedVerts = map (rotate theta) cubeVertices
-        globalMinZ = minimum (map (\(_,_,z) -> z) rotatedVerts)
-        globalMaxZ = maximum (map (\(_,_,z) -> z) rotatedVerts)
-        -- Draw each edge with depth-based character shading.
+        globalMinZ = minimum (map (\(_, _, z) -> z) rotatedVerts)
+        globalMaxZ = maximum (map (\(_, _, z) -> z) rotatedVerts)
+        -- Draw each edge with depth-based character shading
         gridWithEdges = foldl drawEdge emptyGrid cubeEdges
           where
             drawEdge grid (v1, v2) =
-                let p1 = project (rotate theta v1)
-                    p2 = project (rotate theta v2)
-                    -- Get rotated endpoints for z values.
-                    ( _, _, z1) = rotate theta v1
-                    ( _, _, z2) = rotate theta v2
+                let p1 = project s (rotate theta v1)
+                    p2 = project s (rotate theta v2)
+                    -- Get rotated endpoints for z values
+                    (_, _, z1) = rotate theta v1
+                    (_, _, z2) = rotate theta v2
                     linePoints = bresenhamLine p1 p2
                     n = length linePoints
-                    -- For each point interpolate the depth and choose a character.
-                    grid' = foldl (\g (idx, (x,y)) ->
-                        let t = if n > 1 then fromIntegral idx / fromIntegral (n - 1) else 0
-                            zInterp = z1 + t * (z2 - z1)
-                            ch = chooseChar zInterp globalMinZ globalMaxZ
-                        in setChar g x y ch
-                        ) grid (zip [0..] linePoints)
+                    -- For each point interpolate the depth and choose a character
+                    grid' =
+                        foldl
+                            ( \g (idx, (x, y)) ->
+                                let t = if n > 1 then fromIntegral idx / fromIntegral (n - 1) else 0
+                                    zInterp = z1 + t * (z2 - z1)
+                                    ch = chooseChar zInterp globalMinZ globalMaxZ
+                                 in setChar g x y ch
+                            )
+                            grid
+                            (zip [0 :: Int ..] linePoints)
                  in grid'
-        -- Mark vertices with depth-based shading.
+        -- Mark vertices with depth-based shading
         gridWithVertices =
-            foldl (\g (v, p) ->
-                let (_,_,z) = rotate theta v
-                    ch = chooseChar z globalMinZ globalMaxZ
-                in uncurry (setChar g) p ch
-                ) gridWithEdges (zip cubeVertices (map (project . (rotate theta)) cubeVertices))
+            foldl
+                ( \g (v, p) ->
+                    let (_, _, z) = rotate theta v
+                        ch = chooseChar z globalMinZ globalMaxZ
+                     in uncurry (setChar g) p ch
+                )
+                gridWithEdges
+                (zip cubeVertices (map (project s . rotate theta) cubeVertices))
      in unlines gridWithVertices
 
 -- Set a character in the grid at the given (x, y) position.
