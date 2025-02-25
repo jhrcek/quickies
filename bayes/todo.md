@@ -1,0 +1,3 @@
+- add the ability to split the square by P(B) first
+- add the ability to animate the transition from the square being split by P(A) to being split by P(B)
+- when animating, add a visualization of the trajectory, that the corner(s) of the animated rectangles are taking to reach their final position
