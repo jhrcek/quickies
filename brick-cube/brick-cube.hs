@@ -17,7 +17,8 @@ module Main where
 
 import Brick
 import Brick.BChan (newBChan, writeBChan)
-import Brick.Widgets.Center (center)
+import Brick.Widgets.Border (borderWithLabel)
+import Brick.Widgets.Center (center, hCenter)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
 import Data.Map.Strict qualified as M
@@ -26,12 +27,12 @@ import Graphics.Vty.CrossPlatform as V
 import Linear.Matrix (M33, (!*))
 import Linear.V3 (V3 (..))
 
--- Updated AppState to include terminal dimensions and scale
 data AppState = AppState
     { angle :: Float
     , termWidth :: Int
     , termHeight :: Int
     , cubeScale :: Float
+    , paused :: Bool
     }
 
 -- A tick event to update the animation.
@@ -45,6 +46,7 @@ initialState width height =
             , termWidth = 0
             , termHeight = 0
             , cubeScale = 0
+            , paused = False
             }
 
 -- Calculate the optimal cube scale (95% of smaller dimension)
@@ -65,6 +67,20 @@ app =
         , appAttrMap = const theMap
         }
 
+theMap :: AttrMap
+theMap = attrMap V.defAttr []
+
+appEvent :: BrickEvent n Tick -> EventM n AppState ()
+appEvent (AppEvent Tick) = modify $ \s -> if paused s then s else s{angle = angle s + 0.1}
+appEvent (VtyEvent (V.EvKey V.KEsc [])) = halt
+appEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
+appEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = togglePause
+appEvent (VtyEvent (V.EvResize width height)) = modify (setDimensions width height)
+appEvent _ = pure ()
+
+togglePause :: EventM n AppState ()
+togglePause = modify $ \s -> s{paused = not (paused s)}
+
 setDimensions :: Int -> Int -> AppState -> AppState
 setDimensions width height s =
     s
@@ -73,18 +89,25 @@ setDimensions width height s =
         , cubeScale = calculateCubeScale width height
         }
 
-theMap :: AttrMap
-theMap = attrMap V.defAttr []
-
-appEvent :: BrickEvent n Tick -> EventM n AppState ()
-appEvent (AppEvent Tick) = modify $ \s -> s{angle = angle s + 0.1}
-appEvent (VtyEvent (V.EvKey V.KEsc [])) = halt
-appEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
-appEvent (VtyEvent (V.EvResize width height)) = modify (setDimensions width height)
-appEvent _ = pure ()
-
 drawUI :: AppState -> Widget n
-drawUI s = center $ str (renderCube s)
+drawUI s =
+    let statusBar = drawStatusBar s
+        cubeWidget = center $ str (renderCube s)
+     in statusBar <=> cubeWidget
+
+drawStatusBar :: AppState -> Widget n
+drawStatusBar AppState{paused} =
+    let pauseLabel =
+            if paused
+                then "Paused "
+                else "Running"
+        controls = " [SPACE] Pause/Resume | [Q/ESC] Quit "
+     in hCenter $
+            borderWithLabel (str " 3D Cube Animation ") $
+                hBox
+                    [ padLeftRight 1 $ str $ "Status: " ++ pauseLabel
+                    , padLeftRight 3 $ str controls
+                    ]
 
 cubeVertices :: [V3 Float]
 cubeVertices = [V3 x y z | x <- [-1, 1], y <- [-1, 1], z <- [-1, 1]]
@@ -153,7 +176,7 @@ bresenhamLine (x0, y0) (x1, y1) =
              in (nx, ny, ne')
      in plotLine x0 y0 (dx - dy)
 
--- Choose a character based on depth (simplified)
+-- Choose a character based on depth
 chooseChar :: Float -> Float -> Float -> Char
 chooseChar z minZ maxZ
     | z <= minZ + range / 3 = '⏺'
@@ -220,7 +243,8 @@ renderCube s@AppState{angle, termWidth, termHeight} =
 main :: IO ()
 main = do
     chan <- newBChan 10
-    -- Fork a thread that sends a Tick event every 50ms.
+    -- Fork a thread that sends a Tick event every 50ms when not paused.
+    -- We'll manage pausing in the event handler instead of here.
     _ <- forkIO $ forever $ do
         writeBChan chan Tick
         threadDelay 50_000 -- 50ms
