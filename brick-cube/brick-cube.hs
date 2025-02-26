@@ -20,7 +20,7 @@ import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Border (borderWithLabel)
 import Brick.Widgets.Center (center, hCenter)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, void)
+import Control.Monad (forever, unless, void, when)
 import Data.Map.Strict qualified as M
 import Graphics.Vty qualified as V
 import Graphics.Vty.CrossPlatform as V
@@ -28,7 +28,9 @@ import Linear.Matrix (M33, (!*))
 import Linear.V3 (V3 (..))
 
 data AppState = AppState
-    { angle :: Float
+    { rotX :: Float
+    , rotY :: Float
+    , rotZ :: Float
     , termWidth :: Int
     , termHeight :: Int
     , cubeScale :: Float
@@ -38,11 +40,16 @@ data AppState = AppState
 -- A tick event to update the animation.
 data Tick = Tick
 
+rotationStep :: Float
+rotationStep = 0.1
+
 initialState :: Int -> Int -> AppState
 initialState width height =
     setDimensions width height $
         AppState
-            { angle = 0
+            { rotX = 0
+            , rotY = 0
+            , rotZ = 0
             , termWidth = 0
             , termHeight = 0
             , cubeScale = 0
@@ -71,15 +78,34 @@ theMap :: AttrMap
 theMap = attrMap V.defAttr []
 
 appEvent :: BrickEvent n Tick -> EventM n AppState ()
-appEvent (AppEvent Tick) = modify $ \s -> if paused s then s else s{angle = angle s + 0.1}
-appEvent (VtyEvent (V.EvKey V.KEsc [])) = halt
-appEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
-appEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = togglePause
-appEvent (VtyEvent (V.EvResize width height)) = modify (setDimensions width height)
-appEvent _ = pure ()
+appEvent e = case e of
+    -- Control keys
+    VtyEvent (V.EvKey V.KEsc []) -> halt
+    VtyEvent (V.EvKey (V.KChar ' ') []) -> togglePause
+    VtyEvent (V.EvResize width height) -> modify (setDimensions width height)
+    -- Animation tick (only when not paused)
+    AppEvent Tick -> do
+        isPaused <- gets paused
+        unless isPaused . modify $ \s ->
+            s
+                { rotX = rotX s + rotationStep
+                , rotY = rotY s + rotationStep
+                }
+    -- Manual rotation controls (only when paused)
+    VtyEvent (V.EvKey (V.KChar k) []) -> do
+        isPaused <- gets paused
+        when isPaused $ case k of
+            'q' -> modify (\s -> s{rotZ = rotZ s + rotationStep})
+            'w' -> modify (\s -> s{rotX = rotX s + rotationStep})
+            's' -> modify (\s -> s{rotX = rotX s - rotationStep})
+            'a' -> modify (\s -> s{rotY = rotY s + rotationStep})
+            'd' -> modify (\s -> s{rotY = rotY s - rotationStep})
+            'e' -> modify (\s -> s{rotZ = rotZ s - rotationStep})
+            _ -> pure ()
+    _ -> pure ()
 
 togglePause :: EventM n AppState ()
-togglePause = modify $ \s -> s{paused = not (paused s)}
+togglePause = modify $ \s@AppState{paused} -> s{paused = not paused}
 
 setDimensions :: Int -> Int -> AppState -> AppState
 setDimensions width height s =
@@ -97,16 +123,16 @@ drawUI s =
 
 drawStatusBar :: AppState -> Widget n
 drawStatusBar AppState{paused} =
-    let pauseLabel =
+    let pauseLabel = if paused then "Paused " else "Running"
+        controls =
             if paused
-                then "Paused "
-                else "Running"
-        controls = " [SPACE] Pause/Resume | [Q/ESC] Quit "
+                then "[SPACE] Resume | [QWEASD] Rotate | [ESC] Quit"
+                else "[SPACE] Pause  |                 | [ESC] Quit"
      in hCenter $
             borderWithLabel (str " 3D Cube Animation ") $
                 hBox
                     [ padLeftRight 1 $ str $ "Status: " ++ pauseLabel
-                    , padLeftRight 3 $ str controls
+                    , padLeftRight 1 $ str controls
                     ]
 
 cubeVertices :: [V3 Float]
@@ -120,7 +146,6 @@ cubeEdges =
     , sum (abs (v1 - v2)) == 2 -- Connect vertices that differ in exactly one coordinate
     ]
 
--- Create rotation matrix around X axis
 rotationMatrixX :: Float -> M33 Float
 rotationMatrixX theta =
     V3
@@ -128,7 +153,6 @@ rotationMatrixX theta =
         (V3 0 (cos theta) (-(sin theta)))
         (V3 0 (sin theta) (cos theta))
 
--- Create rotation matrix around Y axis
 rotationMatrixY :: Float -> M33 Float
 rotationMatrixY theta =
     V3
@@ -136,9 +160,16 @@ rotationMatrixY theta =
         (V3 0 1 0)
         (V3 (-(sin theta)) 0 (cos theta))
 
--- Apply rotations to a vertex
-rotate :: Float -> V3 Float -> V3 Float
-rotate theta pt = rotationMatrixY theta !* (rotationMatrixX theta !* pt)
+rotationMatrixZ :: Float -> M33 Float
+rotationMatrixZ theta =
+    V3
+        (V3 (cos theta) (-(sin theta)) 0)
+        (V3 (sin theta) (cos theta) 0)
+        (V3 0 0 1)
+
+rotate :: AppState -> V3 Float -> V3 Float
+rotate AppState{rotX, rotY, rotZ} pt =
+    rotationMatrixZ rotZ !* (rotationMatrixY rotY !* (rotationMatrixX rotX !* pt))
 
 -- Project 3D point to 2D screen coordinates
 project2D :: AppState -> V3 Float -> (Int, Int)
@@ -186,18 +217,11 @@ chooseChar z minZ maxZ
     range = maxZ - minZ
 
 renderCube :: AppState -> String
-renderCube s@AppState{angle, termWidth, termHeight} =
+renderCube s@AppState{termWidth, termHeight} =
     let
-        -- Use a Map to store characters
         initialGrid = M.empty
-
-        -- Add edges to grid
         gridWithEdges = foldl addEdge initialGrid cubeEdges
-
-        -- Add vertices to grid
         finalGrid = foldl addVertex gridWithEdges rotatedVerts
-
-        -- Convert grid to string
         renderGrid =
             unlines
                 [ [ M.findWithDefault ' ' (x, y) finalGrid
@@ -208,10 +232,9 @@ renderCube s@AppState{angle, termWidth, termHeight} =
      in
         renderGrid
   where
-    -- Add an edge to the grid
     addEdge grid (v1, v2) =
-        let rv1 = rotate angle v1
-            rv2 = rotate angle v2
+        let rv1 = rotate s v1
+            rv2 = rotate s v2
             p1 = project2D s rv1
             p2 = project2D s rv2
             V3 _ _ z1 = rv1
@@ -229,14 +252,13 @@ renderCube s@AppState{angle, termWidth, termHeight} =
             interpolated = zip linePoints [if n > 1 then fromIntegral i / fromIntegral (n - 1) else 0 | i <- [0 .. n - 1]]
          in foldl addLinePoint grid interpolated
 
-    -- Add a vertex to the grid
     addVertex grid rv =
         let p = project2D s rv
             V3 _ _ z = rv
             ch = chooseChar z globalMinZ globalMaxZ
          in M.insert p ch grid
 
-    rotatedVerts = map (rotate angle) cubeVertices
+    rotatedVerts = map (rotate s) cubeVertices
     globalMinZ = minimum $ map (\(V3 _ _ z) -> z) rotatedVerts
     globalMaxZ = maximum $ map (\(V3 _ _ z) -> z) rotatedVerts
 
