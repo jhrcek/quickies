@@ -73,8 +73,20 @@ update msg model =
             { model | dragState = Nothing }
 
 
-view : Model -> Html Msg
-view ({ pA, pBGivenA, pBGivenNotA } as model) =
+type alias DerivedProbabilities =
+    { pA : Float
+    , pNotA : Float
+    , pBGivenA : Float
+    , pBGivenNotA : Float
+    , pB : Float
+    , pNotB : Float
+    , pAGivenB : Float
+    , pAGivenNotB : Float
+    }
+
+
+computeDerivedProbabilities : { r | pA : Float, pBGivenA : Float, pBGivenNotA : Float } -> DerivedProbabilities
+computeDerivedProbabilities { pA, pBGivenA, pBGivenNotA } =
     let
         pNotA =
             1 - pA
@@ -99,6 +111,23 @@ view ({ pA, pBGivenA, pBGivenNotA } as model) =
             else
                 0
     in
+    { pA = pA
+    , pNotA = pNotA
+    , pBGivenA = pBGivenA
+    , pBGivenNotA = pBGivenNotA
+    , pB = pB
+    , pNotB = pNotB
+    , pAGivenB = pAGivenB
+    , pAGivenNotB = pAGivenNotB
+    }
+
+
+view : Model -> Html Msg
+view model =
+    let
+        probs =
+            computeDerivedProbabilities model
+    in
     Html.div []
         [ Svg.svg
             [ SA.width (toS (squareLeft * 2 + squareSize))
@@ -107,18 +136,18 @@ view ({ pA, pBGivenA, pBGivenNotA } as model) =
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker ]
+            , drawPartitions probs
             , drawSquare
-            , drawPartitions model
             ]
         , Html.div [ HA.style "margin-left" "20px" ]
-            [ textLineProb "P(A)" (to2Dec pA) (highlight "pA" model)
-            , textLineProb "P(¬A)" (to2Dec pNotA) (highlight "pNotA" model)
-            , textLineProb "P(B|A)" (to2Dec pBGivenA) (highlight "pBGivenA" model)
-            , textLineProb "P(B|¬A)" (to2Dec pBGivenNotA) (highlight "pBGivenNotA" model)
-            , textLineProb "P(B)" (to2Dec pB) (highlight "pB" model)
-            , textLineProb "P(¬B)" (to2Dec pNotB) (highlight "pNotB" model)
-            , textLineProb "P(A|B)" (to2Dec pAGivenB) (highlight "pAGivenB" model)
-            , textLineProb "P(A|¬B)" (to2Dec pAGivenNotB) (highlight "pAGivenNotB" model)
+            [ textLineProb "P(A)" probs.pA (highlight "pA" model)
+            , textLineProb "P(¬A)" probs.pNotA (highlight "pNotA" model)
+            , textLineProb "P(B|A)" probs.pBGivenA (highlight "pBGivenA" model)
+            , textLineProb "P(B|¬A)" probs.pBGivenNotA (highlight "pBGivenNotA" model)
+            , textLineProb "P(B)" probs.pB (highlight "pB" model)
+            , textLineProb "P(¬B)" probs.pNotB (highlight "pNotB" model)
+            , textLineProb "P(A|B)" probs.pAGivenB (highlight "pAGivenB" model)
+            , textLineProb "P(A|¬B)" probs.pAGivenNotB (highlight "pAGivenNotB" model)
             ]
         ]
 
@@ -137,19 +166,28 @@ drawSquare =
         []
 
 
-drawPartitions : Model -> Svg.Svg Msg
-drawPartitions { pA, pBGivenA, pBGivenNotA } =
+drawPartitions : DerivedProbabilities -> Svg.Svg Msg
+drawPartitions probs =
     let
         xA =
-            toSvgX pA
+            toSvgX probs.pA
 
         yBGivenA =
-            toSvgY pBGivenA
+            toSvgY probs.pBGivenA
 
         yBGivenNotA =
-            toSvgY pBGivenNotA
+            toSvgY probs.pBGivenNotA
 
-        drawLine x1 y1 x2 y2 slider =
+        yB =
+            toSvgY probs.pB
+
+        xAGivenB =
+            toSvgX probs.pAGivenB
+
+        xAGivenNotB =
+            toSvgX probs.pAGivenNotB
+
+        lineWithKnob x1 y1 x2 y2 slider =
             Svg.g []
                 [ Svg.line
                     [ SA.x1 (toS x1)
@@ -162,6 +200,7 @@ drawPartitions { pA, pBGivenA, pBGivenNotA } =
                     ]
                     []
                 , Svg.circle
+                    -- Invisible circle for easier dragging
                     [ SA.r "10"
                     , SA.cx (toS x2)
                     , SA.cy (toS y2)
@@ -172,17 +211,40 @@ drawPartitions { pA, pBGivenA, pBGivenNotA } =
                     []
                 ]
 
+        grayLine x1 y1 x2 y2 =
+            Svg.line
+                [ SA.x1 (toS x1)
+                , SA.y1 (toS y1)
+                , SA.x2 (toS x2)
+                , SA.y2 (toS y2)
+                , SA.stroke "lightgray"
+                , SA.strokeWidth "1"
+                ]
+                []
+
         verticalA =
-            drawLine xA (toSvgY 1) xA (toSvgY 0) DragA
+            lineWithKnob xA (toSvgY 1) xA (toSvgY 0) DragA
 
         horizontalBGivenA =
-            drawLine xA yBGivenA (toSvgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
+            lineWithKnob xA yBGivenA (toSvgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
 
         horizontalBGivenNotA =
-            drawLine xA yBGivenNotA (toSvgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
+            lineWithKnob xA yBGivenNotA (toSvgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
+
+        horizontalB =
+            grayLine (toSvgX 0) yB (toSvgX 1) yB
+
+        verticalAGivenB =
+            grayLine xAGivenB yB xAGivenB (toSvgY 0)
+
+        verticalAGivenNotB =
+            grayLine xAGivenNotB (toSvgY 1) xAGivenNotB yB
     in
     Svg.g []
-        [ verticalA
+        [ horizontalB
+        , verticalAGivenB
+        , verticalAGivenNotB
+        , verticalA
         , horizontalBGivenA
         , horizontalBGivenNotA
         ]
@@ -210,7 +272,7 @@ sliderMarker =
         ]
 
 
-textLineProb : String -> String -> Highlight -> Html msg
+textLineProb : String -> Float -> Highlight -> Html msg
 textLineProb label value highlightStatus =
     let
         bgColor =
@@ -229,7 +291,7 @@ textLineProb label value highlightStatus =
             [ HA.style "padding" "0 4px"
             , HA.style "background-color" bgColor
             ]
-            [ Html.text (label ++ " = " ++ value) ]
+            [ Html.text (label ++ " = " ++ to2Dec value) ]
         ]
 
 
