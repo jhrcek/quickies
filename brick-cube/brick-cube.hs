@@ -24,13 +24,11 @@ import Control.Monad (forever, unless, void, when)
 import Data.Map.Strict qualified as M
 import Graphics.Vty qualified as V
 import Graphics.Vty.CrossPlatform as V
-import Linear.Matrix (M33, (!*))
+import Linear.Quaternion (Quaternion, axisAngle, rotate)
 import Linear.V3 (V3 (..))
 
 data AppState = AppState
-    { rotX :: Float
-    , rotY :: Float
-    , rotZ :: Float
+    { rotation :: Quaternion Float
     , termWidth :: Int
     , termHeight :: Int
     , cubeScale :: Float
@@ -47,9 +45,7 @@ initialState :: Int -> Int -> AppState
 initialState width height =
     setDimensions width height $
         AppState
-            { rotX = 0
-            , rotY = 0
-            , rotZ = 0
+            { rotation = axisAngle (V3 0 0 1) 0 -- Identity quaternion
             , termWidth = 0
             , termHeight = 0
             , cubeScale = 0
@@ -86,23 +82,33 @@ appEvent e = case e of
     -- Animation tick (only when not paused)
     AppEvent Tick -> do
         isPaused <- gets paused
-        unless isPaused . modify $ \s ->
-            s
-                { rotX = rotX s + rotationStep
-                , rotY = rotY s + rotationStep
-                }
+        unless isPaused $ modify $ \s ->
+            let
+                -- Combine small rotations around X and Y axes
+                rotX = axisAngle (V3 1 0 0) (rotationStep * 0.3)
+                rotY = axisAngle (V3 0 1 0) (rotationStep * 0.5)
+                -- Apply both rotations to current rotation state
+                newRotation = rotation s * rotX * rotY
+             in
+                s{rotation = newRotation}
+
     -- Manual rotation controls (only when paused)
     VtyEvent (V.EvKey (V.KChar k) []) -> do
         isPaused <- gets paused
         when isPaused $ case k of
-            'q' -> modify (\s -> s{rotZ = rotZ s + rotationStep})
-            'w' -> modify (\s -> s{rotX = rotX s + rotationStep})
-            's' -> modify (\s -> s{rotX = rotX s - rotationStep})
-            'a' -> modify (\s -> s{rotY = rotY s + rotationStep})
-            'd' -> modify (\s -> s{rotY = rotY s - rotationStep})
-            'e' -> modify (\s -> s{rotZ = rotZ s - rotationStep})
+            'q' -> applyRotation (V3 0 0 1) rotationStep -- Z axis clockwise
+            'e' -> applyRotation (V3 0 0 1) (-rotationStep) -- Z axis counter-clockwise
+            'w' -> applyRotation (V3 1 0 0) rotationStep -- X axis clockwise
+            's' -> applyRotation (V3 1 0 0) (-rotationStep) -- X axis counter-clockwise
+            'a' -> applyRotation (V3 0 1 0) rotationStep -- Y axis clockwise
+            'd' -> applyRotation (V3 0 1 0) (-rotationStep) -- Y axis counter-clockwise
             _ -> pure ()
     _ -> pure ()
+
+applyRotation :: V3 Float -> Float -> EventM n AppState ()
+applyRotation axis angle = modify $ \s ->
+    let newRot = axisAngle axis angle
+     in s{rotation = rotation s * newRot}
 
 togglePause :: EventM n AppState ()
 togglePause = modify $ \s@AppState{paused} -> s{paused = not paused}
@@ -146,30 +152,9 @@ cubeEdges =
     , sum (abs (v1 - v2)) == 2 -- Connect vertices that differ in exactly one coordinate
     ]
 
-rotationMatrixX :: Float -> M33 Float
-rotationMatrixX theta =
-    V3
-        (V3 1 0 0)
-        (V3 0 (cos theta) (-(sin theta)))
-        (V3 0 (sin theta) (cos theta))
-
-rotationMatrixY :: Float -> M33 Float
-rotationMatrixY theta =
-    V3
-        (V3 (cos theta) 0 (sin theta))
-        (V3 0 1 0)
-        (V3 (-(sin theta)) 0 (cos theta))
-
-rotationMatrixZ :: Float -> M33 Float
-rotationMatrixZ theta =
-    V3
-        (V3 (cos theta) (-(sin theta)) 0)
-        (V3 (sin theta) (cos theta) 0)
-        (V3 0 0 1)
-
-rotate :: AppState -> V3 Float -> V3 Float
-rotate AppState{rotX, rotY, rotZ} pt =
-    rotationMatrixZ rotZ !* (rotationMatrixY rotY !* (rotationMatrixX rotX !* pt))
+-- Apply rotation to a vertex using quaternion
+rotateVertex :: AppState -> V3 Float -> V3 Float
+rotateVertex AppState{rotation} = Linear.Quaternion.rotate rotation
 
 -- Project 3D point to 2D screen coordinates
 project2D :: AppState -> V3 Float -> (Int, Int)
@@ -233,8 +218,8 @@ renderCube s@AppState{termWidth, termHeight} =
         renderGrid
   where
     addEdge grid (v1, v2) =
-        let rv1 = rotate s v1
-            rv2 = rotate s v2
+        let rv1 = rotateVertex s v1
+            rv2 = rotateVertex s v2
             p1 = project2D s rv1
             p2 = project2D s rv2
             V3 _ _ z1 = rv1
@@ -258,7 +243,7 @@ renderCube s@AppState{termWidth, termHeight} =
             ch = chooseChar z globalMinZ globalMaxZ
          in M.insert p ch grid
 
-    rotatedVerts = map (rotate s) cubeVertices
+    rotatedVerts = map (rotateVertex s) cubeVertices
     globalMinZ = minimum $ map (\(V3 _ _ z) -> z) rotatedVerts
     globalMaxZ = maximum $ map (\(V3 _ _ z) -> z) rotatedVerts
 
