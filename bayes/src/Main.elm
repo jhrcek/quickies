@@ -1,20 +1,24 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Dom
+import Browser.Events
 import Html exposing (Html)
 import Html.Attributes as HA
 import Json.Decode as Json
 import Svg
 import Svg.Attributes as SA
 import Svg.Events as SE
+import Task
 
 
 main : Program () Model Msg
 main =
-    Browser.sandbox
+    Browser.element
         { init = init
         , update = update
         , view = view
+        , subscriptions = subscriptions
         }
 
 
@@ -23,6 +27,8 @@ type alias Model =
     , pBGivenA : Float
     , pBGivenNotA : Float
     , dragState : Maybe DragSlider
+    , viewportWidth : Int
+    , viewportHeight : Int
     }
 
 
@@ -32,45 +38,71 @@ type DragSlider
     | DragBGivenNotA
 
 
-init : Model
-init =
-    { pA = 0.5
-    , pBGivenA = 0.5
-    , pBGivenNotA = 0.3
-    , dragState = Nothing
-    }
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { pA = 0.5
+      , pBGivenA = 0.5
+      , pBGivenNotA = 0.3
+      , dragState = Nothing
+      , viewportWidth = 1024
+      , viewportHeight = 768
+      }
+    , Task.perform
+        (\v ->
+            let
+                { width, height } =
+                    v.viewport
+            in
+            WindowResized (round width) (round height)
+        )
+        Browser.Dom.getViewport
+    )
 
 
 type Msg
     = DragStarted DragSlider
     | DragAt Float Float
     | DragStopped
+    | WindowResized Int Int
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         DragStarted slider ->
-            { model | dragState = Just slider }
+            pure { model | dragState = Just slider }
 
         DragAt x y ->
             case model.dragState of
                 Just drag ->
                     case drag of
                         DragA ->
-                            { model | pA = fromSvgX x }
+                            pure { model | pA = fromSvgX x }
 
                         DragBGivenA ->
-                            { model | pBGivenA = fromSvgY y }
+                            pure { model | pBGivenA = fromSvgY y }
 
                         DragBGivenNotA ->
-                            { model | pBGivenNotA = fromSvgY y }
+                            pure { model | pBGivenNotA = fromSvgY y }
 
                 Nothing ->
-                    model
+                    pure model
 
         DragStopped ->
-            { model | dragState = Nothing }
+            pure { model | dragState = Nothing }
+
+        WindowResized width height ->
+            pure { model | viewportWidth = width, viewportHeight = height }
+
+
+pure : a -> ( a, Cmd msg )
+pure a =
+    ( a, Cmd.none )
+
+
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    Browser.Events.onResize WindowResized
 
 
 type alias DerivedProbabilities =
