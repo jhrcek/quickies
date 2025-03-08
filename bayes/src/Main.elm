@@ -75,15 +75,19 @@ update msg model =
         DragAt x y ->
             case model.dragState of
                 Just drag ->
+                    let
+                        squareSize =
+                            toFloat model.viewportHeight - 2 * squareTop
+                    in
                     case drag of
                         DragA ->
-                            pure { model | pA = fromSvgX x }
+                            pure { model | pA = fromSvgX squareSize x }
 
                         DragBGivenA ->
-                            pure { model | pBGivenA = fromSvgY y }
+                            pure { model | pBGivenA = fromSvgY squareSize y }
 
                         DragBGivenNotA ->
-                            pure { model | pBGivenNotA = fromSvgY y }
+                            pure { model | pBGivenNotA = fromSvgY squareSize y }
 
                 Nothing ->
                     pure model
@@ -159,8 +163,15 @@ view model =
     let
         probs =
             computeDerivedProbabilities model
+
+        squareSize =
+            toFloat model.viewportHeight - 2 * squareTop
     in
-    Html.div []
+    Html.div
+        [ HA.style "display" "flex"
+        , HA.style "flex-direction" "row"
+        , HA.style "align-items" "flex-start"
+        ]
         [ Svg.svg
             [ SA.width (toS (squareLeft * 2 + squareSize))
             , SA.height (toS (squareTop * 2 + squareSize))
@@ -168,10 +179,13 @@ view model =
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker ]
-            , drawPartitions probs
-            , drawSquare
+            , drawPartitions squareSize probs
+            , drawSquare squareSize
             ]
-        , Html.div [ HA.style "margin-left" "20px" ]
+        , Html.div
+            [ HA.style "margin-left" "20px"
+            , HA.style "padding-top" (toS squareTop ++ "px")
+            ]
             [ textLineProb "P(A)" probs.pA (highlight "pA" model)
             , textLineProb "P(¬A)" probs.pNotA (highlight "pNotA" model)
             , textLineProb "P(B|A)" probs.pBGivenA (highlight "pBGivenA" model)
@@ -184,8 +198,8 @@ view model =
         ]
 
 
-drawSquare : Svg.Svg Msg
-drawSquare =
+drawSquare : Float -> Svg.Svg Msg
+drawSquare squareSize =
     Svg.rect
         [ SA.x (toS squareLeft)
         , SA.y (toS squareTop)
@@ -198,26 +212,32 @@ drawSquare =
         []
 
 
-drawPartitions : DerivedProbabilities -> Svg.Svg Msg
-drawPartitions probs =
+drawPartitions : Float -> DerivedProbabilities -> Svg.Svg Msg
+drawPartitions squareSize probs =
     let
+        svgX =
+            toSvgX squareSize
+
+        svgY =
+            toSvgY squareSize
+
         xA =
-            toSvgX probs.pA
+            svgX probs.pA
 
         yBGivenA =
-            toSvgY probs.pBGivenA
+            svgY probs.pBGivenA
 
         yBGivenNotA =
-            toSvgY probs.pBGivenNotA
+            svgY probs.pBGivenNotA
 
         yB =
-            toSvgY probs.pB
+            svgY probs.pB
 
         xAGivenB =
-            toSvgX probs.pAGivenB
+            svgX probs.pAGivenB
 
         xAGivenNotB =
-            toSvgX probs.pAGivenNotB
+            svgX probs.pAGivenNotB
 
         lineWithKnob x1 y1 x2 y2 slider =
             Svg.g []
@@ -255,22 +275,22 @@ drawPartitions probs =
                 []
 
         verticalA =
-            lineWithKnob xA (toSvgY 1) xA (toSvgY 0) DragA
+            lineWithKnob xA (svgY 1) xA (svgY 0) DragA
 
         horizontalBGivenA =
-            lineWithKnob xA yBGivenA (toSvgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
+            lineWithKnob xA yBGivenA (svgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
 
         horizontalBGivenNotA =
-            lineWithKnob xA yBGivenNotA (toSvgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
+            lineWithKnob xA yBGivenNotA (svgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
 
         horizontalB =
-            grayLine (toSvgX 0) yB (toSvgX 1) yB
+            grayLine (svgX 0) yB (svgX 1) yB
 
         verticalAGivenB =
-            grayLine xAGivenB yB xAGivenB (toSvgY 0)
+            grayLine xAGivenB yB xAGivenB (svgY 0)
 
         verticalAGivenNotB =
-            grayLine xAGivenNotB (toSvgY 1) xAGivenNotB yB
+            grayLine xAGivenNotB (svgY 1) xAGivenNotB yB
     in
     Svg.g []
         [ horizontalB
@@ -385,46 +405,41 @@ offsetY =
 
 {-| Maps [0,1] ⇒ [squareLeft, squareLeft + squareSize].
 -}
-toSvgX : Float -> Float
-toSvgX fraction =
+toSvgX : Float -> Float -> Float
+toSvgX squareSize fraction =
     squareLeft + fraction * squareSize
 
 
 {-| Maps [0,1] ⇒ [squareTop + squareSize, squareTop].
 We invert (1 - fraction) so that fraction=0 => bottom, fraction=1 => top.
 -}
-toSvgY : Float -> Float
-toSvgY fraction =
+toSvgY : Float -> Float -> Float
+toSvgY squareSize fraction =
     squareTop + (1 - fraction) * squareSize
 
 
 {-| Inverse of toSvgX, clamped to [0,1].
 -}
-fromSvgX : Float -> Float
-fromSvgX rawX =
+fromSvgX : Float -> Float -> Float
+fromSvgX squareSize rawX =
     clamp 0 1 ((rawX - squareLeft) / squareSize)
 
 
 {-| Inverse of toSvgY, clamped to [0,1]. fraction=0 => bottom, fraction=1 => top.
 -}
-fromSvgY : Float -> Float
-fromSvgY rawY =
+fromSvgY : Float -> Float -> Float
+fromSvgY squareSize rawY =
     clamp 0 1 (1 - ((rawY - squareTop) / squareSize))
 
 
 squareLeft : Float
 squareLeft =
-    50
+    100
 
 
 squareTop : Float
 squareTop =
-    50
-
-
-squareSize : Float
-squareSize =
-    300
+    100
 
 
 toS : Float -> String
