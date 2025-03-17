@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import Array exposing (Array)
 import Browser
 import Browser.Dom as Dom
 import Browser.Events
@@ -66,17 +67,14 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         WindowResized width height ->
-            ( { model | width = width, height = height }
-            , Cmd.none
-            )
+            pure { model | width = width, height = height }
 
         GotViewport { viewport } ->
-            ( { model
-                | width = round viewport.width
-                , height = round viewport.height
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | width = round viewport.width
+                    , height = round viewport.height
+                }
 
         PixelsPerSquareChanged valueStr ->
             let
@@ -85,9 +83,7 @@ update msg model =
                         |> Maybe.withDefault model.pixelsPerSquare
                         |> clamp minPixelsPerSquare maxPixelsPerSquare
             in
-            ( { model | pixelsPerSquare = newValue }
-            , Cmd.none
-            )
+            pure { model | pixelsPerSquare = newValue }
 
         AChanged valueStr ->
             let
@@ -95,12 +91,11 @@ update msg model =
                     String.toInt valueStr
                         |> Maybe.withDefault model.a
             in
-            ( { model
-                | a = newValue
-                , trace = euclidTrace newValue model.b
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | a = newValue
+                    , trace = euclidTrace newValue model.b
+                }
 
         BChanged valueStr ->
             let
@@ -108,29 +103,24 @@ update msg model =
                     String.toInt valueStr
                         |> Maybe.withDefault model.b
             in
-            ( { model
-                | b = newValue
-                , trace = euclidTrace model.a newValue
-              }
-            , Cmd.none
-            )
+            pure
+                { model
+                    | b = newValue
+                    , trace = euclidTrace model.a newValue
+                }
 
-        CellClicked row col ->
-            let
-                i =
-                    row + 1
+        CellClicked i j ->
+            pure
+                { model
+                    | a = i
+                    , b = j
+                    , trace = euclidTrace i j
+                }
 
-                -- Convert from 0-based to 1-based coordinates
-                j =
-                    col + 1
-            in
-            ( { model
-                | a = i
-                , b = j
-                , trace = euclidTrace i j
-              }
-            , Cmd.none
-            )
+
+pure : a -> ( a, Cmd msg )
+pure a =
+    ( a, Cmd.none )
 
 
 minPixelsPerSquare : Int
@@ -197,7 +187,7 @@ euclidPanel model =
                 ]
                 []
             ]
-        , renderTrace model.trace
+        , renderTrace model.a model.b model.trace
         , Html.hr [ style "margin" "15px 0", style "border" "0", style "border-top" "1px solid #ccc" ] []
         , Html.h4
             [ style "margin" "10px 0" ]
@@ -235,27 +225,18 @@ euclidPanel model =
                                 index + 1
 
                             label =
-                                if index < List.length colors - 1 then
+                                if index < numColors - 1 then
                                     String.fromInt steps
 
                                 else
-                                    String.fromInt (List.length colors) ++ "+"
+                                    String.fromInt numColors ++ "+"
 
                             squareSize =
                                 "25px"
 
-                            -- Add right border except for every 6th item or the last item
                             borderRight =
-                                if ((index + 1) |> modBy 6) /= 0 && index < List.length colors - 1 then
+                                if index < numColors - 1 then
                                     style "border-right" "1px solid black"
-
-                                else
-                                    style "" ""
-
-                            -- Add bottom border for first row
-                            borderBottom =
-                                if index < 6 then
-                                    style "border-bottom" "1px solid black"
 
                                 else
                                     style "" ""
@@ -277,7 +258,6 @@ euclidPanel model =
                             , style "align-items" "center"
                             , style "font-weight" "bold"
                             , borderRight
-                            , borderBottom
                             , textColor
                             ]
                             [ Html.text label ]
@@ -288,8 +268,8 @@ euclidPanel model =
         ]
 
 
-renderTrace : List EuclidStep -> Html Msg
-renderTrace trace =
+renderTrace : Int -> Int -> List EuclidStep -> Html Msg
+renderTrace a b trace =
     if List.isEmpty trace then
         Html.div [] [ Html.text "Please enter valid positive integers" ]
 
@@ -351,10 +331,9 @@ renderTrace trace =
                         getNumberIndex number
 
                     colorIndex =
-                        modBy (List.length colors) index
+                        modBy numColors index
                 in
-                List.drop colorIndex colors
-                    |> List.head
+                Array.get colorIndex colorsArray
                     |> Maybe.withDefault "black"
 
             -- Create colored number span
@@ -414,9 +393,9 @@ renderTrace trace =
                 ]
                 [ Html.text
                     ("gcd("
-                        ++ String.fromInt (List.head trace |> Maybe.map .a |> Maybe.withDefault 0)
+                        ++ String.fromInt a
                         ++ ", "
-                        ++ String.fromInt (List.head trace |> Maybe.map .b |> Maybe.withDefault 0)
+                        ++ String.fromInt b
                         ++ ") = "
                         ++ String.fromInt gcd
                     )
@@ -424,41 +403,67 @@ renderTrace trace =
             ]
 
 
+{-| This expects input is only ever positive ints
+-}
 euclidTrace : Int -> Int -> List EuclidStep
 euclidTrace a b =
+    let
+        buildTrace : Int -> Int -> List EuclidStep -> List EuclidStep
+        buildTrace currentA currentB steps =
+            if currentB == 0 then
+                steps
+
+            else
+                let
+                    q =
+                        currentA // currentB
+
+                    r =
+                        modBy currentB currentA
+
+                    newStep =
+                        { a = currentA
+                        , b = currentB
+                        , quotient = q
+                        , remainder = r
+                        }
+                in
+                buildTrace currentB r (newStep :: steps)
+    in
+    List.reverse <|
+        if a < b then
+            buildTrace b a []
+
+        else
+            buildTrace a b []
+
+
+{-| Returns the number of steps (divisions) that Euclid's algorithm
+needs to find the GCD of two numbers. Returns 0 if either input is <= 0.
+-}
+countEuclidSteps : Int -> Int -> Int
+countEuclidSteps a b =
     if a <= 0 || b <= 0 then
-        []
+        0
 
     else
         let
-            -- Ensure a is greater than b
-            ( largerNum, smallerNum ) =
-                if a >= b then
-                    ( a, b )
-
-                else
-                    ( b, a )
-
-            -- Helper function to build the trace recursively
-            buildTrace : Int -> Int -> List EuclidStep -> List EuclidStep
-            buildTrace currentA currentB steps =
+            countSteps currentA currentB stepCount =
                 if currentB == 0 then
-                    steps
+                    stepCount
 
                 else
                     let
-                        q =
-                            currentA // currentB
-
-                        r =
+                        remainder =
                             modBy currentB currentA
-
-                        newStep =
-                            { a = currentA, b = currentB, quotient = q, remainder = r }
                     in
-                    buildTrace currentB r (steps ++ [ newStep ])
+                    countSteps currentB remainder (stepCount + 1)
         in
-        buildTrace largerNum smallerNum []
+        if a < b then
+            countSteps b a 0
+
+        else
+            countSteps a b 0
 
 
 renderSvgGrid : Model -> Html Msg
@@ -473,71 +478,44 @@ renderSvgGrid model =
         strokeWidth =
             "0.1"
 
-        getEuclidSteps : Int -> Int -> Int
-        getEuclidSteps i j =
-            if i <= 0 || j <= 0 then
-                0
-
-            else
-                let
-                    steps =
-                        euclidTrace i j |> List.length
-                in
-                steps
-
         -- Get color based on Euclid step count (clamped to our color palette)
         getColor : Int -> Int -> String
-        getColor row col =
-            -- Use actual coordinates (>= 1) instead of array indices
+        getColor i j =
             let
-                i =
-                    row + 1
-
-                j =
-                    col + 1
-
-                steps =
-                    getEuclidSteps i j
-
-                -- Clamp step count to our color array bounds
                 colorIndex =
-                    min (steps - 1) (List.length colors - 1)
+                    countEuclidSteps i j - 1
             in
-            if steps == 0 then
-                "#FFFFFF"
-                -- White for invalid inputs (shouldn't happen with our grid)
+            case Array.get colorIndex colorsArray of
+                Just color ->
+                    color
 
-            else
-                List.drop colorIndex colors
-                    |> List.head
-                    |> Maybe.withDefault "#FFFFFF"
+                Nothing ->
+                    "white"
 
-        -- Create colored squares for each grid cell
         squares =
-            List.range 0 (numRows - 1)
+            List.range 1 numRows
                 |> List.concatMap
-                    (\row ->
-                        List.range 0 (numCols - 1)
+                    (\i ->
+                        List.range 1 numCols
                             |> List.map
-                                (\col ->
+                                (\j ->
                                     let
                                         x =
-                                            col * model.pixelsPerSquare
+                                            (j - 1) * model.pixelsPerSquare
 
                                         y =
-                                            row * model.pixelsPerSquare
+                                            (i - 1) * model.pixelsPerSquare
 
-                                        -- Highlight the currently selected cell if it matches a and b values
                                         isSelected =
-                                            (row + 1) == model.a && (col + 1) == model.b
+                                            i == model.a && j == model.b
 
                                         fillColor =
                                             if isSelected then
                                                 "#FF5733"
-                                                -- Bright orange highlight for selected cell
+                                                -- Bright orange for selected cell
 
                                             else
-                                                getColor row col
+                                                getColor i j
 
                                         strokeColor =
                                             if isSelected then
@@ -561,7 +539,7 @@ renderSvgGrid model =
                                         , SA.fill fillColor
                                         , SA.stroke strokeColor
                                         , SA.strokeWidth strokeWidth_
-                                        , onClick (CellClicked row col)
+                                        , onClick (CellClicked i j)
                                         , style "cursor" "pointer"
                                         ]
                                         []
@@ -595,3 +573,13 @@ colors =
     , "mediumpurple"
     , "darkviolet"
     ]
+
+
+colorsArray : Array String
+colorsArray =
+    Array.fromList colors
+
+
+numColors : Int
+numColors =
+    List.length colors
