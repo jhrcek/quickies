@@ -7,6 +7,7 @@ import Browser.Events
 import Html exposing (Html)
 import Html.Attributes as HA exposing (style, type_, value)
 import Html.Events exposing (onInput)
+import Json.Decode as Decode
 import Svg
 import Svg.Attributes as SA
 import Svg.Events exposing (onClick)
@@ -61,6 +62,8 @@ type Msg
     | AChanged String
     | BChanged String
     | CellClicked Int Int
+    | KeyUpDownPressed Int -- deltaA
+    | LeftRightPressed Int -- deltaB
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -117,6 +120,34 @@ update msg model =
                     , trace = euclidTrace i j
                 }
 
+        KeyUpDownPressed delta ->
+            let
+                numRows =
+                    model.height // model.pixelsPerSquare
+
+                newA =
+                    clamp 1 numRows (model.a + delta)
+            in
+            pure <|
+                { model
+                    | a = newA
+                    , trace = euclidTrace newA model.b
+                }
+
+        LeftRightPressed delta ->
+            let
+                numCols =
+                    model.width // model.pixelsPerSquare
+
+                newB =
+                    clamp 1 numCols (model.b + delta)
+            in
+            pure
+                { model
+                    | b = newB
+                    , trace = euclidTrace model.a newB
+                }
+
 
 pure : a -> ( a, Cmd msg )
 pure a =
@@ -135,7 +166,33 @@ maxPixelsPerSquare =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Browser.Events.onResize WindowResized
+    Sub.batch
+        [ Browser.Events.onResize WindowResized
+        , Browser.Events.onKeyDown keyDecoder
+        ]
+
+
+keyDecoder : Decode.Decoder Msg
+keyDecoder =
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\key ->
+                case key of
+                    "ArrowUp" ->
+                        Decode.succeed (KeyUpDownPressed -1)
+
+                    "ArrowDown" ->
+                        Decode.succeed (KeyUpDownPressed 1)
+
+                    "ArrowLeft" ->
+                        Decode.succeed (LeftRightPressed -1)
+
+                    "ArrowRight" ->
+                        Decode.succeed (LeftRightPressed 1)
+
+                    _ ->
+                        Decode.fail "Not an arrow key"
+            )
 
 
 view : Model -> Html Msg
@@ -160,10 +217,18 @@ euclidPanel model =
         , style "z-index" "100"
         , style "max-height" "80vh"
         , style "overflow-y" "auto"
+        , style "width" "280px"
         ]
         [ Html.h3
             [ style "margin-top" "0" ]
             [ Html.text "Euclid's Algorithm" ]
+        , Html.p
+            [ style "margin" "0 0 10px 0"
+            , style "font-size" "12px"
+            , style "color" "#666"
+            , style "line-height" "1.4"
+            ]
+            [ Html.text "Enter values in the fields below, click any cell in the grid, or use arrow keys (↑/↓/←/→) to select numbers." ]
         , Html.div
             [ style "display" "flex"
             , style "gap" "10px"
@@ -244,10 +309,10 @@ euclidPanel model =
                             -- Use white text for darker colors (second half of palette)
                             textColor =
                                 if index >= 6 then
-                                    style "color" "white"
+                                    "white"
 
                                 else
-                                    style "color" "black"
+                                    "black"
                         in
                         Html.div
                             [ style "width" squareSize
@@ -257,8 +322,8 @@ euclidPanel model =
                             , style "justify-content" "center"
                             , style "align-items" "center"
                             , style "font-weight" "bold"
+                            , style "color" textColor
                             , borderRight
-                            , textColor
                             ]
                             [ Html.text label ]
                     )
