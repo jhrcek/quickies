@@ -1,4 +1,4 @@
-module Covariance exposing (main)
+module Main exposing (main)
 
 import Browser
 import Browser.Events as Events
