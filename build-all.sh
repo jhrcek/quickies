@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo -pipefail
+set -euo pipefail
 
 ROOT_DIR=$(pwd)
 BUILD_DIR="$ROOT_DIR/build"
@@ -56,6 +56,11 @@ cat > "$BUILD_DIR/index.html" << EOF
         a:hover {
             text-decoration: underline;
         }
+        .description {
+            margin-top: 5px;
+            color: #555;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -83,7 +88,40 @@ for project_name in $(echo "${!projects[@]}" | tr ' ' '\n' | sort); do
 
     pushd "$ROOT_DIR/$project_name" || exit
     echo "Building $project_name: $description"
-    elm make src/Main.elm --output="$project_build_dir/index.html" --optimize
+
+    # Compile and optimize elm code to js
+    js_file="$project_build_dir/elm.js"
+    min_js_file="$project_build_dir/elm.min.js"
+
+    elm make src/Main.elm --optimize --output="$js_file"
+
+    # Minify the JS file
+    echo "Minifying JavaScript for $project_name"
+    uglifyjs "$js_file" --compress 'pure_funcs=[F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9],pure_getters,keep_fargs=false,unsafe_comps,unsafe' | uglifyjs --mangle --output "$min_js_file"
+    rm "$js_file"
+
+    # Create simple index.html that imports the minified js file
+    cat > "$project_build_dir/index.html" << EOF_HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>$project_name</title>
+    <meta name="description" content="$description">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>body{padding:0;margin:0;}</style>
+</head>
+<body>
+    <div id="elm"></div>
+    <script src="elm.min.js"></script>
+    <script>
+        var app = Elm.Main.init({
+            node: document.getElementById('elm')
+        });
+    </script>
+</body>
+</html>
+EOF_HTML
 
     # Add link with description to main index.html
     cat >> "$BUILD_DIR/index.html" << EOF_LINK
