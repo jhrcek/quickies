@@ -1,11 +1,25 @@
 #!/bin/bash
+set -euo -pipefail
 
-# Define paths
 ROOT_DIR=$(pwd)
 BUILD_DIR="$ROOT_DIR/build"
-
-# Create build directory
 mkdir -p "$BUILD_DIR"
+
+# Define projects with descriptions
+declare -A projects
+projects=(
+  ["bayes"]="Manipulable to explore Bayes' theorem"
+  ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
+  ["binomial"]="Binomial distribution calculator"
+  ["congruence-equations"]="Linear congruence equation solver"
+  ["conics"]="Interactive conic sections visualizer"
+  ["covariance"]="Covariance intuition builder"
+  ["elm-cube"]="3D cube visualization"
+  ["hexagon"]="Pascal's triangle in hexagonal grid"
+  ["IEEE-754"]="IEEE-754 floating point visualizer"
+  ["sampling"]="Random sampling toy"
+  ["sampling-weighted"]="Weighted random sampling toy"
+)
 
 # Initialize root index.html with header
 cat > "$BUILD_DIR/index.html" << EOF
@@ -50,31 +64,36 @@ cat > "$BUILD_DIR/index.html" << EOF
     <ul>
 EOF
 
-# Find all directories containing elm.json and sort them alphabetically
-find . -type f -name "elm.json" -not -path "*/build/*" | sort | while read -r elm_json_path; do
-    # Get the directory name
-    dir_name=$(dirname "$elm_json_path" | sed 's/^\.\///')
+# Process each project in alphabetical order
+for project_name in $(echo "${!projects[@]}" | tr ' ' '\n' | sort); do
+    description="${projects[$project_name]}"
 
-    # Get project name from directory
-    project_name=$(basename "$dir_name")
+    if [ ! -d "$project_name" ]; then
+        echo "Error: Directory $project_name not found"
+        exit 1
+    fi
 
-    # Create directory in build
+    if [ ! -f "$project_name/elm.json" ]; then
+        echo "Error: $project_name is not an Elm project (no elm.json)"
+        exit 1
+    fi
+
     project_build_dir="$BUILD_DIR/$project_name"
     mkdir -p "$project_build_dir"
 
-    # Change to the project directory
-    cd "$ROOT_DIR/$dir_name"
-
-    echo "Building $project_name..."
-
-    # Compile Elm code and let it generate the HTML file
+    pushd "$ROOT_DIR/$project_name" || exit
+    echo "Building $project_name: $description"
     elm make src/Main.elm --output="$project_build_dir/index.html" --optimize
 
-    # Add link to main index.html
-    echo "    <li><a href=\"$project_name/index.html\">$project_name</a></li>" >> "$BUILD_DIR/index.html"
+    # Add link with description to main index.html
+    cat >> "$BUILD_DIR/index.html" << EOF_LINK
+    <li>
+        <a href="$project_name/index.html">$project_name</a>
+        <div class="description">$description</div>
+    </li>
+EOF_LINK
 
-    # Return to root directory
-    cd "$ROOT_DIR"
+    popd || exit
 done
 
 # Close root index.html
