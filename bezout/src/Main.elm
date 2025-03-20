@@ -10,7 +10,7 @@ import Html.Events exposing (onInput)
 import Json.Decode as Decode
 import Svg
 import Svg.Attributes as SA
-import Svg.Events exposing (onClick)
+import Svg.Events as SE
 import Task
 
 
@@ -61,7 +61,7 @@ type Msg
     | PixelsPerSquareChanged String
     | AChanged String
     | BChanged String
-    | CellClicked Int Int
+    | GridClicked Float Float -- mouse coords of the click
     | KeyUpDownPressed Int -- deltaA
     | LeftRightPressed Int -- deltaB
 
@@ -88,65 +88,64 @@ update msg model =
             in
             pure { model | pixelsPerSquare = newValue }
 
-        AChanged valueStr ->
-            let
-                newValue =
-                    String.toInt valueStr
-                        |> Maybe.withDefault model.a
-            in
-            pure
-                { model
-                    | a = newValue
-                    , trace = euclidTrace newValue model.b
-                }
+        AChanged aStr ->
+            pure <|
+                case String.toInt aStr of
+                    Just a ->
+                        setA a model
 
-        BChanged valueStr ->
-            let
-                newValue =
-                    String.toInt valueStr
-                        |> Maybe.withDefault model.b
-            in
-            pure
-                { model
-                    | b = newValue
-                    , trace = euclidTrace model.a newValue
-                }
+                    Nothing ->
+                        model
 
-        CellClicked i j ->
-            pure
-                { model
-                    | a = i
-                    , b = j
-                    , trace = euclidTrace i j
-                }
+        BChanged bStr ->
+            pure <|
+                case String.toInt bStr of
+                    Just b ->
+                        setB b model
+
+                    Nothing ->
+                        model
+
+        GridClicked mouseX mouseY ->
+            let
+                -- Convert mouse coordinates to grid coordinates
+                a =
+                    floor (mouseY / toFloat model.pixelsPerSquare) + 1
+
+                b =
+                    floor (mouseX / toFloat model.pixelsPerSquare) + 1
+            in
+            pure <| setA a <| setB b model
 
         KeyUpDownPressed delta ->
-            let
-                numRows =
-                    model.height // model.pixelsPerSquare
-
-                newA =
-                    clamp 1 numRows (model.a + delta)
-            in
-            pure <|
-                { model
-                    | a = newA
-                    , trace = euclidTrace newA model.b
-                }
+            pure <| setA (model.a + delta) model
 
         LeftRightPressed delta ->
-            let
-                numCols =
-                    model.width // model.pixelsPerSquare
+            pure <| setB (model.b + delta) model
 
-                newB =
-                    clamp 1 numCols (model.b + delta)
-            in
-            pure
-                { model
-                    | b = newB
-                    , trace = euclidTrace model.a newB
-                }
+
+setA : Int -> Model -> Model
+setA a model =
+    let
+        numRows =
+            model.height // model.pixelsPerSquare
+
+        clampedA =
+            clamp 1 numRows a
+    in
+    { model | a = clampedA, trace = euclidTrace clampedA model.b }
+
+
+setB : Int -> Model -> Model
+setB b model =
+    let
+        numCols =
+            model.width // model.pixelsPerSquare
+
+        clampedB =
+            clamp 1 numCols b
+    in
+    { model | b = clampedB, trace = euclidTrace model.a clampedB }
 
 
 pure : a -> ( a, Cmd msg )
@@ -604,7 +603,6 @@ renderSvgGrid model =
                                         , SA.fill fillColor
                                         , SA.stroke strokeColor
                                         , SA.strokeWidth strokeWidth_
-                                        , onClick (CellClicked i j)
                                         , style "cursor" "pointer"
                                         ]
                                         []
@@ -617,8 +615,16 @@ renderSvgGrid model =
         , style "position" "absolute"
         , style "top" "0"
         , style "left" "0"
+        , SE.on "click" gridClickDecoder
         ]
         squares
+
+
+gridClickDecoder : Decode.Decoder Msg
+gridClickDecoder =
+    Decode.map2 GridClicked
+        (Decode.field "offsetX" Decode.float)
+        (Decode.field "offsetY" Decode.float)
 
 
 {-| Colors representing different step counts (from 1 to 10+ steps)
