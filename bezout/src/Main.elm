@@ -217,6 +217,10 @@ view model =
 
 euclidPanel : Model -> Html Msg
 euclidPanel model =
+    let
+        panelWidth =
+            280
+    in
     Html.div
         [ style "position" "fixed"
         , style "top" "10px"
@@ -229,7 +233,7 @@ euclidPanel model =
         , style "z-index" "100"
         , style "max-height" "80vh"
         , style "overflow-y" "auto"
-        , style "width" "280px"
+        , style "width" (String.fromInt panelWidth ++ "px")
         ]
         [ Html.h3
             [ style "margin-top" "0" ]
@@ -319,7 +323,7 @@ euclidPanel model =
                 , style "margin-bottom" "10px"
                 , style "border" "1px solid black"
                 , style "width" "fit-content"
-                , style "flex-wrap" "wrap"
+                , style "flex-direction" "row"
                 ]
                 (List.indexedMap
                     (\index color ->
@@ -334,9 +338,7 @@ euclidPanel model =
                                 else
                                     String.fromInt numColors ++ "+"
 
-                            squareSize =
-                                "25px"
-
+                            -- Only add border-right for non-last cells
                             borderRight =
                                 if index < numColors - 1 then
                                     style "border-right" "1px solid black"
@@ -344,13 +346,16 @@ euclidPanel model =
                                 else
                                     style "" ""
 
-                            -- Use white text for darker colors (second half of palette)
+                            -- Adjust text color based on background brightness for better contrast
                             textColor =
-                                if index >= 6 then
-                                    "white"
+                                if List.member index [ 2, 3, 6 ] then
+                                    "black"
 
                                 else
-                                    "black"
+                                    "white"
+
+                            squareSize =
+                                String.fromInt ((panelWidth - 10) // numColors) ++ "px"
                         in
                         Html.div
                             [ style "width" squareSize
@@ -407,6 +412,8 @@ renderTrace a b trace =
                             , style "text-align" "left"
                             ]
                             [ Html.text "Steps" ]
+
+                        -- TODO ensure step colors have sufficient contrast with the background
                         ]
                     ]
                 , Html.tbody []
@@ -447,6 +454,7 @@ renderTrace a b trace =
                         ++ String.fromInt b
                         ++ ") = "
                         ++ String.fromInt gcd
+                     -- TODO add results of extended euclid - Bezout coefficients
                     )
                 ]
             ]
@@ -758,12 +766,12 @@ colors =
     , "khaki"
     , "yellowgreen"
     , "mediumseagreen"
+    , "turquoise"
     , "dodgerblue"
     , "slateblue"
     , "mediumpurple"
     , "darkviolet"
-
-    -- TODO add more colors
+    , "deeppink"
     ]
 
 
