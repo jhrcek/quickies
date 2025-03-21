@@ -77,8 +77,11 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         WindowResized width height ->
-            -- TODO resizing window should clamp a and b to the new grid size
-            pure { model | width = width, height = height }
+            { model | width = width, height = height }
+                -- setA/setB to ensure they stay within the new viewport dimensions
+                |> setA model.a
+                |> setB model.b
+                |> pure
 
         GotViewport { viewport } ->
             pure
@@ -135,16 +138,23 @@ update msg model =
             pure { model | showSquareDecomposition = not model.showSquareDecomposition }
 
 
+getNumRows : Model -> Int
+getNumRows model =
+    -- +1 to avoid having white space at the edges
+    model.height // model.pixelsPerSquare + 1
+
+
+getNumCols : Model -> Int
+getNumCols model =
+    -- +1 to avoid having white space at the edges
+    model.width // model.pixelsPerSquare + 1
+
+
 setA : Int -> Model -> Model
 setA a model =
     let
-        numRows =
-            -- TODO put this and numCols in the model and update it on weight/height changes
-            -- TODO bump it up by 1 to avoid having white space at the edges
-            model.height // model.pixelsPerSquare
-
         clampedA =
-            clamp 1 numRows a
+            clamp 1 (getNumRows model) a
     in
     { model | a = clampedA, trace = euclidTrace clampedA model.b }
 
@@ -152,11 +162,8 @@ setA a model =
 setB : Int -> Model -> Model
 setB b model =
     let
-        numCols =
-            model.width // model.pixelsPerSquare
-
         clampedB =
-            clamp 1 numCols b
+            clamp 1 (getNumCols model) b
     in
     { model | b = clampedB, trace = euclidTrace model.a clampedB }
 
@@ -518,11 +525,11 @@ countEuclidSteps a b =
 renderSvgGrid : Model -> Html Msg
 renderSvgGrid model =
     let
-        numCols =
-            model.width // model.pixelsPerSquare
-
         numRows =
-            model.height // model.pixelsPerSquare
+            getNumRows model
+
+        numCols =
+            getNumCols model
 
         strokeWidth =
             "0.1"
