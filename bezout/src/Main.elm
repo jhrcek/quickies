@@ -28,10 +28,14 @@ type alias Model =
     { width : Int
     , height : Int
     , pixelsPerSquare : Int
+
+    -- TODO add String based values of a/b input to allow deleting the values completely
     , a : Int
     , b : Int
     , trace : List EuclidStep
     , showSquareDecomposition : Bool
+
+    -- TODO highlight fibonacci numbers in the grid
     }
 
 
@@ -135,6 +139,8 @@ setA : Int -> Model -> Model
 setA a model =
     let
         numRows =
+            -- TODO put this and numCols in the model and update it on weight/height changes
+            -- TODO bump it up by 1 to avoid having white space at the edges
             model.height // model.pixelsPerSquare
 
         clampedA =
@@ -380,60 +386,10 @@ renderTrace a b trace =
             gcd =
                 lastStep.b
 
-            -- Helper function to create colored numbers based on unique values
-            -- Get a list of unique numbers from the trace in sequence order
-            uniqueNumbers =
-                List.foldl
-                    (\step acc ->
-                        -- Only add values if they don't already exist in our list
-                        let
-                            newAcc =
-                                if List.member step.a acc then
-                                    acc
-
-                                else
-                                    acc ++ [ step.a ]
-
-                            newAcc2 =
-                                if List.member step.b newAcc then
-                                    newAcc
-
-                                else
-                                    newAcc ++ [ step.b ]
-
-                            newAcc3 =
-                                if step.remainder == 0 || List.member step.remainder newAcc2 then
-                                    newAcc2
-
-                                else
-                                    newAcc2 ++ [ step.remainder ]
-                        in
-                        newAcc3
-                    )
-                    []
-                    trace
-
-            getNumberIndex : Int -> Int
-            getNumberIndex number =
-                List.indexedMap Tuple.pair uniqueNumbers
-                    |> List.filter (\( _, n ) -> n == number)
-                    |> List.head
-                    |> Maybe.map Tuple.first
-                    |> Maybe.withDefault 0
-
-            getColorForNumber : Int -> String
-            getColorForNumber number =
-                let
-                    index =
-                        getNumberIndex number
-                in
-                getColor index
-
-            -- Create colored number span
-            coloredNumber : Int -> Html Msg
-            coloredNumber number =
+            coloredNumber : Int -> Int -> Html Msg
+            coloredNumber colorIdx number =
                 Html.span
-                    [ style "color" (getColorForNumber number)
+                    [ style "color" (getColor colorIdx)
                     , style "font-weight" "bold"
                     ]
                     [ Html.text (String.fromInt number) ]
@@ -454,8 +410,8 @@ renderTrace a b trace =
                         ]
                     ]
                 , Html.tbody []
-                    (List.map
-                        (\step ->
+                    (List.indexedMap
+                        (\i step ->
                             Html.tr
                                 [ style "border-bottom" "1px solid #ddd" ]
                                 [ Html.td
@@ -463,17 +419,17 @@ renderTrace a b trace =
                                     , style "font-family" "monospace"
                                     , style "font-size" "16px"
                                     ]
-                                    [ coloredNumber step.a
+                                    [ coloredNumber i step.a
                                     , Html.text " = "
                                     , Html.text (String.fromInt step.quotient)
                                     , Html.text " × "
-                                    , coloredNumber step.b
+                                    , coloredNumber (i + 1) step.b
                                     , Html.text " + "
                                     , if step.remainder == 0 then
                                         Html.text "0"
 
                                       else
-                                        coloredNumber step.remainder
+                                        coloredNumber (i + 2) step.remainder
                                     ]
                                 ]
                         )
@@ -639,6 +595,8 @@ renderSvgGrid model =
                                             y =
                                                 (i - 1) * model.pixelsPerSquare
 
+                                            -- TODO move rendering of is selected square out of this - conditional logic here slows this down
+                                            -- AND the border stroke is cut off
                                             isSelected =
                                                 i == model.a && j == model.b
 
