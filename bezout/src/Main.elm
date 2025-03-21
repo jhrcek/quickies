@@ -28,10 +28,10 @@ type alias Model =
     { width : Int
     , height : Int
     , pixelsPerSquare : Int
-
-    -- TODO add String based values of a/b input to allow deleting the values completely
     , a : Int
     , b : Int
+    , aInput : String
+    , bInput : String
     , trace : List EuclidStep
     , showSquareDecomposition : Bool
 
@@ -49,12 +49,21 @@ type alias EuclidStep =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
+    let
+        a =
+            55
+
+        b =
+            89
+    in
     ( { width = 0
       , height = 0
       , pixelsPerSquare = 10
-      , a = 55
-      , b = 89
-      , trace = euclidTrace 55 89
+      , a = a
+      , b = b
+      , aInput = String.fromInt a
+      , bInput = String.fromInt b
+      , trace = euclidTrace a b
       , showSquareDecomposition = False
       }
     , Task.perform GotViewport Dom.getViewport
@@ -100,22 +109,24 @@ update msg model =
             pure { model | pixelsPerSquare = newValue }
 
         AChanged aStr ->
-            pure <|
-                case String.toInt aStr of
-                    Just a ->
-                        setA a model
+            { model | aInput = aStr }
+                |> (case parseInput aStr (getNumRows model) of
+                        Just a ->
+                            pure << setA a
 
-                    Nothing ->
-                        model
+                        Nothing ->
+                            pure
+                   )
 
         BChanged bStr ->
-            pure <|
-                case String.toInt bStr of
-                    Just b ->
-                        setB b model
+            { model | bInput = bStr }
+                |> (case parseInput bStr (getNumCols model) of
+                        Just b ->
+                            pure << setB b
 
-                    Nothing ->
-                        model
+                        Nothing ->
+                            pure
+                   )
 
         GridClicked mouseX mouseY ->
             let
@@ -156,7 +167,11 @@ setA a model =
         clampedA =
             clamp 1 (getNumRows model) a
     in
-    { model | a = clampedA, trace = euclidTrace clampedA model.b }
+    { model
+        | a = clampedA
+        , aInput = String.fromInt clampedA
+        , trace = euclidTrace clampedA model.b
+    }
 
 
 setB : Int -> Model -> Model
@@ -165,7 +180,11 @@ setB b model =
         clampedB =
             clamp 1 (getNumCols model) b
     in
-    { model | b = clampedB, trace = euclidTrace model.a clampedB }
+    { model
+        | b = clampedB
+        , bInput = String.fromInt clampedB
+        , trace = euclidTrace model.a clampedB
+    }
 
 
 pure : a -> ( a, Cmd msg )
@@ -247,29 +266,14 @@ euclidPanel model =
             , style "color" "#666"
             , style "line-height" "1.4"
             ]
-            [ Html.text "Enter values in the fields below, click any cell in the grid, or use arrow keys (↑/↓/←/→) to select numbers." ]
+            [ Html.text "Enter values in the fields below, click any cell in the grid, or use arrow keys (↑/↓/←/→) to specify numbers." ]
         , Html.div
             [ style "display" "flex"
             , style "gap" "10px"
             , style "align-items" "center"
-            , style "margin-bottom" "10px"
             ]
-            [ Html.label [] [ Html.text "a =" ]
-            , Html.input
-                [ HA.type_ "number"
-                , HA.value (String.fromInt model.a)
-                , onInput AChanged
-                , style "width" "60px"
-                ]
-                []
-            , Html.label [] [ Html.text "b =" ]
-            , Html.input
-                [ HA.type_ "number"
-                , HA.value (String.fromInt model.b)
-                , onInput BChanged
-                , style "width" "60px"
-                ]
-                []
+            [ viewNumberInput "a" model.aInput AChanged (getNumRows model)
+            , viewNumberInput "b" model.bInput BChanged (getNumCols model)
             ]
         , renderTrace model.a model.b model.trace
         , Html.hr
@@ -315,7 +319,7 @@ euclidPanel model =
                 [ style "cursor" "pointer"
                 , Html.Events.onClick ToggleShowSquareDecomposition
                 ]
-                [ Html.text "Show steps in grid" ]
+                [ Html.text "Show steps in the grid" ]
             ]
         , Html.div []
             [ Html.p
@@ -374,6 +378,53 @@ euclidPanel model =
                             [ Html.text label ]
                     )
                     colors
+                )
+            ]
+        ]
+
+
+viewNumberInput : String -> String -> (String -> Msg) -> Int -> Html Msg
+viewNumberInput label value onChangeMsg maxValue =
+    let
+        isValid =
+            case parseInput value maxValue of
+                Just _ ->
+                    True
+
+                Nothing ->
+                    False
+    in
+    Html.div
+        [ style "width" "110px"
+        , style "flex-shrink" "0"
+        ]
+        [ Html.label [] [ Html.text (label ++ " = ") ]
+        , Html.input
+            ((if isValid then
+                identity
+
+              else
+                (::) (style "border" "2px solid red")
+             )
+                [ HA.type_ "text"
+                , HA.value value
+                , onInput onChangeMsg
+                , style "width" "60px"
+                ]
+            )
+            []
+        , Html.div
+            [ style "height" "14px"
+            , style "margin-top" "2px"
+            , style "font-size" "10px"
+            , style "color" "red"
+            ]
+            [ Html.text
+                (if isValid then
+                    ""
+
+                 else
+                    "Enter 1 - " ++ String.fromInt maxValue
                 )
             ]
         ]
@@ -624,7 +675,7 @@ renderSvgGrid model =
                 renderDecomposition model.trace model.pixelsPerSquare 0 (model.a > model.b)
 
             else
-                -- When not showing decomposition, hihglight the a×b square with a red border
+                -- When not showing decomposition, hihglight the selected a×b square with a red border
                 [ let
                     x =
                         (model.b - 1) * model.pixelsPerSquare
@@ -780,3 +831,16 @@ colorsArray =
 numColors : Int
 numColors =
     List.length colors
+
+
+parseInput : String -> Int -> Maybe Int
+parseInput input maxVal =
+    String.toInt input
+        |> Maybe.andThen
+            (\val ->
+                if 1 <= val && val <= maxVal then
+                    Just val
+
+                else
+                    Nothing
+            )
