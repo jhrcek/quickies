@@ -217,10 +217,6 @@ view model =
 
 euclidPanel : Model -> Html Msg
 euclidPanel model =
-    let
-        panelWidth =
-            280
-    in
     Html.div
         [ style "position" "fixed"
         , style "top" "10px"
@@ -233,7 +229,7 @@ euclidPanel model =
         , style "z-index" "100"
         , style "max-height" "80vh"
         , style "overflow-y" "auto"
-        , style "width" (String.fromInt panelWidth ++ "px")
+        , style "width" "280px"
         ]
         [ Html.h3
             [ style "margin-top" "0" ]
@@ -355,7 +351,7 @@ euclidPanel model =
                                     "white"
 
                             squareSize =
-                                String.fromInt ((panelWidth - 10) // numColors) ++ "px"
+                                "22px"
                         in
                         Html.div
                             [ style "width" squareSize
@@ -500,27 +496,23 @@ needs to find the GCD of two numbers. Returns 0 if either input is <= 0.
 -}
 countEuclidSteps : Int -> Int -> Int
 countEuclidSteps a b =
-    if a <= 0 || b <= 0 then
-        0
+    let
+        countSteps currentA currentB stepCount =
+            if currentB == 0 then
+                stepCount
+
+            else
+                let
+                    remainder =
+                        modBy currentB currentA
+                in
+                countSteps currentB remainder (stepCount + 1)
+    in
+    if a < b then
+        countSteps b a 0
 
     else
-        let
-            countSteps currentA currentB stepCount =
-                if currentB == 0 then
-                    stepCount
-
-                else
-                    let
-                        remainder =
-                            modBy currentB currentA
-                    in
-                    countSteps currentB remainder (stepCount + 1)
-        in
-        if a < b then
-            countSteps b a 0
-
-        else
-            countSteps a b 0
+        countSteps a b 0
 
 
 renderSvgGrid : Model -> Html Msg
@@ -603,27 +595,8 @@ renderSvgGrid model =
                                             y =
                                                 (i - 1) * model.pixelsPerSquare
 
-                                            -- TODO move rendering of is selected square out of this - conditional logic here slows this down
-                                            -- AND the border stroke is cut off
-                                            isSelected =
-                                                i == model.a && j == model.b
-
                                             fillColor =
                                                 getStepColor i j
-
-                                            strokeColor =
-                                                if isSelected then
-                                                    "red"
-
-                                                else
-                                                    "black"
-
-                                            strokeWidth_ =
-                                                if isSelected then
-                                                    "2"
-
-                                                else
-                                                    strokeWidth
                                         in
                                         Svg.rect
                                             [ SA.x (String.fromInt x)
@@ -631,24 +604,41 @@ renderSvgGrid model =
                                             , SA.width (String.fromInt model.pixelsPerSquare)
                                             , SA.height (String.fromInt model.pixelsPerSquare)
                                             , SA.fill fillColor
-                                            , SA.stroke strokeColor
-                                            , SA.strokeWidth strokeWidth_
+                                            , SA.stroke "black"
+                                            , SA.strokeWidth strokeWidth
                                             , style "cursor" "pointer"
                                             ]
                                             []
                                     )
                         )
 
-        decompositionSquares =
-            if model.showSquareDecomposition && not (List.isEmpty model.trace) then
+        decompositionSquaresOrHighlight =
+            if model.showSquareDecomposition then
                 renderDecomposition model.trace model.pixelsPerSquare 0 (model.a > model.b)
 
             else
-                []
+                -- When not showing decomposition, hihglight the a×b square with a red border
+                [ let
+                    x =
+                        (model.b - 1) * model.pixelsPerSquare
 
-        -- Combine all SVG elements
+                    y =
+                        (model.a - 1) * model.pixelsPerSquare
+                  in
+                  Svg.rect
+                    [ SA.x (String.fromInt x)
+                    , SA.y (String.fromInt y)
+                    , SA.width (String.fromInt model.pixelsPerSquare)
+                    , SA.height (String.fromInt model.pixelsPerSquare)
+                    , SA.fill "none"
+                    , SA.stroke "red"
+                    , SA.strokeWidth "3"
+                    ]
+                    []
+                ]
+
         allElements =
-            squares ++ decompositionSquares
+            squares ++ decompositionSquaresOrHighlight
     in
     Svg.svg
         [ SA.width (String.fromInt model.width)
