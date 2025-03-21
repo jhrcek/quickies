@@ -106,7 +106,11 @@ update msg model =
                         |> Maybe.withDefault model.pixelsPerSquare
                         |> clamp minPixelsPerSquare maxPixelsPerSquare
             in
-            pure { model | pixelsPerSquare = newValue }
+            { model | pixelsPerSquare = newValue }
+                -- setA/setB to ensure they stay within the new viewport dimensions
+                |> setA model.a
+                |> setB model.b
+                |> pure
 
         AChanged aStr ->
             { model | aInput = aStr }
@@ -258,10 +262,12 @@ euclidPanel model =
         , style "width" "280px"
         ]
         [ Html.h3
-            [ style "margin-top" "0" ]
+            [ style "margin-top" "0px"
+            , style "margin-bottom" "5px"
+            ]
             [ Html.text "Euclid's Algorithm" ]
         , Html.p
-            [ style "margin" "0 0 10px 0"
+            [ style "margin" "0 0 5px 0"
             , style "font-size" "12px"
             , style "color" "#666"
             , style "line-height" "1.4"
@@ -275,15 +281,8 @@ euclidPanel model =
             [ viewNumberInput "a" model.aInput AChanged (getNumRows model)
             , viewNumberInput "b" model.bInput BChanged (getNumCols model)
             ]
-        , renderTrace model.a model.b model.trace
-        , Html.hr
-            [ style "margin" "15px 0"
-            , style "border" "0"
-            , style "border-top" "1px solid #ccc"
-            ]
-            []
         , Html.h4
-            [ style "margin" "10px 0" ]
+            [ style "margin" "0 10px 10px 0px" ]
             [ Html.text "Settings" ]
         , Html.div
             [ style "display" "flex"
@@ -379,6 +378,7 @@ euclidPanel model =
                     )
                     colors
                 )
+            , renderTrace model.a model.b model.trace
             ]
         ]
 
@@ -406,7 +406,8 @@ viewNumberInput label value onChangeMsg maxValue =
               else
                 (::) (style "border" "2px solid red")
              )
-                [ HA.type_ "text"
+                [ HA.type_ "number"
+                , HA.min "1"
                 , HA.value value
                 , onInput onChangeMsg
                 , style "width" "60px"
