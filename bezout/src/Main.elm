@@ -350,7 +350,6 @@ euclidPanel model =
                              , style "height" "25px"
                              , style "color" (textColor index)
                              , style "background-color" color
-
                              ]
                                 ++ coloredBoxAttrs
                             )
@@ -422,90 +421,93 @@ viewNumberInput label value onChangeMsg maxValue =
 
 renderTrace : Int -> Int -> List EuclidStep -> Html Msg
 renderTrace a b trace =
-    if List.isEmpty trace then
-        Html.div [] [ Html.text "Please enter valid positive integers" ]
-
-    else
-        let
-            lastStep =
-                List.drop (List.length trace - 1) trace
-                    |> List.head
-                    |> Maybe.withDefault { a = 0, b = 0, quotient = 0, remainder = 0 }
-
-            gcd =
-                lastStep.b
-
-            coloredNumber : Int -> Int -> Html Msg
-            coloredNumber colorIdx number =
-                Html.span
-                    ([ style "color" (textColor colorIdx)
-                     , style "background-color" (getColor colorIdx)
-                     , style "padding" "2px 6px"
-                     , style "display" "inline-block"
-                     , style "margin" "0 2px"
-                     ]
-                        ++ coloredBoxAttrs
-                    )
-                    [ Html.text (String.fromInt number) ]
-        in
-        Html.div []
-            [ Html.table
-                [ style "border-collapse" "collapse"
-                , style "width" "100%"
-                , style "line-height" "1.5"
-                ]
-                [ Html.thead []
-                    [ Html.tr [ style "border-bottom" "2px solid #333" ]
-                        [ Html.th
-                            [ style "padding" "3px"
-                            , style "text-align" "left"
-                            ]
-                            [ Html.text "Steps" ]
-                        ]
-                    ]
-                , Html.tbody []
-                    (List.indexedMap
-                        (\i step ->
-                            Html.tr
-                                [ style "border-bottom" "1px solid #ddd" ]
-                                [ Html.td
-                                    [ style "padding" "3px 8px"
-                                    , style "font-family" "monospace"
-                                    , style "font-size" "16px"
-                                    ]
-                                    [ coloredNumber (i - 1) step.a
-                                    , Html.text " = "
-                                    , Html.text (String.fromInt step.quotient)
-                                    , Html.text " × "
-                                    , coloredNumber i step.b
-                                    , Html.text " + "
-                                    , if step.remainder == 0 then
-                                        Html.text "0"
-
-                                      else
-                                        coloredNumber (i + 1) step.remainder
-                                    ]
-                                ]
-                        )
-                        trace
-                    )
-                ]
-            , Html.p
-                [ style "margin-top" "8px"
-                , style "font-weight" "bold"
-                ]
-                [ Html.text
-                    ("gcd("
-                        ++ String.fromInt a
-                        ++ ", "
-                        ++ String.fromInt b
-                        ++ ") = "
-                        ++ String.fromInt gcd
-                     -- TODO add results of extended euclid - Bezout coefficients
-                     -- TODO display the gcd result using the same colored box that the result number in the steps table uses
-                    )
-                ]
+    let
+        ( gcd, x, y ) =
+            extendedGCD (max a b) (min a b)
+    in
+    Html.div []
+        [ Html.table
+            [ style "border-collapse" "collapse"
+            , style "width" "100%"
+            , style "line-height" "1.5"
             ]
+            [ Html.thead []
+                [ Html.tr [ style "border-bottom" "2px solid #333" ]
+                    [ Html.th
+                        [ style "padding" "3px"
+                        , style "text-align" "left"
+                        ]
+                        [ Html.text "Steps" ]
+                    ]
+                ]
+            , Html.tbody []
+                (List.indexedMap
+                    (\i step ->
+                        Html.tr
+                            [ style "border-bottom" "1px solid #ddd" ]
+                            [ Html.td
+                                [ style "padding" "3px 8px"
+                                , style "font-family" "monospace"
+                                , style "font-size" "16px"
+                                ]
+                                [ coloredNumber (i - 1) step.a
+                                , Html.text " = "
+                                , Html.text (String.fromInt step.quotient)
+                                , Html.text " × "
+                                , coloredNumber i step.b
+                                , Html.text " + "
+                                , if step.remainder == 0 then
+                                    Html.text "0"
+
+                                  else
+                                    coloredNumber (i + 1) step.remainder
+                                ]
+                            ]
+                    )
+                    trace
+                )
+            ]
+        , Html.p
+            [ style "margin-top" "8px"
+            , style "font-weight" "bold"
+            ]
+            [ Html.text "gcd("
+            , coloredNumber -1 (max a b)
+            , Html.text ", "
+            , coloredNumber 0 (min a b)
+            , Html.text ") = "
+            , coloredNumber (List.length trace - 1) gcd
+
+            -- TODO add results of extended euclid - Bezout coefficients
+            --, Html.div [] [ Html.text (Debug.toString (extendedGCD a b)) ]
+            ]
+        , Html.h4
+            [ style "margin" "0 10px 10px 0px" ]
+            [ Html.text "Bézout's identity" ]
+        , Html.div []
+            [ Html.text (String.fromInt x ++ " × ")
+            , coloredNumber -1 (max a b)
+            , Html.text " + "
+            , Html.text (String.fromInt y ++ " × ")
+            , coloredNumber 0 (min a b)
+            , Html.text " = "
+            , coloredNumber (List.length trace - 1) gcd
+            ]
+        ]
+
+
+coloredNumber : Int -> Int -> Html Msg
+coloredNumber colorIdx number =
+    Html.span
+        ([ style "color" (textColor colorIdx)
+         , style "background-color" (getColor colorIdx)
+         , style "padding" "2px 6px"
+         , style "display" "inline-block"
+         , style "margin" "0 2px"
+         ]
+            ++ coloredBoxAttrs
+        )
+        [ Html.text (String.fromInt number) ]
 
 
 {-| This expects input is only ever positive ints
@@ -565,6 +567,20 @@ countEuclidSteps a b =
 
     else
         countSteps a b 0
+
+
+extendedGCD : Int -> Int -> ( Int, Int, Int )
+extendedGCD a b =
+    case b of
+        0 ->
+            ( a, 1, 0 )
+
+        _ ->
+            let
+                ( g, x, y ) =
+                    extendedGCD b (modBy b a)
+            in
+            ( g, y, x - (a // b) * y )
 
 
 renderSvgGrid : Model -> Html Msg
@@ -786,7 +802,7 @@ getColor colorIdx =
             color
 
         Nothing ->
-            "none"
+            "aliceblue"
 
 
 {-| Text color that has sufficient constrast against the bg color (viz getColor) with given index
