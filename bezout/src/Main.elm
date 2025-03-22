@@ -256,7 +256,6 @@ euclidPanel model =
         , style "border-radius" "5px"
         , style "box-shadow" "0 2px 4px rgba(0, 0, 0, 0.2)"
         , style "font-family" "sans-serif"
-        , style "z-index" "100"
         , style "max-height" "80vh"
         , style "overflow-y" "auto"
         , style "width" "280px"
@@ -270,7 +269,6 @@ euclidPanel model =
             [ style "margin" "0 0 5px 0"
             , style "font-size" "12px"
             , style "color" "#666"
-            , style "line-height" "1.4"
             ]
             [ Html.text "Enter values in the fields below, click any cell in the grid, or use arrow keys (↑/↓/←/→) to specify numbers." ]
         , Html.div
@@ -293,7 +291,7 @@ euclidPanel model =
                 [ style "margin-right" "8px" ]
                 [ Html.text "Pixels per square:" ]
             , Html.input
-                [ HA.type_ "number"
+                [ HA.type_ "number" -- TODO somehow prevent default input behavior (clicking up/down arrows should change the value of a, not of the selected input)
                 , HA.min (String.fromInt minPixelsPerSquare)
                 , HA.max (String.fromInt maxPixelsPerSquare)
                 , HA.value (String.fromInt model.pixelsPerSquare)
@@ -323,13 +321,13 @@ euclidPanel model =
         , Html.div []
             [ Html.p
                 [ style "margin" "10px 0 5px 0" ]
-                [ Html.text "Number of steps in Euclid's algorithm:" ]
+                [ Html.text "Number of Euclidean divisions:" ]
             , Html.div
                 [ style "display" "flex"
-                , style "margin-bottom" "10px"
-                , style "border" "1px solid black"
-                , style "width" "fit-content"
                 , style "flex-direction" "row"
+                , style "flex-wrap" "wrap"
+                , style "gap" "4px"
+                , style "margin-bottom" "10px"
                 ]
                 (List.indexedMap
                     (\index color ->
@@ -343,37 +341,19 @@ euclidPanel model =
 
                                 else
                                     String.fromInt numColors ++ "+"
-
-                            -- Only add border-right for non-last cells
-                            borderRight =
-                                if index < numColors - 1 then
-                                    style "border-right" "1px solid black"
-
-                                else
-                                    style "" ""
-
-                            -- Adjust text color based on background brightness for better contrast
-                            textColor =
-                                if List.member index [ 2, 3, 6 ] then
-                                    "black"
-
-                                else
-                                    "white"
-
-                            squareSize =
-                                "22px"
                         in
                         Html.div
-                            [ style "width" squareSize
-                            , style "height" squareSize
-                            , style "background-color" color
-                            , style "display" "flex"
-                            , style "justify-content" "center"
-                            , style "align-items" "center"
-                            , style "font-weight" "bold"
-                            , style "color" textColor
-                            , borderRight
-                            ]
+                            ([ style "display" "flex"
+                             , style "justify-content" "center"
+                             , style "align-items" "center"
+                             , style "width" "25px"
+                             , style "height" "25px"
+                             , style "color" (textColor index)
+                             , style "background-color" color
+
+                             ]
+                                ++ coloredBoxAttrs
+                            )
                             [ Html.text label ]
                     )
                     colors
@@ -381,6 +361,15 @@ euclidPanel model =
             , renderTrace model.a model.b model.trace
             ]
         ]
+
+
+coloredBoxAttrs : List (Html.Attribute Msg)
+coloredBoxAttrs =
+    [ style "box-shadow" "0 1px 2px rgba(0,0,0,0.5)"
+    , style "border-radius" "3px"
+    , style "font-size" "14px"
+    , style "font-weight" "bold"
+    ]
 
 
 viewNumberInput : String -> String -> (String -> Msg) -> Int -> Html Msg
@@ -417,7 +406,7 @@ viewNumberInput label value onChangeMsg maxValue =
         , Html.div
             [ style "height" "14px"
             , style "margin-top" "2px"
-            , style "font-size" "10px"
+            , style "font-size" "12px"
             , style "color" "red"
             ]
             [ Html.text
@@ -449,16 +438,21 @@ renderTrace a b trace =
             coloredNumber : Int -> Int -> Html Msg
             coloredNumber colorIdx number =
                 Html.span
-                    [ style "color" (getColor colorIdx)
-                    , style "font-weight" "bold"
-                    ]
+                    ([ style "color" (textColor colorIdx)
+                     , style "background-color" (getColor colorIdx)
+                     , style "padding" "2px 6px"
+                     , style "display" "inline-block"
+                     , style "margin" "0 2px"
+                     ]
+                        ++ coloredBoxAttrs
+                    )
                     [ Html.text (String.fromInt number) ]
         in
         Html.div []
             [ Html.table
                 [ style "border-collapse" "collapse"
                 , style "width" "100%"
-                , style "line-height" "1.2"
+                , style "line-height" "1.5"
                 ]
                 [ Html.thead []
                     [ Html.tr [ style "border-bottom" "2px solid #333" ]
@@ -467,8 +461,6 @@ renderTrace a b trace =
                             , style "text-align" "left"
                             ]
                             [ Html.text "Steps" ]
-
-                        -- TODO ensure step colors have sufficient contrast with the background
                         ]
                     ]
                 , Html.tbody []
@@ -481,17 +473,17 @@ renderTrace a b trace =
                                     , style "font-family" "monospace"
                                     , style "font-size" "16px"
                                     ]
-                                    [ coloredNumber i step.a
+                                    [ coloredNumber (i - 1) step.a
                                     , Html.text " = "
                                     , Html.text (String.fromInt step.quotient)
                                     , Html.text " × "
-                                    , coloredNumber (i + 1) step.b
+                                    , coloredNumber i step.b
                                     , Html.text " + "
                                     , if step.remainder == 0 then
                                         Html.text "0"
 
                                       else
-                                        coloredNumber (i + 2) step.remainder
+                                        coloredNumber (i + 1) step.remainder
                                     ]
                                 ]
                         )
@@ -510,6 +502,7 @@ renderTrace a b trace =
                         ++ ") = "
                         ++ String.fromInt gcd
                      -- TODO add results of extended euclid - Bezout coefficients
+                     -- TODO display the gcd result using the same colored box that the result number in the steps table uses
                     )
                 ]
             ]
@@ -590,10 +583,10 @@ renderSvgGrid model =
         getStepColor : Int -> Int -> String
         getStepColor i j =
             let
-                colorIndex =
+                colorIdx =
                     countEuclidSteps i j - 1
             in
-            getColor colorIndex
+            getColor colorIdx
 
         -- Create the base grid squares
         squares =
@@ -787,13 +780,25 @@ renderDecomposition steps pixelsPerSquare level isVertical =
 
 
 getColor : Int -> String
-getColor i =
-    case Array.get i colorsArray of
+getColor colorIdx =
+    case Array.get colorIdx colorsArray of
         Just color ->
             color
 
         Nothing ->
-            "white"
+            "none"
+
+
+{-| Text color that has sufficient constrast against the bg color (viz getColor) with given index
+-}
+textColor : Int -> String
+textColor colorIdx =
+    -- -1 is hack to render the first number in the first step in black, without background
+    if List.member colorIdx [ -1, 2, 3, 6 ] then
+        "black"
+
+    else
+        "white"
 
 
 gridClickDecoder : Decode.Decoder Msg
