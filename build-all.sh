@@ -14,6 +14,7 @@ projects=(
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
   ["covariance"]="Covariance intuition builder"
+  ["eulers-totient"]="Toy game for practicing steps to calculate Euler's totient function"
   ["elm-cube"]="3D cube visualization"
   ["hexagon"]="Pascal's triangle in hexagonal grid"
   ["IEEE-754"]="IEEE-754 floating point visualizer"

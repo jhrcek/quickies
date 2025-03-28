@@ -477,9 +477,6 @@ renderTrace a b trace =
             , coloredNumber 0 (min a b)
             , Html.text ") = "
             , coloredNumber (List.length trace - 1) gcd
-
-            -- TODO add results of extended euclid - Bezout coefficients
-            --, Html.div [] [ Html.text (Debug.toString (extendedGCD a b)) ]
             ]
         , Html.h4
             [ style "margin" "0 10px 10px 0px" ]
