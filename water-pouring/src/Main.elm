@@ -7,8 +7,14 @@ import Html.Events exposing (onClick, onInput)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgAttr
 
+
+
 -- TODO remember already visited states and highlight them when selecting next state
 -- TODO add "next state" buttons to diagrams
+-- TODO add undo
+-- TODO add reset
+
+
 type alias Model =
     { -- User Input
       capacityAString : String
@@ -291,7 +297,7 @@ viewInput labelText valueStr msgConstructor minVal maxVal =
 viewSteps : Model -> Html Msg
 viewSteps model =
     Html.div [ HA.class "steps-section" ]
-        [ Html.h2 [] [ Html.text "Steps Taken:" ]
+        [ Html.h2 [] [ Html.text "Steps Taken" ]
         , if List.isEmpty model.steps then
             Html.text "No steps taken yet."
 
@@ -335,7 +341,7 @@ stepToString step =
 viewControls : Model -> Html Msg
 viewControls model =
     Html.div [ HA.class "controls" ]
-        [ Html.h2 [] [ Html.text "Available Moves:" ]
+        [ Html.h2 [] [ Html.text "Available Moves" ]
         , viewActionButton "Fill A" FillA (canFillA model) model
         , viewActionButton "Fill B" FillB (canFillB model) model
         , viewActionButton "Empty A" EmptyA (canEmptyA model) model
@@ -402,7 +408,7 @@ canTransferBA model =
 viewCurrentState : Model -> Html Msg
 viewCurrentState model =
     Html.div [ HA.class "current-state" ]
-        [ Html.h2 [] [ Html.text "Current State:" ]
+        [ Html.h2 [] [ Html.text "Current State" ]
         , Html.text ("Container A: " ++ String.fromInt model.amountA ++ " / " ++ String.fromInt model.capacityA)
         , Html.text (" | Container B: " ++ String.fromInt model.amountB ++ " / " ++ String.fromInt model.capacityB)
         , if model.amountA == model.targetAmount || model.amountB == model.targetAmount then
@@ -869,15 +875,36 @@ viewTriangularGrid model =
         targetStates : List (Svg Msg)
         targetStates =
             let
-                -- States where either jug contains the target amount
+                -- Only consider states on the edges of the grid where target amount is achieved
                 states =
-                    List.range 0 capA
-                        |> List.concatMap
-                            (\a ->
-                                List.range 0 capB
-                                    |> List.filter (\b -> a == model.targetAmount || b == model.targetAmount)
-                                    |> List.map (\b -> ( a, b ))
-                            )
+                    -- Left edge (a = 0) where b = target
+                    (if model.targetAmount <= capB then
+                        [ ( 0, model.targetAmount ) ]
+
+                     else
+                        []
+                    )
+                        -- Bottom edge (b = 0) where a = target
+                        ++ (if model.targetAmount <= capA then
+                                [ ( model.targetAmount, 0 ) ]
+
+                            else
+                                []
+                           )
+                        -- Right edge (a = capA) where b = target
+                        ++ (if model.targetAmount <= capB then
+                                [ ( capA, model.targetAmount ) ]
+
+                            else
+                                []
+                           )
+                        -- Top edge (b = capB) where a = target
+                        ++ (if model.targetAmount <= capA then
+                                [ ( model.targetAmount, capB ) ]
+
+                            else
+                                []
+                           )
             in
             states
                 |> List.map
