@@ -7,7 +7,8 @@ import Html.Events exposing (onClick, onInput)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgAttr
 
-
+-- TODO remember already visited states and highlight them when selecting next state
+-- TODO add "next state" buttons to diagrams
 type alias Model =
     { -- User Input
       capacityAString : String
