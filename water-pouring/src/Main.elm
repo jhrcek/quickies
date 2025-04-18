@@ -11,8 +11,8 @@ import Svg.Attributes as SvgAttr
 
 -- TODO remember already visited states and highlight them when selecting next state
 -- TODO add "next state" buttons to diagrams
--- TODO add undo
 -- TODO add reset
+-- TODO fix highlighting of target state(s)
 
 
 type alias Model =
@@ -80,6 +80,7 @@ type Msg
     | UpdateCapacityB String
     | UpdateTarget String
     | PerformStep Step
+    | Undo
 
 
 update : Msg -> Model -> Model
@@ -96,6 +97,51 @@ update msg model =
 
         PerformStep step ->
             performStep step model
+
+        Undo ->
+            let
+                -- drop the latest step
+                newSteps =
+                    case model.steps of
+                        _ :: rest ->
+                            rest
+
+                        [] ->
+                            []
+
+                -- replay remaining steps from (0,0)
+                applyStep step ( a, b ) =
+                    case step of
+                        FillA ->
+                            ( model.capacityA, b )
+
+                        FillB ->
+                            ( a, model.capacityB )
+
+                        EmptyA ->
+                            ( 0, b )
+
+                        EmptyB ->
+                            ( a, 0 )
+
+                        TransferAB ->
+                            let
+                                t =
+                                    Basics.min a (model.capacityB - b)
+                            in
+                            ( a - t, b + t )
+
+                        TransferBA ->
+                            let
+                                t =
+                                    Basics.min b (model.capacityA - a)
+                            in
+                            ( a + t, b - t )
+
+                ( newA, newB ) =
+                    List.foldr applyStep ( 0, 0 ) newSteps
+            in
+            { model | steps = newSteps, amountA = newA, amountB = newB }
 
 
 
@@ -298,6 +344,12 @@ viewSteps : Model -> Html Msg
 viewSteps model =
     Html.div [ HA.class "steps-section" ]
         [ Html.h2 [] [ Html.text "Steps Taken" ]
+        , Html.button
+            [ onClick Undo
+            , HA.disabled (List.isEmpty model.steps)
+            , HA.class "action-button"
+            ]
+            [ Html.text "Undo" ]
         , if List.isEmpty model.steps then
             Html.text "No steps taken yet."
 
