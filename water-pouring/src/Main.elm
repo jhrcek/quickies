@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events exposing (onClick, onInput)
+import Set exposing (Set)
 import Svg exposing (Svg)
 import Svg.Attributes as SvgAttr
 
@@ -270,6 +271,9 @@ view model =
             , Html.div [ HA.class "right-column" ]
                 [ viewSteps model ]
             ]
+        , Html.h2 [ HA.class "section-title" ] [ Html.text "State Space Graph (DOT)" ]
+        , Html.pre [ HA.style "border" "1px solid #ccc", HA.style "padding" "10px", HA.style "background-color" "#f5f5f5", HA.style "white-space" "pre-wrap", HA.style "word-wrap" "break-word" ]
+            [ Html.text (stateSpaceToDot model) ]
         ]
 
 
@@ -334,6 +338,131 @@ viewStepItem : Int -> Step -> Html Msg
 viewStepItem index step =
     Html.div [ HA.class "step-item" ]
         [ Html.text (String.fromInt (index + 1) ++ ". " ++ stepToString step) ]
+
+
+
+-- STATE SPACE GRAPH GENERATION
+
+
+isStepValid : Int -> Int -> ( Int, Int ) -> Step -> Bool
+isStepValid capA capB ( a, b ) step =
+    case step of
+        FillA ->
+            a < capA
+
+        FillB ->
+            b < capB
+
+        EmptyA ->
+            a > 0
+
+        EmptyB ->
+            b > 0
+
+        TransferAB ->
+            a > 0 && b < capB
+
+        TransferBA ->
+            b > 0 && a < capA
+
+
+exploreStates : Int -> Int -> ( Set ( Int, Int ), List ( ( Int, Int ), Step, ( Int, Int ) ) )
+exploreStates capA capB =
+    let
+        allSteps =
+            [ FillA, FillB, EmptyA, EmptyB, TransferAB, TransferBA ]
+
+        -- queue: states to visit
+        -- visited: states already visited
+        -- edges: accumulated edges ((from_state), step, (to_state))
+        go queue visited edges =
+            case queue of
+                [] ->
+                    -- No more states to visit
+                    ( visited, edges )
+
+                currentState :: restQueue ->
+                    if Set.member currentState visited then
+                        -- Already visited, skip
+                        go restQueue visited edges
+
+                    else
+                        let
+                            newVisited =
+                                Set.insert currentState visited
+
+                            -- Find valid next steps and resulting states
+                            validTransitions =
+                                allSteps
+                                    |> List.filter (isStepValid capA capB currentState)
+                                    |> List.map
+                                        (\step ->
+                                            let
+                                                nextState =
+                                                    applyStep capA capB step currentState
+                                            in
+                                            ( currentState, step, nextState )
+                                        )
+
+                            newEdges =
+                                validTransitions ++ edges
+
+                            -- Add only unvisited neighbors to the queue
+                            neighborsToVisit =
+                                validTransitions
+                                    |> List.map (\( _, _, nextState ) -> nextState)
+                                    |> List.filter (\state -> not (Set.member state newVisited))
+
+                            newQueue =
+                                restQueue ++ neighborsToVisit
+                        in
+                        go newQueue newVisited newEdges
+    in
+    go [ ( 0, 0 ) ] Set.empty []
+
+
+
+-- Start BFS from (0,0)
+
+
+stateSpaceToDot : Model -> String
+stateSpaceToDot model =
+    let
+        ( allStatesSet, allEdges ) =
+            exploreStates model.capacityA model.capacityB
+
+        allStatesList =
+            Set.toList allStatesSet
+
+        -- Node definitions
+        nodeId ( a, b ) =
+            String.fromInt a ++ "_" ++ String.fromInt b
+
+        nodeToString ( a, b ) =
+            "\"" ++ nodeId ( a, b ) ++ "\""
+
+        nodeLabel ( a, b ) =
+            "\"(" ++ String.fromInt a ++ "," ++ String.fromInt b ++ ")\""
+
+        nodeDefs =
+            allStatesList
+                |> List.map (\state -> nodeToString state ++ " [label=" ++ nodeLabel state ++ "];")
+                |> String.join "\n  "
+
+        -- Edge definitions
+        edgeToString ( fromState, step, toState ) =
+            nodeToString fromState ++ " -> " ++ nodeToString toState ++ " [label=\"" ++ stepToString step ++ "\"];"
+
+        edgeDefs =
+            allEdges
+                |> List.map edgeToString
+                |> String.join "\n  "
+    in
+    "digraph G {\n  rankdir=LR;\n  node [shape=circle];\n\n  // Nodes\n  "
+        ++ nodeDefs
+        ++ "\n\n  // Edges\n  "
+        ++ edgeDefs
+        ++ "\n}"
 
 
 stepToString : Step -> String
