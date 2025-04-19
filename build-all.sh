@@ -20,6 +20,7 @@ projects=(
   ["IEEE-754"]="IEEE-754 floating point visualizer"
   ["sampling"]="Random sampling toy"
   ["sampling-weighted"]="Weighted random sampling toy"
+  ["water-pouring"]="Water pouring puzzle solver"
 )
 
 # Initialize root index.html with header
