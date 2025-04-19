@@ -12,7 +12,6 @@ import Svg.Attributes as SvgAttr
 -- TODO remember already visited states and highlight them when selecting next state
 -- TODO add "next state" buttons to diagrams
 -- TODO add reset
--- TODO fix highlighting of target state(s)
 
 
 type alias Model =
@@ -28,34 +27,31 @@ type alias Model =
     , targetAmount : Int
     , amountA : Int
     , amountB : Int
-    , steps : List Step -- Steps are stored in reverse order (newest first)
+
+    -- history: holds steps in reverse order (most recent first) + amountA/B before the step
+    , steps : List ( Int, Int, Step )
     }
-
-
-initialCapacityA : Int
-initialCapacityA =
-    5
-
-
-initialCapacityB : Int
-initialCapacityB =
-    3
-
-
-initialTargetAmount : Int
-initialTargetAmount =
-    4
 
 
 init : Model
 init =
-    { capacityAString = String.fromInt initialCapacityA
-    , capacityBString = String.fromInt initialCapacityB
-    , targetAmountString = String.fromInt initialTargetAmount
+    let
+        a =
+            5
+
+        b =
+            3
+
+        t =
+            4
+    in
+    { capacityAString = String.fromInt a
+    , capacityBString = String.fromInt b
+    , targetAmountString = String.fromInt t
     , inputError = Nothing
-    , capacityA = initialCapacityA
-    , capacityB = initialCapacityB
-    , targetAmount = initialTargetAmount
+    , capacityA = a
+    , capacityB = b
+    , targetAmount = t
     , amountA = 0
     , amountB = 0
     , steps = []
@@ -71,10 +67,6 @@ type Step
     | TransferBA
 
 
-
--- UPDATE
-
-
 type Msg
     = UpdateCapacityA String
     | UpdateCapacityB String
@@ -87,10 +79,10 @@ update : Msg -> Model -> Model
 update msg model =
     case msg of
         UpdateCapacityA str ->
-            handleInputUpdate str (\m val -> { m | capacityA = val }) (\m s -> { m | capacityAString = s }) model
+            handleInputUpdate str (\val m -> { m | capacityA = val }) (\s m -> { m | capacityAString = s }) model
 
         UpdateCapacityB str ->
-            handleInputUpdate str (\m val -> { m | capacityB = val }) (\m s -> { m | capacityBString = s }) model
+            handleInputUpdate str (\val m -> { m | capacityB = val }) (\s m -> { m | capacityBString = s }) model
 
         UpdateTarget str ->
             handleTargetUpdate str model
@@ -100,59 +92,60 @@ update msg model =
 
         Undo ->
             let
-                -- drop the latest step
-                newSteps =
+                ( newA, newB, newSteps ) =
                     case model.steps of
-                        _ :: rest ->
-                            rest
+                        ( prevA, prevB, _ ) :: restSteps ->
+                            ( prevA, prevB, restSteps )
 
                         [] ->
-                            []
-
-                -- replay remaining steps from (0,0)
-                applyStep step ( a, b ) =
-                    case step of
-                        FillA ->
-                            ( model.capacityA, b )
-
-                        FillB ->
-                            ( a, model.capacityB )
-
-                        EmptyA ->
-                            ( 0, b )
-
-                        EmptyB ->
-                            ( a, 0 )
-
-                        TransferAB ->
-                            let
-                                t =
-                                    Basics.min a (model.capacityB - b)
-                            in
-                            ( a - t, b + t )
-
-                        TransferBA ->
-                            let
-                                t =
-                                    Basics.min b (model.capacityA - a)
-                            in
-                            ( a + t, b - t )
-
-                ( newA, newB ) =
-                    List.foldr applyStep ( 0, 0 ) newSteps
+                            ( 0, 0, [] )
             in
-            { model | steps = newSteps, amountA = newA, amountB = newB }
+            { model
+                | steps = newSteps
+                , amountA = newA
+                , amountB = newB
+            }
+
+
+applyStep : Int -> Int -> Step -> ( Int, Int ) -> ( Int, Int )
+applyStep capacityA capacityB step ( a, b ) =
+    case step of
+        FillA ->
+            ( capacityA, b )
+
+        FillB ->
+            ( a, capacityB )
+
+        EmptyA ->
+            ( 0, b )
+
+        EmptyB ->
+            ( a, 0 )
+
+        TransferAB ->
+            let
+                t =
+                    Basics.min a (capacityB - b)
+            in
+            ( a - t, b + t )
+
+        TransferBA ->
+            let
+                t =
+                    Basics.min b (capacityA - a)
+            in
+            ( a + t, b - t )
 
 
 
 -- Helper to handle capacity input updates, validation, and reset
 
 
-handleInputUpdate : String -> (Model -> Int -> Model) -> (Model -> String -> Model) -> Model -> Model
+handleInputUpdate : String -> (Int -> Model -> Model) -> (String -> Model -> Model) -> Model -> Model
 handleInputUpdate str updateIntValue updateStrValue model =
     let
         setterWithString =
-            updateStrValue model str
+            updateStrValue str model
 
         result =
             case String.toInt str of
@@ -161,7 +154,9 @@ handleInputUpdate str updateIntValue updateStrValue model =
                         -- Reset simulation on capacity change
                         let
                             newModelBase =
-                                updateStrValue (updateIntValue model val) str
+                                model
+                                    |> updateIntValue val
+                                    |> updateStrValue str
                                     |> resetSimulation
 
                             -- Revalidate target with new capacities
@@ -238,53 +233,24 @@ validateTarget model =
 
 resetSimulation : Model -> Model
 resetSimulation model =
-    { model | amountA = 0, amountB = 0, steps = [] }
-
-
-
--- Calculate the new state after performing a step
+    { model
+        | amountA = 0
+        , amountB = 0
+        , steps = []
+    }
 
 
 performStep : Step -> Model -> Model
 performStep step model =
     let
         ( newAmountA, newAmountB ) =
-            case step of
-                FillA ->
-                    ( model.capacityA, model.amountB )
-
-                FillB ->
-                    ( model.amountA, model.capacityB )
-
-                EmptyA ->
-                    ( 0, model.amountB )
-
-                EmptyB ->
-                    ( model.amountA, 0 )
-
-                TransferAB ->
-                    let
-                        transferAmount =
-                            Basics.min model.amountA (model.capacityB - model.amountB)
-                    in
-                    ( model.amountA - transferAmount, model.amountB + transferAmount )
-
-                TransferBA ->
-                    let
-                        transferAmount =
-                            Basics.min model.amountB (model.capacityA - model.amountA)
-                    in
-                    ( model.amountA + transferAmount, model.amountB - transferAmount )
+            applyStep model.capacityA model.capacityB step ( model.amountA, model.amountB )
     in
     { model
         | amountA = newAmountA
         , amountB = newAmountB
-        , steps = step :: model.steps -- Add step to the front (reverse order)
+        , steps = ( model.amountA, model.amountB, step ) :: model.steps
     }
-
-
-
--- VIEW
 
 
 view : Model -> Html Msg
@@ -355,8 +321,10 @@ viewSteps model =
 
           else
             Html.div [ HA.class "steps-list" ]
-                (List.reverse model.steps
-                    -- Show in chronological order
+                (model.steps
+                    |> List.map (\( _, _, s ) -> s)
+                    -- show in chronological order
+                    |> List.reverse
                     |> List.indexedMap viewStepItem
                 )
         ]
@@ -394,23 +362,23 @@ viewControls : Model -> Html Msg
 viewControls model =
     Html.div [ HA.class "controls" ]
         [ Html.h2 [] [ Html.text "Available Moves" ]
-        , viewActionButton "Fill A" FillA (canFillA model) model
-        , viewActionButton "Fill B" FillB (canFillB model) model
-        , viewActionButton "Empty A" EmptyA (canEmptyA model) model
-        , viewActionButton "Empty B" EmptyB (canEmptyB model) model
-        , viewActionButton "Pour A to B" TransferAB (canTransferAB model) model
-        , viewActionButton "Pour B to A" TransferBA (canTransferBA model) model
+        , viewActionButton FillA (canFillA model) model
+        , viewActionButton FillB (canFillB model) model
+        , viewActionButton EmptyA (canEmptyA model) model
+        , viewActionButton EmptyB (canEmptyB model) model
+        , viewActionButton TransferAB (canTransferAB model) model
+        , viewActionButton TransferBA (canTransferBA model) model
         ]
 
 
-viewActionButton : String -> Step -> Bool -> Model -> Html Msg
-viewActionButton label step enabled model =
+viewActionButton : Step -> Bool -> Model -> Html Msg
+viewActionButton step enabled model =
     Html.button
         [ onClick (PerformStep step)
         , HA.disabled (not enabled || isJust model.inputError) -- Also disable if inputs are invalid
         , HA.class "action-button"
         ]
-        [ Html.text label ]
+        [ Html.text (stepToString step) ]
 
 
 isJust : Maybe a -> Bool
@@ -596,13 +564,10 @@ viewContainers aCapacity aCurrent bCapacity bCurrent =
 
 
 viewTriangularGrid : Model -> Svg Msg
-viewTriangularGrid model =
+viewTriangularGrid ({ capacityA, capacityB } as model) =
     let
-        capA =
-            model.capacityA
-
-        capB =
-            model.capacityB
+        target =
+            model.targetAmount
 
         -- Triangular grid dimensions
         triangleSize =
@@ -614,10 +579,10 @@ viewTriangularGrid model =
 
         -- Height of equilateral triangle
         gridWidth =
-            (toFloat capA + toFloat capB / 2) * triangleSize + 50.0
+            (toFloat capacityA + toFloat capacityB / 2) * triangleSize + 50.0
 
         gridHeight =
-            toFloat capB * triangleHeight + 50.0
+            toFloat capacityB * triangleHeight + 50.0
 
         padding =
             40.0
@@ -644,7 +609,7 @@ viewTriangularGrid model =
             let
                 -- Generate horizontal grid lines (constant b)
                 horizontalLines =
-                    List.range 0 capB
+                    List.range 0 capacityB
                         |> List.map
                             (\b ->
                                 let
@@ -652,7 +617,7 @@ viewTriangularGrid model =
                                         stateToPoint 0 b
 
                                     end =
-                                        stateToPoint capA b
+                                        stateToPoint capacityA b
                                 in
                                 Svg.line
                                     [ SvgAttr.x1 (String.fromFloat (Tuple.first start))
@@ -667,7 +632,7 @@ viewTriangularGrid model =
 
                 -- Generate vertical grid lines (constant a)
                 verticalLines =
-                    List.range 0 capA
+                    List.range 0 capacityA
                         |> List.map
                             (\a ->
                                 let
@@ -675,7 +640,7 @@ viewTriangularGrid model =
                                         stateToPoint a 0
 
                                     end =
-                                        stateToPoint a capB
+                                        stateToPoint a capacityB
                                 in
                                 Svg.line
                                     [ SvgAttr.x1 (String.fromFloat (Tuple.first start))
@@ -690,16 +655,16 @@ viewTriangularGrid model =
 
                 -- Generate diagonal grid lines (combine a and b)
                 diagonalLines =
-                    List.range 0 (capA + capB)
+                    List.range 0 (capacityA + capacityB)
                         |> List.map
                             (\sumAB ->
                                 let
                                     -- Find possible points along this diagonal line
                                     -- These are points where a + b = sumAB
                                     validPoints =
-                                        List.range (max 0 (sumAB - capB)) (min capA sumAB)
+                                        List.range (max 0 (sumAB - capacityB)) (min capacityA sumAB)
                                             |> List.map (\a -> ( a, sumAB - a ))
-                                            |> List.filter (\( _, b ) -> b >= 0 && b <= capB)
+                                            |> List.filter (\( _, b ) -> b >= 0 && b <= capacityB)
 
                                     -- If we have at least two points, draw a line connecting them
                                     lineSegment =
@@ -738,10 +703,10 @@ viewTriangularGrid model =
 
                 -- Draw equilateral triangles for visualization
                 triangles =
-                    List.range 0 (capA - 1)
+                    List.range 0 (capacityA - 1)
                         |> List.concatMap
                             (\a ->
-                                List.range 0 (capB - 1)
+                                List.range 0 (capacityB - 1)
                                     |> List.concatMap
                                         (\b ->
                                             -- For each grid cell, draw two triangles
@@ -788,7 +753,7 @@ viewTriangularGrid model =
 
                 -- Grid labels
                 xAxisLabels =
-                    List.range 0 capA
+                    List.range 0 capacityA
                         |> List.map
                             (\a ->
                                 let
@@ -805,7 +770,7 @@ viewTriangularGrid model =
                             )
 
                 yAxisLabels =
-                    List.range 0 capB
+                    List.range 0 capacityB
                         |> List.map
                             (\b ->
                                 let
@@ -845,48 +810,9 @@ viewTriangularGrid model =
         -- Calculate the sequence of states visited
         visitedStates : List ( Int, Int )
         visitedStates =
-            let
-                -- Simulate the steps to get all states
-                simulateSteps : List Step -> List ( Int, Int )
-                simulateSteps steps =
-                    let
-                        folder : Step -> ( List ( Int, Int ), ( Int, Int ) ) -> ( List ( Int, Int ), ( Int, Int ) )
-                        folder step ( acc, ( a, b ) ) =
-                            let
-                                nextState =
-                                    case step of
-                                        FillA ->
-                                            ( model.capacityA, b )
-
-                                        FillB ->
-                                            ( a, model.capacityB )
-
-                                        EmptyA ->
-                                            ( 0, b )
-
-                                        EmptyB ->
-                                            ( a, 0 )
-
-                                        TransferAB ->
-                                            let
-                                                transferAmount =
-                                                    Basics.min a (model.capacityB - b)
-                                            in
-                                            ( a - transferAmount, b + transferAmount )
-
-                                        TransferBA ->
-                                            let
-                                                transferAmount =
-                                                    Basics.min b (model.capacityA - a)
-                                            in
-                                            ( a + transferAmount, b - transferAmount )
-                            in
-                            ( nextState :: acc, nextState )
-                    in
-                    Tuple.first (List.foldl folder ( [ ( 0, 0 ) ], ( 0, 0 ) ) steps)
-                        |> List.reverse
-            in
-            simulateSteps (List.reverse model.steps)
+            List.map (\( a, b, _ ) -> ( a, b )) model.steps
+                |> (::) ( model.amountA, model.amountB )
+                |> List.reverse
 
         -- Draw path connecting visited states
         pathElements : List (Svg Msg)
@@ -927,38 +853,29 @@ viewTriangularGrid model =
         targetStates : List (Svg Msg)
         targetStates =
             let
-                -- Only consider states on the edges of the grid where target amount is achieved
-                states =
-                    -- Left edge (a = 0) where b = target
-                    (if model.targetAmount <= capB then
-                        [ ( 0, model.targetAmount ) ]
-
-                     else
-                        []
-                    )
-                        -- Bottom edge (b = 0) where a = target
-                        ++ (if model.targetAmount <= capA then
-                                [ ( model.targetAmount, 0 ) ]
+                targetCoords =
+                    let
+                        lower =
+                            if target <= capacityA then
+                                [ ( target, 0 ) ]
 
                             else
+                                [ ( capacityA, target - capacityA ) ]
+
+                        upper =
+                            if target == capacityA + capacityB then
                                 []
-                           )
-                        -- Right edge (a = capA) where b = target
-                        ++ (if model.targetAmount <= capB then
-                                [ ( capA, model.targetAmount ) ]
+
+                            else if target <= capacityB then
+                                [ ( 0, target ) ]
 
                             else
-                                []
-                           )
-                        -- Top edge (b = capB) where a = target
-                        ++ (if model.targetAmount <= capA then
-                                [ ( model.targetAmount, capB ) ]
-
-                            else
-                                []
-                           )
+                                [ ( target - capacityB, capacityB ) ]
+                    in
+                    lower
+                        ++ upper
             in
-            states
+            targetCoords
                 |> List.map
                     (\( a, b ) ->
                         let
