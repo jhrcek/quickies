@@ -291,24 +291,66 @@ hexagonWithText cx cy r rowIdx colIdx hovered format =
         pts =
             String.join " " hexPoints
 
-        label : String
-        label =
-            case format of
-                Binomial ->
-                    formatBinomial rowIdx colIdx
+        textElements : List (Svg Msg)
+        textElements =
+            if hovered then
+                let
+                    binomialLabel =
+                        formatBinomial rowIdx colIdx
 
-                Evaluated ->
-                    binomial rowIdx colIdx |> formatEvaluated
+                    primeLabel =
+                        formatPrimeFactorization rowIdx colIdx
 
-                PrimeFactorization ->
-                    formatPrimeFactorization rowIdx colIdx
+                    evaluatedLabel =
+                        formatEvaluated (binomial rowIdx colIdx)
+
+                    lineHeight =
+                        r * 0.35
+
+                    textRow lbl y =
+                        Svg.text_
+                            [ SA.x (String.fromFloat cx)
+                            , SA.y (String.fromFloat y)
+                            , SA.textAnchor "middle"
+                            , SA.dominantBaseline "middle"
+                            , SA.fontSize "x-small"
+                            ]
+                            [ Svg.text lbl ]
+                in
+                [ textRow binomialLabel (cy - lineHeight)
+                , textRow primeLabel cy
+                , textRow evaluatedLabel (cy + lineHeight)
+                ]
+
+            else
+                let
+                    label =
+                        case format of
+                            Binomial ->
+                                formatBinomial rowIdx colIdx
+
+                            Evaluated ->
+                                binomial rowIdx colIdx |> formatEvaluated
+
+                            PrimeFactorization ->
+                                formatPrimeFactorization rowIdx colIdx
+                in
+                [ Svg.text_
+                    [ SA.x (String.fromFloat cx)
+                    , SA.y (String.fromFloat cy)
+                    , SA.textAnchor "middle"
+                    , SA.dominantBaseline "middle"
+                    , SA.fontSize "small"
+                    ]
+                    [ Svg.text label ]
+                ]
     in
     Svg.g
         [ SA.pointerEvents "visible"
         , SE.onMouseOver (HexagonHovered rowIdx colIdx)
         , SE.onMouseOut HexagonUnhovered
         ]
-        [ Svg.polygon
+        (Svg.polygon
             [ SA.points pts
             , SA.fill <|
                 if hovered then
@@ -319,15 +361,8 @@ hexagonWithText cx cy r rowIdx colIdx hovered format =
             , SA.stroke "black"
             ]
             []
-        , Svg.text_
-            [ SA.x (String.fromFloat cx)
-            , SA.y (String.fromFloat cy)
-            , SA.textAnchor "middle"
-            , SA.dominantBaseline "middle"
-            , SA.fontSize "small"
-            ]
-            [ Svg.text label ]
-        ]
+            :: textElements
+        )
 
 
 binomial : Int -> Int -> Integer
