@@ -20,6 +20,7 @@ projects=(
   ["IEEE-754"]="IEEE-754 floating point visualizer"
   ["sampling"]="Random sampling toy"
   ["sampling-weighted"]="Weighted random sampling toy"
+  ["trigonometric-hyperbolic"]="Mini reference of goniometric and trigonometric functions"
   ["water-pouring"]="Water pouring puzzle solver"
 )
 
