@@ -123,6 +123,10 @@ type SortableColumn
     | DirectionCol
     | GeometryCol
     | ReciprocityCol
+    | NameCol
+    | DerivCol
+    | DomainCol
+    | CodomainCol
 
 
 allColumns : List SortableColumn
@@ -131,6 +135,10 @@ allColumns =
     , DirectionCol
     , GeometryCol
     , ReciprocityCol
+    , NameCol
+    , DerivCol
+    , DomainCol
+    , CodomainCol
     ]
 
 
@@ -210,10 +218,6 @@ viewHeader model =
                 , sortIndicator model col
                 ]
 
-        regularCell : String -> Html Msg
-        regularCell txt =
-            Html.th cellAttrs [ Html.text txt ]
-
         sortIndicator : Model -> SortableColumn -> Html Msg
         sortIndicator m col =
             if m.sortColumn == col then
@@ -237,10 +241,10 @@ viewHeader model =
             , sortableCell DirectionCol "Direction"
             , sortableCell GeometryCol "Geometry"
             , sortableCell ReciprocityCol "Reciprocity"
-            , regularCell "Name"
-            , regularCell "Derivative"
-            , regularCell "Domain"
-            , regularCell "Codomain"
+            , sortableCell NameCol "Name"
+            , sortableCell DerivCol "Derivative"
+            , sortableCell DomainCol "Domain"
+            , sortableCell CodomainCol "Codomain"
             ]
         ]
 
@@ -268,6 +272,18 @@ sortRows model rowsList =
 
                             ReciprocityCol ->
                                 reciprocityName row.reciprocity
+
+                            NameCol ->
+                                row.name
+
+                            DerivCol ->
+                                row.deriv
+
+                            DomainCol ->
+                                row.domain
+
+                            CodomainCol ->
+                                row.codomain
                     )
 
         sortedRows =
