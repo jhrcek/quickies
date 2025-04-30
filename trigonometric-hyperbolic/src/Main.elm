@@ -83,36 +83,38 @@ type alias Row =
     , reciprocity : Reciprocity
     , name : String
     , deriv : String
+    , domain : String
+    , codomain : String
     }
 
 
 rows : List Row
 rows =
     -- TODO use mathml to make derivatives nicer
-    [ Row Sine Forward Trigonometric Base "sin x" "cos x"
-    , Row Sine Forward Trigonometric Reciprocal "csc x" "- csc x * cot x"
-    , Row Sine Forward Hyperbolic Base "sinh x" "cosh x"
-    , Row Sine Forward Hyperbolic Reciprocal "csch x" "- csch x * coth x"
-    , Row Sine Inverse Trigonometric Base "arcsin x" "1 / sqrt(1 - x^2)"
-    , Row Sine Inverse Trigonometric Reciprocal "arccsc x" "- 1 / (abs(x) * sqrt(x^2 - 1))"
-    , Row Sine Inverse Hyperbolic Base "arsinh x" "1 / sqrt(1 + x^2)"
-    , Row Sine Inverse Hyperbolic Reciprocal "arcsch x" "- 1 / (abs(x) * sqrt(1 + x^2))"
-    , Row Cosine Forward Trigonometric Base "cos x" "- sin x"
-    , Row Cosine Forward Trigonometric Reciprocal "sec x" "sec x * tan x"
-    , Row Cosine Forward Hyperbolic Base "cosh x" "sinh x"
-    , Row Cosine Forward Hyperbolic Reciprocal "sech x" "- sech x * tanh x"
-    , Row Cosine Inverse Trigonometric Base "arccos x" "- 1 / sqrt(1 - x^2)"
-    , Row Cosine Inverse Trigonometric Reciprocal "arcsec x" "1 / (abs(x) * sqrt(x^2 - 1))"
-    , Row Cosine Inverse Hyperbolic Base "arcosh x" "1 / sqrt(x^2 - 1)"
-    , Row Cosine Inverse Hyperbolic Reciprocal "arsech x" "- 1 / (x * sqrt(1 - x^2))"
-    , Row Tangent Forward Trigonometric Base "tan x" "sec^2 x"
-    , Row Tangent Forward Trigonometric Reciprocal "cot x" "- csc^2 x"
-    , Row Tangent Forward Hyperbolic Base "tanh x" "sech^2 x"
-    , Row Tangent Forward Hyperbolic Reciprocal "coth x" "- csch^2 x"
-    , Row Tangent Inverse Trigonometric Base "arctan x" "1 / (1 + x^2)"
-    , Row Tangent Inverse Trigonometric Reciprocal "arccot x" "- 1 / (1 + x^2)"
-    , Row Tangent Inverse Hyperbolic Base "artanh x" "1 / (1 - x^2)"
-    , Row Tangent Inverse Hyperbolic Reciprocal "arcoth x" "1 / (1 - x^2)"
+    [ Row Sine Forward Trigonometric Base "sin x" "cos x" "ℝ" "[-1, 1]"
+    , Row Sine Forward Trigonometric Reciprocal "csc x" "- csc x * cot x" "ℝ \\ {nπ}" "ℝ \\ (-1, 1)"
+    , Row Sine Forward Hyperbolic Base "sinh x" "cosh x" "ℝ" "ℝ"
+    , Row Sine Forward Hyperbolic Reciprocal "csch x" "- csch x * coth x" "ℝ \\ {0}" "ℝ \\ {0}"
+    , Row Sine Inverse Trigonometric Base "arcsin x" "1 / sqrt(1 - x^2)" "[-1, 1]" "[-π/2, π/2]"
+    , Row Sine Inverse Trigonometric Reciprocal "arccsc x" "- 1 / (abs(x) * sqrt(x^2 - 1))" "ℝ \\ (-1, 1)" "[-π/2, π/2] \\ {0}"
+    , Row Sine Inverse Hyperbolic Base "arsinh x" "1 / sqrt(1 + x^2)" "ℝ" "ℝ"
+    , Row Sine Inverse Hyperbolic Reciprocal "arcsch x" "- 1 / (abs(x) * sqrt(1 + x^2))" "ℝ \\ {0}" "ℝ \\ {0}"
+    , Row Cosine Forward Trigonometric Base "cos x" "- sin x" "ℝ" "[-1, 1]"
+    , Row Cosine Forward Trigonometric Reciprocal "sec x" "sec x * tan x" "ℝ \\ {(2n+1)π/2}" "ℝ \\ (-1, 1)"
+    , Row Cosine Forward Hyperbolic Base "cosh x" "sinh x" "ℝ" "[1, ∞)"
+    , Row Cosine Forward Hyperbolic Reciprocal "sech x" "- sech x * tanh x" "ℝ" "(0, 1]"
+    , Row Cosine Inverse Trigonometric Base "arccos x" "- 1 / sqrt(1 - x^2)" "[-1, 1]" "[0, π]"
+    , Row Cosine Inverse Trigonometric Reciprocal "arcsec x" "1 / (abs(x) * sqrt(x^2 - 1))" "ℝ \\ (-1, 1)" "[0, π] \\ {π/2}"
+    , Row Cosine Inverse Hyperbolic Base "arcosh x" "1 / sqrt(x^2 - 1)" "[1, ∞)" "[0, ∞)"
+    , Row Cosine Inverse Hyperbolic Reciprocal "arsech x" "- 1 / (x * sqrt(1 - x^2))" "(0, 1]" "[0, ∞)"
+    , Row Tangent Forward Trigonometric Base "tan x" "sec^2 x" "ℝ \\ {(2n+1)π/2}" "ℝ"
+    , Row Tangent Forward Trigonometric Reciprocal "cot x" "- csc^2 x" "ℝ \\ {nπ}" "ℝ"
+    , Row Tangent Forward Hyperbolic Base "tanh x" "sech^2 x" "ℝ" "(-1, 1)"
+    , Row Tangent Forward Hyperbolic Reciprocal "coth x" "- csch^2 x" "ℝ \\ {0}" "ℝ \\ [-1, 1]"
+    , Row Tangent Inverse Trigonometric Base "arctan x" "1 / (1 + x^2)" "ℝ" "(-π/2, π/2)"
+    , Row Tangent Inverse Trigonometric Reciprocal "arccot x" "- 1 / (1 + x^2)" "ℝ" "(0, π)"
+    , Row Tangent Inverse Hyperbolic Base "artanh x" "1 / (1 - x^2)" "(-1, 1)" "ℝ"
+    , Row Tangent Inverse Hyperbolic Reciprocal "arcoth x" "1 / (1 - x^2)" "ℝ \\ [-1, 1]" "ℝ \\ {0}"
     ]
 
 
@@ -237,6 +239,8 @@ viewHeader model =
             , sortableCell ReciprocityCol "Reciprocity"
             , regularCell "Name"
             , regularCell "Derivative"
+            , regularCell "Domain"
+            , regularCell "Codomain"
             ]
         ]
 
@@ -294,6 +298,8 @@ viewRow row =
         , cell (reciprocityName row.reciprocity)
         , cell row.name
         , cell row.deriv
+        , cell row.domain
+        , cell row.codomain
         ]
 
 
