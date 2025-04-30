@@ -220,20 +220,25 @@ viewHeader model =
 
         sortIndicator : Model -> SortableColumn -> Html Msg
         sortIndicator m col =
-            if m.sortColumn == col then
-                Html.span
+            let
+                indicatorText =
+                    if m.sortDirection == Ascending then
+                        "▲"
+
+                    else
+                        "▼"
+            in
+            Html.span
+                ((if m.sortColumn == col then
+                    identity
+
+                  else
+                    -- Render the indicator even if not sorting by this column to prevent table with jumping as sort columns change
+                    (::) (style "visibility" "hidden")
+                 )
                     [ style "margin-left" "5px" ]
-                    [ Html.text
-                        (if m.sortDirection == Ascending then
-                            "▲"
-
-                         else
-                            "▼"
-                        )
-                    ]
-
-            else
-                Html.text ""
+                )
+                [ Html.text indicatorText ]
     in
     Html.thead []
         [ Html.tr []
