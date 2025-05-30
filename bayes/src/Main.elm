@@ -274,6 +274,18 @@ drawPartitions squareSize probs =
                 ]
                 []
 
+        textLabel x y content anchor =
+            Svg.text_
+                [ SA.x (toS x)
+                , SA.y (toS y)
+                , SA.fontSize "12"
+                , SA.fontFamily "monospace"
+                , SA.textAnchor anchor
+                , SA.fill "black"
+                , SA.style "user-select: none"
+                ]
+                [ Svg.text content ]
+
         verticalA =
             lineWithKnob xA (svgY 1) xA (svgY 0) DragA
 
@@ -291,11 +303,40 @@ drawPartitions squareSize probs =
 
         verticalAGivenNotB =
             grayLine xAGivenNotB (svgY 1) xAGivenNotB yB
+
+        -- Text labels for probabilities
+        pALabel =
+            textLabel (xA / 2 + squareLeft / 2) (svgY 0 + 15) ("P(A)=" ++ to2Dec probs.pA) "middle"
+
+        pNotALabel =
+            textLabel (xA + (svgX 1 - xA) / 2) (svgY 0 + 15) ("P(¬A)=" ++ to2Dec probs.pNotA) "middle"
+
+        pBGivenALabel =
+            textLabel (squareLeft - 15) yBGivenA ("P(B|A)=" ++ to2Dec probs.pBGivenA) "end"
+
+        pBGivenNotALabel =
+            textLabel (svgX 1 + 15) yBGivenNotA ("P(B|¬A)=" ++ to2Dec probs.pBGivenNotA) "start"
+
+        pBLabel =
+            textLabel (squareLeft - 15) yB ("P(B)=" ++ to2Dec probs.pB) "end"
+
+        pAGivenBLabel =
+            textLabel xAGivenB (yB - 15) ("P(A|B)=" ++ to2Dec probs.pAGivenB) "middle"
+
+        pAGivenNotBLabel =
+            textLabel xAGivenNotB (yB + 15) ("P(A|¬B)=" ++ to2Dec probs.pAGivenNotB) "middle"
     in
     Svg.g []
         [ horizontalB
         , verticalAGivenB
         , verticalAGivenNotB
+        , pALabel
+        , pNotALabel
+        , pBGivenALabel
+        , pBGivenNotALabel
+        , pBLabel
+        , pAGivenBLabel
+        , pAGivenNotBLabel
         , verticalA
         , horizontalBGivenA
         , horizontalBGivenNotA
