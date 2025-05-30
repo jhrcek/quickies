@@ -31,7 +31,6 @@ type alias Model =
     , dragState : Maybe DragSlider
     , viewportWidth : Int
     , viewportHeight : Int
-    , precision : Int
     }
 
 
@@ -49,16 +48,9 @@ init _ =
       , dragState = Nothing
       , viewportWidth = 1024
       , viewportHeight = 768
-      , precision = 3
       }
     , Task.perform
-        (\v ->
-            let
-                { width, height } =
-                    v.viewport
-            in
-            WindowResized (round width) (round height)
-        )
+        (\{ viewport } -> WindowResized (round viewport.width) (round viewport.height))
         Browser.Dom.getViewport
     )
 
@@ -68,7 +60,6 @@ type Msg
     | DragAt Float Float
     | DragStopped
     | WindowResized Int Int
-    | PrecisionChanged Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -102,9 +93,6 @@ update msg model =
 
         WindowResized width height ->
             pure { model | viewportWidth = width, viewportHeight = height }
-
-        PrecisionChanged newPrecision ->
-            pure { model | precision = newPrecision }
 
 
 pure : a -> ( a, Cmd msg )
@@ -187,26 +175,8 @@ view model =
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker ]
-            , drawPartitions squareSize probs model.precision
+            , drawPartitions squareSize probs
             , drawSquare squareSize
-            ]
-        , Html.div
-            [ HA.style "margin-left" "20px"
-            , HA.style "padding-top" (toS squareTop ++ "px")
-            ]
-            [ Html.div []
-                [ Html.label [] [ Html.text ("Precision: " ++ String.fromInt model.precision) ]
-                , Html.br [] []
-                , Html.input
-                    [ HA.type_ "range"
-                    , HA.min "1"
-                    , HA.max "10"
-                    , HA.value (String.fromInt model.precision)
-                    , HA.style "width" "150px"
-                    , HE.onInput (\s -> PrecisionChanged (Maybe.withDefault 3 (String.toInt s)))
-                    ]
-                    []
-                ]
             ]
         ]
 
@@ -225,8 +195,8 @@ drawSquare squareSize =
         []
 
 
-drawPartitions : Float -> DerivedProbabilities -> Int -> Svg.Svg Msg
-drawPartitions squareSize probs precision =
+drawPartitions : Float -> DerivedProbabilities -> Svg.Svg Msg
+drawPartitions squareSize probs =
     let
         svgX =
             toSvgX squareSize
@@ -319,7 +289,7 @@ drawPartitions squareSize probs precision =
 
         -- Text labels for probabilities
         rnd =
-            Round.round precision
+            Round.round 3
 
         pALabel =
             textLabel (xA / 2 + squareLeft / 2) (svgY 0 + 15) ("P(A)=" ++ rnd probs.pA) "middle"
