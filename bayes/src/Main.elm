@@ -5,7 +5,9 @@ import Browser.Dom
 import Browser.Events
 import Html exposing (Html)
 import Html.Attributes as HA
+import Html.Events as HE
 import Json.Decode as Json
+import Round
 import Svg
 import Svg.Attributes as SA
 import Svg.Events as SE
@@ -29,6 +31,7 @@ type alias Model =
     , dragState : Maybe DragSlider
     , viewportWidth : Int
     , viewportHeight : Int
+    , precision : Int
     }
 
 
@@ -46,6 +49,7 @@ init _ =
       , dragState = Nothing
       , viewportWidth = 1024
       , viewportHeight = 768
+      , precision = 3
       }
     , Task.perform
         (\v ->
@@ -64,6 +68,7 @@ type Msg
     | DragAt Float Float
     | DragStopped
     | WindowResized Int Int
+    | PrecisionChanged Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -97,6 +102,9 @@ update msg model =
 
         WindowResized width height ->
             pure { model | viewportWidth = width, viewportHeight = height }
+
+        PrecisionChanged newPrecision ->
+            pure { model | precision = newPrecision }
 
 
 pure : a -> ( a, Cmd msg )
@@ -179,8 +187,26 @@ view model =
             , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker ]
-            , drawPartitions squareSize probs
+            , drawPartitions squareSize probs model.precision
             , drawSquare squareSize
+            ]
+        , Html.div
+            [ HA.style "margin-left" "20px"
+            , HA.style "padding-top" (toS squareTop ++ "px")
+            ]
+            [ Html.div []
+                [ Html.label [] [ Html.text ("Precision: " ++ String.fromInt model.precision) ]
+                , Html.br [] []
+                , Html.input
+                    [ HA.type_ "range"
+                    , HA.min "1"
+                    , HA.max "10"
+                    , HA.value (String.fromInt model.precision)
+                    , HA.style "width" "150px"
+                    , HE.onInput (\s -> PrecisionChanged (Maybe.withDefault 3 (String.toInt s)))
+                    ]
+                    []
+                ]
             ]
         ]
 
@@ -199,8 +225,8 @@ drawSquare squareSize =
         []
 
 
-drawPartitions : Float -> DerivedProbabilities -> Svg.Svg Msg
-drawPartitions squareSize probs =
+drawPartitions : Float -> DerivedProbabilities -> Int -> Svg.Svg Msg
+drawPartitions squareSize probs precision =
     let
         svgX =
             toSvgX squareSize
@@ -292,26 +318,29 @@ drawPartitions squareSize probs =
             grayLine xAGivenNotB (svgY 1) xAGivenNotB yB
 
         -- Text labels for probabilities
+        rnd =
+            Round.round precision
+
         pALabel =
-            textLabel (xA / 2 + squareLeft / 2) (svgY 0 + 15) ("P(A)=" ++ to2Dec probs.pA) "middle"
+            textLabel (xA / 2 + squareLeft / 2) (svgY 0 + 15) ("P(A)=" ++ rnd probs.pA) "middle"
 
         pNotALabel =
-            textLabel (xA + (svgX 1 - xA) / 2) (svgY 0 + 15) ("P(¬A)=" ++ to2Dec probs.pNotA) "middle"
+            textLabel (xA + (svgX 1 - xA) / 2) (svgY 0 + 15) ("P(¬A)=" ++ rnd probs.pNotA) "middle"
 
         pBGivenALabel =
-            textLabel (squareLeft - 15) yBGivenA ("P(B|A)=" ++ to2Dec probs.pBGivenA) "end"
+            textLabel (squareLeft - 15) yBGivenA ("P(B|A)=" ++ rnd probs.pBGivenA) "end"
 
         pBGivenNotALabel =
-            textLabel (svgX 1 + 15) yBGivenNotA ("P(B|¬A)=" ++ to2Dec probs.pBGivenNotA) "start"
+            textLabel (svgX 1 + 15) yBGivenNotA ("P(B|¬A)=" ++ rnd probs.pBGivenNotA) "start"
 
         pBLabel =
-            textLabel (squareLeft - 15) yB ("P(B)=" ++ to2Dec probs.pB) "end"
+            textLabel (squareLeft - 15) yB ("P(B)=" ++ rnd probs.pB) "end"
 
         pAGivenBLabel =
-            textLabel xAGivenB (yB - 15) ("P(A|B)=" ++ to2Dec probs.pAGivenB) "middle"
+            textLabel xAGivenB (yB - 15) ("P(A|B)=" ++ rnd probs.pAGivenB) "middle"
 
         pAGivenNotBLabel =
-            textLabel xAGivenNotB (yB + 15) ("P(A|¬B)=" ++ to2Dec probs.pAGivenNotB) "middle"
+            textLabel xAGivenNotB (yB + 15) ("P(A|¬B)=" ++ rnd probs.pAGivenNotB) "middle"
     in
     Svg.g []
         [ horizontalB
@@ -393,7 +422,7 @@ fromSvgY squareSize rawY =
 
 squareLeft : Float
 squareLeft =
-    100
+    200
 
 
 squareTop : Float
@@ -404,12 +433,3 @@ squareTop =
 toS : Float -> String
 toS =
     String.fromFloat
-
-
-to2Dec : Float -> String
-to2Dec f =
-    let
-        rounded =
-            toFloat (round (f * 100)) / 100
-    in
-    String.fromFloat rounded
