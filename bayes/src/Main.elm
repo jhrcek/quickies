@@ -182,19 +182,6 @@ view model =
             , drawPartitions squareSize probs
             , drawSquare squareSize
             ]
-        , Html.div
-            [ HA.style "margin-left" "20px"
-            , HA.style "padding-top" (toS squareTop ++ "px")
-            ]
-            [ textLineProb "P(A)" probs.pA (highlight "pA" model)
-            , textLineProb "P(¬A)" probs.pNotA (highlight "pNotA" model)
-            , textLineProb "P(B|A)" probs.pBGivenA (highlight "pBGivenA" model)
-            , textLineProb "P(B|¬A)" probs.pBGivenNotA (highlight "pBGivenNotA" model)
-            , textLineProb "P(B)" probs.pB (highlight "pB" model)
-            , textLineProb "P(¬B)" probs.pNotB (highlight "pNotB" model)
-            , textLineProb "P(A|B)" probs.pAGivenB (highlight "pAGivenB" model)
-            , textLineProb "P(A|¬B)" probs.pAGivenNotB (highlight "pAGivenNotB" model)
-            ]
         ]
 
 
@@ -363,75 +350,6 @@ sliderMarker =
             ]
             []
         ]
-
-
-textLineProb : String -> Float -> Highlight -> Html msg
-textLineProb label value highlightStatus =
-    let
-        bgColor =
-            case highlightStatus of
-                Direct ->
-                    "#b2fab4"
-
-                Indirect ->
-                    "#e0ffe0"
-
-                NoHighlight ->
-                    "#fff"
-    in
-    Html.div []
-        [ Html.span
-            [ HA.style "padding" "0 4px"
-            , HA.style "background-color" bgColor
-            ]
-            [ Html.text (label ++ " = " ++ to2Dec value) ]
-        ]
-
-
-type Highlight
-    = Direct
-    | Indirect
-    | NoHighlight
-
-
-highlight : String -> Model -> Highlight
-highlight probName model =
-    case model.dragState of
-        Nothing ->
-            NoHighlight
-
-        Just slider ->
-            let
-                { direct, indirect } =
-                    influencedBy slider
-            in
-            if List.member probName direct then
-                Direct
-
-            else if List.member probName indirect then
-                Indirect
-
-            else
-                NoHighlight
-
-
-influencedBy : DragSlider -> { direct : List String, indirect : List String }
-influencedBy slider =
-    case slider of
-        DragA ->
-            { direct = [ "pA" ]
-            , indirect = [ "pNotA", "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
-            }
-
-        DragBGivenA ->
-            { direct = [ "pBGivenA" ]
-            , indirect = [ "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
-            }
-
-        DragBGivenNotA ->
-            { direct = [ "pBGivenNotA" ]
-            , indirect = [ "pB", "pNotB", "pAGivenB", "pAGivenNotB" ]
-            }
 
 
 offsetX : Json.Decoder Float
