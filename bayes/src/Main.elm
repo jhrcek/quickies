@@ -5,10 +5,9 @@ import Browser.Dom
 import Browser.Events
 import Html exposing (Html)
 import Html.Attributes as HA
-import Html.Events as HE
 import Json.Decode as Json
 import Round
-import Svg
+import Svg exposing (Svg)
 import Svg.Attributes as SA
 import Svg.Events as SE
 import Task
@@ -110,10 +109,14 @@ type alias DerivedProbabilities =
     , pNotA : Float
     , pBGivenA : Float
     , pBGivenNotA : Float
+    , pNotBGivenA : Float
+    , pNotBGivenNotA : Float
     , pB : Float
     , pNotB : Float
     , pAGivenB : Float
     , pAGivenNotB : Float
+    , pNotAGivenB : Float
+    , pNotAGivenNotB : Float
     }
 
 
@@ -122,6 +125,12 @@ computeDerivedProbabilities { pA, pBGivenA, pBGivenNotA } =
     let
         pNotA =
             1 - pA
+
+        pNotBGivenA =
+            1 - pBGivenA
+
+        pNotBGivenNotA =
+            1 - pBGivenNotA
 
         pB =
             pA * pBGivenA + pNotA * pBGivenNotA
@@ -142,15 +151,25 @@ computeDerivedProbabilities { pA, pBGivenA, pBGivenNotA } =
 
             else
                 0
+
+        pNotAGivenB =
+            1 - pAGivenB
+
+        pNotAGivenNotB =
+            1 - pAGivenNotB
     in
     { pA = pA
     , pNotA = pNotA
     , pBGivenA = pBGivenA
     , pBGivenNotA = pBGivenNotA
+    , pNotBGivenA = pNotBGivenA
+    , pNotBGivenNotA = pNotBGivenNotA
     , pB = pB
     , pNotB = pNotB
     , pAGivenB = pAGivenB
     , pAGivenNotB = pAGivenNotB
+    , pNotAGivenB = pNotAGivenB
+    , pNotAGivenNotB = pNotAGivenNotB
     }
 
 
@@ -181,7 +200,7 @@ view model =
         ]
 
 
-drawSquare : Float -> Svg.Svg Msg
+drawSquare : Float -> Svg Msg
 drawSquare squareSize =
     Svg.rect
         [ SA.x (toS squareLeft)
@@ -195,7 +214,7 @@ drawSquare squareSize =
         []
 
 
-drawPartitions : Float -> DerivedProbabilities -> Svg.Svg Msg
+drawPartitions : Float -> DerivedProbabilities -> Svg Msg
 drawPartitions squareSize probs =
     let
         svgX =
@@ -257,14 +276,15 @@ drawPartitions squareSize probs =
                 ]
                 []
 
-        textLabel x y content anchor =
+        textLabel x y content anchor baseline color =
             Svg.text_
                 [ SA.x (toS x)
                 , SA.y (toS y)
                 , SA.fontSize "12"
                 , SA.fontFamily "monospace"
                 , SA.textAnchor anchor
-                , SA.fill "black"
+                , SA.fill color
+                , SA.alignmentBaseline baseline
                 , SA.style "user-select: none"
                 ]
                 [ Svg.text content ]
@@ -291,45 +311,72 @@ drawPartitions squareSize probs =
         rnd =
             Round.round 3
 
-        pALabel =
-            textLabel (xA / 2 + squareLeft / 2) (svgY 0 + 15) ("P(A)=" ++ rnd probs.pA) "middle"
+        lblOffset =
+            15
 
-        pNotALabel =
-            textLabel (xA + (svgX 1 - xA) / 2) (svgY 0 + 15) ("P(¬A)=" ++ rnd probs.pNotA) "middle"
+        -- Bottom edge
+        pABottomLabel =
+            textLabel (squareLeft + (xA - squareLeft) / 2) (squareTop + squareSize + lblOffset) ("P(A)=" ++ rnd probs.pA) "middle" "hanging" "black"
 
-        pBGivenALabel =
-            textLabel (squareLeft - 15) yBGivenA ("P(B|A)=" ++ rnd probs.pBGivenA) "end"
+        pNotABottomLabel =
+            textLabel (xA + (svgX 1 - xA) / 2) (squareTop + squareSize + lblOffset) ("P(¬A)=" ++ rnd probs.pNotA) "middle" "hanging" "black"
 
-        pBGivenNotALabel =
-            textLabel (svgX 1 + 15) yBGivenNotA ("P(B|¬A)=" ++ rnd probs.pBGivenNotA) "start"
+        pAGivenBBottomLabel =
+            textLabel (squareLeft + (xAGivenB - squareLeft) / 2) (squareTop + squareSize + 2 * lblOffset) ("P(A|B)=" ++ rnd probs.pAGivenB) "middle" "hanging" "lightgray"
 
-        pBLabel =
-            textLabel (squareLeft - 15) yB ("P(B)=" ++ rnd probs.pB) "end"
+        pNotAGivenBBottomLabel =
+            textLabel (xAGivenB + (svgX 1 - xAGivenB) / 2) (squareTop + squareSize + 2 * lblOffset) ("P(¬A|B)=" ++ rnd probs.pNotAGivenB) "middle" "hanging" "lightgray"
 
-        pAGivenBLabel =
-            textLabel xAGivenB (yB - 15) ("P(A|B)=" ++ rnd probs.pAGivenB) "middle"
+        -- Left edge
+        pBGivenALeftLabel =
+            textLabel (squareLeft - lblOffset) (yBGivenA + (squareTop + squareSize - yBGivenA) / 2) ("P(B|A)=" ++ rnd probs.pBGivenA) "end" "middle" "black"
 
-        pAGivenNotBLabel =
-            textLabel xAGivenNotB (yB + 15) ("P(A|¬B)=" ++ rnd probs.pAGivenNotB) "middle"
+        pNotBGivenALeftLabel =
+            textLabel (squareLeft - lblOffset) (squareTop + (yBGivenA - squareTop) / 2) ("P(¬B|A)=" ++ rnd probs.pNotBGivenA) "end" "middle" "black"
+
+        pBLeftLabel =
+            textLabel (squareLeft - lblOffset) (yB + (squareTop + squareSize - yB) / 2) ("P(B)=" ++ rnd probs.pB) "end" "middle" "lightgray"
+
+        pNotBLeftLabel =
+            textLabel (squareLeft - lblOffset) (squareTop + (yB - squareTop) / 2) ("P(¬B)=" ++ rnd probs.pNotB) "end" "middle" "lightgray"
+
+        -- Right edge
+        pNotBGivenNotARightLabel =
+            textLabel (svgX 1 + lblOffset) (squareTop + (yBGivenNotA - squareTop) / 2) ("P(¬B|¬A)=" ++ rnd probs.pNotBGivenNotA) "start" "middle" "black"
+
+        pBGivenNotARightLabel =
+            textLabel (svgX 1 + lblOffset) (yBGivenNotA + (squareTop + squareSize - yBGivenNotA) / 2) ("P(B|¬A)=" ++ rnd probs.pBGivenNotA) "start" "middle" "black"
+
+        -- Top edge
+        pAGivenNotBTopLabel =
+            textLabel (squareLeft + (xAGivenNotB - squareLeft) / 2) (squareTop - lblOffset) ("P(A|¬B)=" ++ rnd probs.pAGivenNotB) "middle" "baseline" "lightgray"
+
+        pNotAGivenNotBTopLabel =
+            textLabel (xAGivenNotB + (svgX 1 - xAGivenNotB) / 2) (squareTop - lblOffset) ("P(¬A|¬B)=" ++ rnd probs.pNotAGivenNotB) "middle" "baseline" "lightgray"
     in
     Svg.g []
         [ horizontalB
         , verticalAGivenB
         , verticalAGivenNotB
-        , pALabel
-        , pNotALabel
-        , pBGivenALabel
-        , pBGivenNotALabel
-        , pBLabel
-        , pAGivenBLabel
-        , pAGivenNotBLabel
+        , pABottomLabel
+        , pNotABottomLabel
+        , pAGivenBBottomLabel
+        , pNotAGivenBBottomLabel
+        , pBGivenALeftLabel
+        , pNotBGivenALeftLabel
+        , pBLeftLabel
+        , pNotBLeftLabel
+        , pNotBGivenNotARightLabel
+        , pBGivenNotARightLabel
+        , pAGivenNotBTopLabel
+        , pNotAGivenNotBTopLabel
         , verticalA
         , horizontalBGivenA
         , horizontalBGivenNotA
         ]
 
 
-sliderMarker : Svg.Svg msg
+sliderMarker : Svg msg
 sliderMarker =
     Svg.marker
         [ SA.id "triangle"
