@@ -5,7 +5,7 @@ import Browser.Dom
 import Browser.Events
 import Html exposing (Html)
 import Html.Attributes as HA
-import Json.Decode as Json
+import Json.Decode as Decode exposing (Decoder)
 import Round
 import Svg exposing (Svg)
 import Svg.Attributes as SA
@@ -30,6 +30,7 @@ type alias Model =
     , dragState : Maybe DragSlider
     , viewportWidth : Int
     , viewportHeight : Int
+    , hoveredProbability : Maybe ProbabilityType
     }
 
 
@@ -37,6 +38,21 @@ type DragSlider
     = DragA
     | DragBGivenA
     | DragBGivenNotA
+
+
+type ProbabilityType
+    = PA
+    | PNotA
+    | PBGivenA
+    | PNotBGivenA
+    | PBGivenNotA
+    | PNotBGivenNotA
+    | PB
+    | PNotB
+    | PAGivenB
+    | PNotAGivenB
+    | PAGivenNotB
+    | PNotAGivenNotB
 
 
 init : () -> ( Model, Cmd Msg )
@@ -47,6 +63,7 @@ init _ =
       , dragState = Nothing
       , viewportWidth = 1024
       , viewportHeight = 768
+      , hoveredProbability = Nothing
       }
     , Task.perform
         (\{ viewport } -> WindowResized (round viewport.width) (round viewport.height))
@@ -59,6 +76,7 @@ type Msg
     | DragAt Float Float
     | DragStopped
     | WindowResized Int Int
+    | ProbabilityHovered (Maybe ProbabilityType)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -93,6 +111,9 @@ update msg model =
         WindowResized width height ->
             pure { model | viewportWidth = width, viewportHeight = height }
 
+        ProbabilityHovered probType ->
+            pure { model | hoveredProbability = probType }
+
 
 pure : a -> ( a, Cmd msg )
 pure a =
@@ -118,6 +139,86 @@ type alias DerivedProbabilities =
     , pNotAGivenB : Float
     , pNotAGivenNotB : Float
     }
+
+
+lookupProb : ProbabilityType -> DerivedProbabilities -> Float
+lookupProb probType probs =
+    case probType of
+        PA ->
+            probs.pA
+
+        PNotA ->
+            probs.pNotA
+
+        PBGivenA ->
+            probs.pBGivenA
+
+        PNotBGivenA ->
+            probs.pNotBGivenA
+
+        PBGivenNotA ->
+            probs.pBGivenNotA
+
+        PNotBGivenNotA ->
+            probs.pNotBGivenNotA
+
+        PB ->
+            probs.pB
+
+        PNotB ->
+            probs.pNotB
+
+        PAGivenB ->
+            probs.pAGivenB
+
+        PNotAGivenB ->
+            probs.pNotAGivenB
+
+        PAGivenNotB ->
+            probs.pAGivenNotB
+
+        PNotAGivenNotB ->
+            probs.pNotAGivenNotB
+
+
+probLabel : ProbabilityType -> String
+probLabel probType =
+    case probType of
+        PA ->
+            "P(A)"
+
+        PNotA ->
+            "P(¬A)"
+
+        PBGivenA ->
+            "P(B|A)"
+
+        PNotBGivenA ->
+            "P(¬B|A)"
+
+        PBGivenNotA ->
+            "P(B|¬A)"
+
+        PNotBGivenNotA ->
+            "P(¬B|¬A)"
+
+        PB ->
+            "P(B)"
+
+        PNotB ->
+            "P(¬B)"
+
+        PAGivenB ->
+            "P(A|B)"
+
+        PNotAGivenB ->
+            "P(¬A|B)"
+
+        PAGivenNotB ->
+            "P(A|¬B)"
+
+        PNotAGivenNotB ->
+            "P(¬A|¬B)"
 
 
 computeDerivedProbabilities : { r | pA : Float, pBGivenA : Float, pBGivenNotA : Float } -> DerivedProbabilities
@@ -191,10 +292,10 @@ view model =
             [ SA.width (toS (squareLeft * 2 + squareSize))
             , SA.height (toS (squareTop * 2 + squareSize))
             , SE.onMouseUp DragStopped
-            , SE.on "mousemove" (Json.map2 DragAt offsetX offsetY)
+            , SE.on "mousemove" (Decode.map2 DragAt offsetX offsetY)
             ]
-            [ Svg.defs [] [ sliderMarker ]
-            , drawPartitions squareSize probs
+            [ Svg.defs [] [ sliderMarker, diagonalStripePattern ]
+            , drawPartitions squareSize probs model.hoveredProbability
             , drawSquare squareSize
             ]
         ]
@@ -214,8 +315,8 @@ drawSquare squareSize =
         []
 
 
-drawPartitions : Float -> DerivedProbabilities -> Svg Msg
-drawPartitions squareSize probs =
+drawPartitions : Float -> DerivedProbabilities -> Maybe ProbabilityType -> Svg Msg
+drawPartitions squareSize probs hoveredProbability =
     let
         svgX =
             toSvgX squareSize
@@ -276,7 +377,7 @@ drawPartitions squareSize probs =
                 ]
                 []
 
-        textLabel x y content anchor baseline color =
+        textLabel x y anchor baseline color probType =
             Svg.text_
                 [ SA.x (toS x)
                 , SA.y (toS y)
@@ -286,8 +387,10 @@ drawPartitions squareSize probs =
                 , SA.fill color
                 , SA.alignmentBaseline baseline
                 , SA.style "user-select: none"
+                , SE.on "mouseenter" (Decode.succeed <| ProbabilityHovered (Just probType))
+                , SE.on "mouseleave" (Decode.succeed <| ProbabilityHovered Nothing)
                 ]
-                [ Svg.text content ]
+                [ Svg.text <| probLabel probType ++ "=" ++ Round.round 3 (lookupProb probType probs) ]
 
         verticalA =
             lineWithKnob xA (svgY 1) xA (svgY 0) DragA
@@ -308,51 +411,138 @@ drawPartitions squareSize probs =
             grayLine xAGivenNotB (svgY 1) xAGivenNotB yB
 
         -- Text labels for probabilities
-        rnd =
-            Round.round 3
-
         lblOffset =
             15
 
         -- Bottom edge
         pABottomLabel =
-            textLabel (squareLeft + (xA - squareLeft) / 2) (squareTop + squareSize + lblOffset) ("P(A)=" ++ rnd probs.pA) "middle" "hanging" "black"
+            textLabel (squareLeft + (xA - squareLeft) / 2) (squareTop + squareSize + lblOffset) "middle" "hanging" "black" PA
 
         pNotABottomLabel =
-            textLabel (xA + (svgX 1 - xA) / 2) (squareTop + squareSize + lblOffset) ("P(¬A)=" ++ rnd probs.pNotA) "middle" "hanging" "black"
+            textLabel (xA + (svgX 1 - xA) / 2) (squareTop + squareSize + lblOffset) "middle" "hanging" "black" PNotA
 
         pAGivenBBottomLabel =
-            textLabel (squareLeft + (xAGivenB - squareLeft) / 2) (squareTop + squareSize + 2 * lblOffset) ("P(A|B)=" ++ rnd probs.pAGivenB) "middle" "hanging" "lightgray"
+            textLabel (squareLeft + (xAGivenB - squareLeft) / 2) (squareTop + squareSize + 2 * lblOffset) "middle" "hanging" "lightgray" PAGivenB
 
         pNotAGivenBBottomLabel =
-            textLabel (xAGivenB + (svgX 1 - xAGivenB) / 2) (squareTop + squareSize + 2 * lblOffset) ("P(¬A|B)=" ++ rnd probs.pNotAGivenB) "middle" "hanging" "lightgray"
+            textLabel (xAGivenB + (svgX 1 - xAGivenB) / 2) (squareTop + squareSize + 2 * lblOffset) "middle" "hanging" "lightgray" PNotAGivenB
 
         -- Left edge
         pBGivenALeftLabel =
-            textLabel (squareLeft - lblOffset) (yBGivenA + (squareTop + squareSize - yBGivenA) / 2) ("P(B|A)=" ++ rnd probs.pBGivenA) "end" "middle" "black"
+            textLabel (squareLeft - lblOffset) (yBGivenA + (squareTop + squareSize - yBGivenA) / 2) "end" "middle" "black" PBGivenA
 
         pNotBGivenALeftLabel =
-            textLabel (squareLeft - lblOffset) (squareTop + (yBGivenA - squareTop) / 2) ("P(¬B|A)=" ++ rnd probs.pNotBGivenA) "end" "middle" "black"
+            textLabel (squareLeft - lblOffset) (squareTop + (yBGivenA - squareTop) / 2) "end" "middle" "black" PNotBGivenA
 
         pBLeftLabel =
-            textLabel (squareLeft - lblOffset) (yB + (squareTop + squareSize - yB) / 2) ("P(B)=" ++ rnd probs.pB) "end" "middle" "lightgray"
+            textLabel (squareLeft - lblOffset) (yB + (squareTop + squareSize - yB) / 2) "end" "middle" "lightgray" PB
 
         pNotBLeftLabel =
-            textLabel (squareLeft - lblOffset) (squareTop + (yB - squareTop) / 2) ("P(¬B)=" ++ rnd probs.pNotB) "end" "middle" "lightgray"
+            textLabel (squareLeft - lblOffset) (squareTop + (yB - squareTop) / 2) "end" "middle" "lightgray" PNotB
 
         -- Right edge
         pNotBGivenNotARightLabel =
-            textLabel (svgX 1 + lblOffset) (squareTop + (yBGivenNotA - squareTop) / 2) ("P(¬B|¬A)=" ++ rnd probs.pNotBGivenNotA) "start" "middle" "black"
+            textLabel (svgX 1 + lblOffset) (squareTop + (yBGivenNotA - squareTop) / 2) "start" "middle" "black" PNotBGivenNotA
 
         pBGivenNotARightLabel =
-            textLabel (svgX 1 + lblOffset) (yBGivenNotA + (squareTop + squareSize - yBGivenNotA) / 2) ("P(B|¬A)=" ++ rnd probs.pBGivenNotA) "start" "middle" "black"
+            textLabel (svgX 1 + lblOffset) (yBGivenNotA + (squareTop + squareSize - yBGivenNotA) / 2) "start" "middle" "black" PBGivenNotA
 
         -- Top edge
         pAGivenNotBTopLabel =
-            textLabel (squareLeft + (xAGivenNotB - squareLeft) / 2) (squareTop - lblOffset) ("P(A|¬B)=" ++ rnd probs.pAGivenNotB) "middle" "baseline" "lightgray"
+            textLabel (squareLeft + (xAGivenNotB - squareLeft) / 2) (squareTop - lblOffset) "middle" "baseline" "lightgray" PAGivenNotB
 
         pNotAGivenNotBTopLabel =
-            textLabel (xAGivenNotB + (svgX 1 - xAGivenNotB) / 2) (squareTop - lblOffset) ("P(¬A|¬B)=" ++ rnd probs.pNotAGivenNotB) "middle" "baseline" "lightgray"
+            textLabel (xAGivenNotB + (svgX 1 - xAGivenNotB) / 2) (squareTop - lblOffset) "middle" "baseline" "lightgray" PNotAGivenNotB
+
+        highlightRect x y w h =
+            Svg.rect
+                [ SA.x (toS x)
+                , SA.y (toS y)
+                , SA.width (toS w)
+                , SA.height (toS h)
+                , SA.fill "url(#diagonalStripes)"
+                ]
+                []
+
+        borderRect x y w h =
+            Svg.rect
+                [ SA.x (toS x)
+                , SA.y (toS y)
+                , SA.width (toS w)
+                , SA.height (toS h)
+                , SA.fill "none"
+                , SA.stroke "black"
+                , SA.strokeWidth "3"
+                ]
+                []
+
+        highlights =
+            Svg.g [] <|
+                case hoveredProbability of
+                    Nothing ->
+                        []
+
+                    Just p ->
+                        case p of
+                            PA ->
+                                [ highlightRect squareLeft squareTop (xA - squareLeft) squareSize
+                                , borderRect squareLeft squareTop squareSize squareSize
+                                ]
+
+                            PNotA ->
+                                [ highlightRect xA squareTop (squareLeft + squareSize - xA) squareSize
+                                , borderRect squareLeft squareTop squareSize squareSize
+                                ]
+
+                            PBGivenA ->
+                                [ highlightRect squareLeft yBGivenA (xA - squareLeft) (squareTop + squareSize - yBGivenA)
+                                , borderRect squareLeft squareTop (xA - squareLeft) squareSize
+                                ]
+
+                            PNotBGivenA ->
+                                [ highlightRect squareLeft squareTop (xA - squareLeft) (yBGivenA - squareTop)
+                                , borderRect squareLeft squareTop (xA - squareLeft) squareSize
+                                ]
+
+                            PBGivenNotA ->
+                                [ highlightRect xA yBGivenNotA (squareLeft + squareSize - xA) (squareTop + squareSize - yBGivenNotA)
+                                , borderRect xA squareTop (squareLeft + squareSize - xA) squareSize
+                                ]
+
+                            PNotBGivenNotA ->
+                                [ highlightRect xA squareTop (squareLeft + squareSize - xA) (yBGivenNotA - squareTop)
+                                , borderRect xA squareTop (squareLeft + squareSize - xA) squareSize
+                                ]
+
+                            PB ->
+                                [ highlightRect squareLeft yB squareSize (squareTop + squareSize - yB)
+                                , borderRect squareLeft squareTop squareSize squareSize
+                                ]
+
+                            PNotB ->
+                                [ highlightRect squareLeft squareTop squareSize (yB - squareTop)
+                                , borderRect squareLeft squareTop squareSize squareSize
+                                ]
+
+                            PAGivenB ->
+                                [ highlightRect squareLeft yB (xAGivenB - squareLeft) (squareTop + squareSize - yB)
+                                , borderRect squareLeft yB squareSize (squareTop + squareSize - yB)
+                                ]
+
+                            PNotAGivenB ->
+                                [ highlightRect xAGivenB yB (squareLeft + squareSize - xAGivenB) (squareTop + squareSize - yB)
+                                , borderRect squareLeft yB squareSize (squareTop + squareSize - yB)
+                                ]
+
+                            PAGivenNotB ->
+                                [ highlightRect squareLeft squareTop (xAGivenNotB - squareLeft) (yB - squareTop)
+                                , borderRect squareLeft squareTop squareSize (yB - squareTop)
+                                ]
+
+                            PNotAGivenNotB ->
+                                [ highlightRect xAGivenNotB squareTop (squareLeft + squareSize - xAGivenNotB) (yB - squareTop)
+                                , borderRect squareLeft squareTop squareSize (yB - squareTop)
+                                ]
     in
     Svg.g []
         [ horizontalB
@@ -373,6 +563,7 @@ drawPartitions squareSize probs =
         , verticalA
         , horizontalBGivenA
         , horizontalBGivenNotA
+        , highlights
         ]
 
 
@@ -398,14 +589,37 @@ sliderMarker =
         ]
 
 
-offsetX : Json.Decoder Float
+diagonalStripePattern : Svg msg
+diagonalStripePattern =
+    Svg.pattern
+        [ SA.id "diagonalStripes"
+        , SA.patternUnits "userSpaceOnUse"
+        , SA.width "8"
+        , SA.height "8"
+        ]
+        [ Svg.rect
+            [ SA.width "8"
+            , SA.height "8"
+            , SA.fill "white"
+            ]
+            []
+        , Svg.path
+            [ SA.d "M 0,8 l 8,-8 M -2,2 l 4,-4 M 6,10 l 4,-4"
+            , SA.stroke "black"
+            , SA.strokeWidth "1"
+            ]
+            []
+        ]
+
+
+offsetX : Decoder Float
 offsetX =
-    Json.field "offsetX" Json.float
+    Decode.field "offsetX" Decode.float
 
 
-offsetY : Json.Decoder Float
+offsetY : Decoder Float
 offsetY =
-    Json.field "offsetY" Json.float
+    Decode.field "offsetY" Decode.float
 
 
 {-| Maps [0,1] ⇒ [squareLeft, squareLeft + squareSize].
