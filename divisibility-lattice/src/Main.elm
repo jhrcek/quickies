@@ -19,7 +19,7 @@ main =
 
 
 type alias Model =
-    { exponents : Dict Int Int -- Prime -> exponent
+    { factorization : Dict Int Int -- Prime -> exponent
     , displayMode : DisplayMode
     , graphView : GraphView
     }
@@ -48,8 +48,8 @@ primes =
 init : () -> ( Model, Cmd Msg )
 init _ =
     updateGraph
-        { exponents = Dict.fromList [ ( 2, 1 ), ( 3, 0 ), ( 5, 0 ), ( 7, 0 ), ( 11, 0 ) ] -- Start with 2^1
-        , displayMode = ShowNumber
+        { factorization = Dict.fromList [ ( 2, 1 ), ( 3, 1 ), ( 5, 1 ), ( 7, 0 ), ( 11, 0 ) ]
+        , displayMode = ShowFactorization
         , graphView = Graph
         }
 
@@ -67,10 +67,10 @@ update msg model =
         ModifyExplonent prime delta ->
             updateGraph
                 { model
-                    | exponents =
+                    | factorization =
                         Dict.update prime
                             (Maybe.map (\exp -> clamp 0 maxExponent (exp + delta)))
-                            model.exponents
+                            model.factorization
                 }
 
         SetDisplayMode mode ->
@@ -116,7 +116,7 @@ viewPrimeControl : Model -> Int -> Html Msg
 viewPrimeControl model prime =
     let
         exponent =
-            Dict.get prime model.exponents |> Maybe.withDefault 0
+            Dict.get prime model.factorization |> Maybe.withDefault 0
     in
     Html.div [ class "prime-control" ]
         [ Html.button [ onClick (ModifyExplonent prime 1) ] [ Html.text "+" ]
@@ -132,13 +132,13 @@ viewInfo : Model -> Html Msg
 viewInfo model =
     let
         number =
-            getNumberFromExponents model.exponents
+            factorizationToNumber model.factorization
 
         factorization =
-            getFactorizationHtml model.exponents
+            getFactorizationHtml model.factorization
 
         divisorCount =
-            countDivisors model.exponents
+            countDivisors model.factorization
     in
     Html.div [ class "info" ]
         [ Html.div [] [ Html.text "Number: ", Html.span [] [ Html.text (String.fromInt number) ] ]
@@ -213,13 +213,13 @@ viewLatticeSection model =
         ]
 
 
-getNumberFromExponents : Dict Int Int -> Int
-getNumberFromExponents exponents =
-    Dict.foldl (\prime exponent acc -> acc * (prime ^ exponent)) 1 exponents
+factorizationToNumber : Dict Int Int -> Int
+factorizationToNumber factorization =
+    Dict.foldl (\prime exponent acc -> acc * (prime ^ exponent)) 1 factorization
 
 
 getFactorizationHtml : Dict Int Int -> List (Html msg)
-getFactorizationHtml exponents =
+getFactorizationHtml factorization =
     case
         Dict.foldr
             (\prime exponent acc ->
@@ -238,7 +238,7 @@ getFactorizationHtml exponents =
                             :: acc
             )
             []
-            exponents
+            factorization
     of
         [] ->
             [ Html.text "1" ]
@@ -248,33 +248,28 @@ getFactorizationHtml exponents =
 
 
 countDivisors : Dict Int Int -> Int
-countDivisors exponents =
-    Dict.foldl (\_ exponent acc -> acc * (exponent + 1)) 1 exponents
+countDivisors factorization =
+    Dict.foldl (\_ exponent acc -> acc * (exponent + 1)) 1 factorization
 
 
 {-| Generate edges of the covering relation
 -}
 getImmediateSubdivisors : Dict Int Int -> List (Dict Int Int)
-getImmediateSubdivisors exponents =
+getImmediateSubdivisors factorization =
     Dict.foldl
         (\prime exp acc ->
             if exp == 0 then
                 acc
 
             else
-                Dict.insert prime (exp - 1) exponents :: acc
+                Dict.insert prime (exp - 1) factorization :: acc
         )
         []
-        exponents
+        factorization
 
 
-exponentsToString : Dict Int Int -> String
-exponentsToString exponents =
-    String.fromInt (getNumberFromExponents exponents)
-
-
-exponentsToGraphvizHtmlLabel : Dict Int Int -> String
-exponentsToGraphvizHtmlLabel exponents =
+factorizationToGraphvizHtmlLabel : Dict Int Int -> String
+factorizationToGraphvizHtmlLabel factorization =
     case
         Dict.foldr
             (\prime exponent acc ->
@@ -289,7 +284,7 @@ exponentsToGraphvizHtmlLabel exponents =
                         (String.fromInt prime ++ "<SUP>" ++ String.fromInt exponent ++ "</SUP>") :: acc
             )
             []
-            exponents
+            factorization
     of
         [] ->
             "<1>"
@@ -308,14 +303,15 @@ generateDot model =
                     ( [], nodeToLbl )
 
                 f :: fs ->
-                    if Dict.member (getNumberFromExponents f) nodeToLbl then
+                    let
+                        nodeId =
+                            factorizationToNumber f
+                    in
+                    if Dict.member nodeId nodeToLbl then
                         genNodeAndEdgeLines fs nodeToLbl
 
                     else
                         let
-                            nodeId =
-                                getNumberFromExponents f
-
                             nodeLabel =
                                 case model.displayMode of
                                     ShowNumber ->
@@ -323,7 +319,7 @@ generateDot model =
                                         ""
 
                                     ShowFactorization ->
-                                        exponentsToGraphvizHtmlLabel f
+                                        factorizationToGraphvizHtmlLabel f
 
                             newNodeToLbl =
                                 Dict.insert nodeId nodeLabel nodeToLbl
@@ -336,7 +332,7 @@ generateDot model =
                                 let
                                     incomingEdges =
                                         "  {"
-                                            ++ String.join ", " (List.map exponentsToString immediateSubdivisors)
+                                            ++ String.join ", " (List.map (String.fromInt << factorizationToNumber) immediateSubdivisors)
                                             ++ "} -> "
                                             ++ (String.fromInt nodeId ++ ";")
                                 in
@@ -344,7 +340,7 @@ generateDot model =
                                     genNodeAndEdgeLines (fs ++ immediateSubdivisors) newNodeToLbl
 
         ( edgeLines, processedNodes ) =
-            genNodeAndEdgeLines [ model.exponents ] Dict.empty
+            genNodeAndEdgeLines [ model.factorization ] Dict.empty
 
         nodeLines =
             Dict.foldl
