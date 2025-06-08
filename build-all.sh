@@ -14,6 +14,7 @@ projects=(
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
   ["covariance"]="Covariance intuition builder"
+  ["divisibility-lattice"]="Interactive visualization of divisibility lattice"
   ["eulers-totient"]="Toy game for practicing steps to calculate Euler's totient function"
   ["elm-cube"]="3D cube visualization"
   ["hexagon"]="Pascal's triangle in hexagonal grid"
@@ -103,8 +104,13 @@ for project_name in $(echo "${!projects[@]}" | tr ' ' '\n' | sort); do
     uglifyjs "$js_file" --compress 'pure_funcs=[F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9],pure_getters,keep_fargs=false,unsafe_comps,unsafe' | uglifyjs --mangle --output "$min_js_file"
     rm "$js_file"
 
-    # Create simple index.html that imports the minified js file
-    cat > "$project_build_dir/index.html" << EOF_HTML
+    # Check if project has its own index.html, otherwise create default one
+    if [ -f "index.html" ]; then
+        echo "Using existing index.html for $project_name"
+        cp "index.html" "$project_build_dir/index.html"
+    else
+        # Create simple index.html that imports the minified js file
+        cat > "$project_build_dir/index.html" << EOF_HTML
 <!DOCTYPE html>
 <html>
 <head>
@@ -125,6 +131,7 @@ for project_name in $(echo "${!projects[@]}" | tr ' ' '\n' | sort); do
 </body>
 </html>
 EOF_HTML
+    fi
 
     # Add link with description to main index.html
     cat >> "$BUILD_DIR/index.html" << EOF_LINK
