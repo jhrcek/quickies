@@ -47,7 +47,7 @@ primes =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    updateDot
+    updateGraph
         { exponents = Dict.fromList [ ( 2, 1 ), ( 3, 0 ), ( 5, 0 ), ( 7, 0 ), ( 11, 0 ) ] -- Start with 2^1
         , displayMode = ShowNumber
         , graphView = Graph
@@ -65,7 +65,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ModifyExplonent prime delta ->
-            updateDot
+            updateGraph
                 { model
                     | exponents =
                         Dict.update prime
@@ -74,30 +74,28 @@ update msg model =
                 }
 
         SetDisplayMode mode ->
-            updateDot { model | displayMode = mode }
+            updateGraph { model | displayMode = mode }
 
         SetGraphView gv ->
-            case gv of
-                Graph ->
-                    updateDot { model | graphView = gv }
-
-                DotSource ->
-                    ( { model | graphView = gv }, Cmd.none )
+            updateGraph { model | graphView = gv }
 
         Reset ->
             init ()
 
 
-updateDot : Model -> ( Model, Cmd Msg )
-updateDot model =
-    let
-        renderDot =
+updateGraph : Model -> ( Model, Cmd Msg )
+updateGraph model =
+    ( model
+    , case model.graphView of
+        Graph ->
             Ports.renderDot
                 { dotSource = generateDot model
                 , engine = "dot"
                 }
-    in
-    ( model, renderDot )
+
+        DotSource ->
+            Cmd.none
+    )
 
 
 view : Model -> Html Msg
@@ -349,15 +347,19 @@ generateDot model =
             genNodeAndEdgeLines [ model.exponents ] Dict.empty
 
         nodeLines =
-            case model.displayMode of
-                ShowNumber ->
-                    []
+            Dict.foldl
+                (\nodeId nodeLab linesAcc ->
+                    (case model.displayMode of
+                        ShowNumber ->
+                            "  " ++ String.fromInt nodeId ++ ";"
 
-                ShowFactorization ->
-                    Dict.foldl
-                        (\nodeId nodeLab -> (::) ("  " ++ String.fromInt nodeId ++ " [label=" ++ nodeLab ++ "];"))
-                        []
-                        processedNodes
+                        ShowFactorization ->
+                            "  " ++ String.fromInt nodeId ++ " [label=" ++ nodeLab ++ "];"
+                    )
+                        :: linesAcc
+                )
+                []
+                processedNodes
     in
     String.join "\n" <|
         [ "digraph G {"

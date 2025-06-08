@@ -1,2 +1,2 @@
 live:
-	elm-live src/Main.elm -- --output elm.min.js
+	elm-live src/Main.elm -- --output elm.min.js --debug
