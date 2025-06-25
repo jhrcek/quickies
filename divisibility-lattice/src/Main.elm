@@ -268,6 +268,76 @@ getImmediateSubdivisors factorization =
         factorization
 
 
+{-| Map each prime to a distinct font color
+-}
+primeToColor : Int -> String
+primeToColor prime =
+    case prime of
+        2 ->
+            -- Dark red
+            "#CC0000"
+
+        3 ->
+            -- Dark blue
+            "#0066CC"
+
+        5 ->
+            -- Dark green
+            "#009900"
+
+        7 ->
+            -- Dark orange
+            "#CC6600"
+
+        11 ->
+            -- Dark purple
+            "#9900CC"
+
+        _ ->
+            -- Dark gray for other primes
+            "#666666"
+
+
+{-| Convert exponent to Unicode superscript
+-}
+exponentToSuperscript : Int -> String
+exponentToSuperscript exp =
+    case exp of
+        0 ->
+            "⁰"
+
+        1 ->
+            "¹"
+
+        2 ->
+            "²"
+
+        3 ->
+            "³"
+
+        4 ->
+            "⁴"
+
+        5 ->
+            "⁵"
+
+        6 ->
+            "⁶"
+
+        7 ->
+            "⁷"
+
+        8 ->
+            "⁸"
+
+        9 ->
+            "⁹"
+
+        _ ->
+            -- fallback for larger numbers
+            String.fromInt exp
+
+
 factorizationToGraphvizHtmlLabel : Dict Int Int -> String
 factorizationToGraphvizHtmlLabel factorization =
     case
@@ -278,19 +348,19 @@ factorizationToGraphvizHtmlLabel factorization =
                         acc
 
                     1 ->
-                        String.fromInt prime :: acc
+                        ("<FONT COLOR=\"" ++ primeToColor prime ++ "\">" ++ String.fromInt prime ++ "</FONT>") :: acc
 
                     _ ->
-                        (String.fromInt prime ++ "<SUP>" ++ String.fromInt exponent ++ "</SUP>") :: acc
+                        ("<FONT COLOR=\"" ++ primeToColor prime ++ "\">" ++ String.fromInt prime ++ exponentToSuperscript exponent ++ "</FONT>") :: acc
             )
             []
             factorization
     of
         [] ->
-            "<1>"
+            "\" 1 \""
 
         factors ->
-            "<" ++ String.join "·" factors ++ ">"
+            "< " ++ String.join " " factors ++ " >"
 
 
 generateDot : Model -> String
@@ -361,7 +431,7 @@ generateDot model =
         [ "digraph G {"
         , "  rankdir=BT;"
         , "  edge [dir=none];"
-        , "  node [shape=box, style=\"filled,rounded\", fillcolor=lightblue];"
+        , "  node [shape=box, style=rounded, height=0, width=0];"
         ]
             ++ nodeLines
             ++ edgeLines
