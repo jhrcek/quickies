@@ -97,7 +97,7 @@ init _ url key =
 type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
-    | ArityChanged String
+    | GoToRoute Route
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -116,13 +116,10 @@ update msg model =
             , Cmd.none
             )
 
-        ArityChanged arityStr ->
-            case String.toInt arityStr of
-                Just arity ->
-                    ( model, Nav.pushUrl model.key (renderRoute (Functions arity)) )
-
-                Nothing ->
-                    ( model, Cmd.none )
+        GoToRoute route ->
+            ( model
+            , Nav.pushUrl model.key (renderRoute route)
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -152,40 +149,70 @@ viewNavigation route =
         (List.intersperse (Html.text " > ") (buildBreadcrumbs route))
 
 
+arityControls : Bool -> Int -> Html Msg
+arityControls renderLink arity =
+    Html.span []
+        [ if renderLink then
+            Html.a [ routeHref (Functions arity) ] [ Html.text "Arity" ]
+
+          else
+            Html.text "Arity"
+        , Html.text " "
+        , Html.button
+            [ Events.onClick (GoToRoute (Functions (arity - 1)))
+            , HA.disabled (arity <= 1)
+            ]
+            [ Html.text "-" ]
+        , Html.text (" " ++ String.fromInt arity ++ " ")
+        , Html.button
+            [ Events.onClick (GoToRoute (Functions (arity + 1)))
+            , HA.disabled (arity >= maxArity)
+            ]
+            [ Html.text "+" ]
+        ]
+
+
 buildBreadcrumbs : Route -> List (Html Msg)
 buildBreadcrumbs route =
+    let
+        homeLink =
+            Html.a [ routeHref Home ] [ Html.text "Home" ]
+    in
     case route of
         Home ->
-            [ Html.a [ routeHref Home ] [ Html.text "Home" ] ]
+            [ homeLink ]
 
         Functions arity ->
-            [ Html.a [ routeHref Home ] [ Html.text "Home" ]
-            , arityDropdown (Just arity)
+            [ homeLink
+            , arityControls False arity
             ]
 
         Function arity functionIndex ->
-            [ Html.a [ routeHref Home ] [ Html.text "Home" ]
-            , arityDropdown (Just arity)
-            , Html.text ("Function " ++ String.fromInt functionIndex)
+            [ homeLink
+            , arityControls True arity
+            , functionControls arity functionIndex
             ]
 
         NotFound ->
-            [ Html.a [ routeHref Home ] [ Html.text "Home" ] ]
+            [ homeLink ]
 
 
-arityDropdown : Maybe Int -> Html Msg
-arityDropdown selectedArity =
-    Html.select [ Events.onInput ArityChanged ]
-        (List.map
-            (\arity ->
-                Html.option
-                    [ HA.value (String.fromInt arity)
-                    , HA.selected (selectedArity == Just arity)
-                    ]
-                    [ Html.text ("Arity " ++ String.fromInt arity) ]
-            )
-            [ 1, 2, 3 ]
-        )
+functionControls : Int -> Int -> Html Msg
+functionControls arity functionIndex =
+    Html.span []
+        [ Html.text "Function "
+        , Html.button
+            [ Events.onClick (GoToRoute (Function arity (functionIndex - 1)))
+            , HA.disabled (functionIndex <= 0)
+            ]
+            [ Html.text "-" ]
+        , Html.text (" " ++ String.fromInt functionIndex ++ " ")
+        , Html.button
+            [ Events.onClick (GoToRoute (Function arity (functionIndex + 1)))
+            , HA.disabled (functionIndex >= maxFunctionIndex arity)
+            ]
+            [ Html.text "+" ]
+        ]
 
 
 viewRoute : Route -> Html Msg
@@ -216,11 +243,11 @@ viewRoute route =
                         [ HA.class "functions-table"
                         ]
 
-            else if 0 < arity && arity < 4 then
-                Html.text ("Functions page for n=" ++ String.fromInt arity)
+            else if 0 < arity && arity <= maxArity then
+                Html.text ("TODO: functions page for n=" ++ String.fromInt arity)
 
             else
-                Html.text "Invalid function arity (must be 1-3)"
+                Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
 
         Function arity functionIndex ->
             case arity of
@@ -241,10 +268,20 @@ viewRoute route =
 
                 _ ->
                     -- TODO add link to meaningful page
-                    Html.text "Invalid function arity (must be 1-3)"
+                    Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
 
         NotFound ->
             Html.text "404 - Page not found"
+
+
+maxArity : Int
+maxArity =
+    3
+
+
+maxFunctionIndex : Int -> Int
+maxFunctionIndex arity =
+    (2 ^ (2 ^ arity)) - 1
 
 
 styles : String
