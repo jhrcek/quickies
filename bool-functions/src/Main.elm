@@ -222,29 +222,36 @@ viewRoute route =
             Html.text "Home page - Function Explorer"
 
         Functions arity ->
-            if arity == 2 then
-                Array.toIndexedList BoolFun.f2Names
-                    |> List.map
-                        (\( idx, name ) ->
-                            Html.tr []
-                                [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                , Html.td [] [ Html.a [ routeHref (Function 2 idx) ] [ Html.text name ] ]
+            let
+                funList names =
+                    Array.toIndexedList names
+                        |> List.map
+                            (\( idx, name ) ->
+                                Html.tr []
+                                    [ Html.td [] [ Html.text (String.fromInt idx) ]
+                                    , Html.td [] [ Html.a [ routeHref (Function arity idx) ] [ Html.text name ] ]
+                                    ]
+                            )
+                        |> (::)
+                            (Html.thead []
+                                [ Html.tr []
+                                    [ Html.th [] [ Html.text "Index" ]
+                                    , Html.th [] [ Html.text "Function Name" ]
+                                    ]
                                 ]
-                        )
-                    |> (::)
-                        (Html.thead []
-                            [ Html.tr []
-                                [ Html.th [] [ Html.text "Index" ]
-                                , Html.th [] [ Html.text "Function Name" ]
-                                ]
-                            ]
-                        )
-                    |> Html.table
-                        [ HA.class "functions-table"
-                        ]
+                            )
+                        |> Html.table
+                            [ HA.class "functions-table" ]
+            in
+            if arity == 1 then
+                funList BoolFun.f1Names
 
-            else if 0 < arity && arity <= maxArity then
-                Html.text ("TODO: functions page for n=" ++ String.fromInt arity)
+            else if arity == 2 then
+                funList BoolFun.f2Names
+
+            else if arity == 3 then
+                -- TODO - some names for arity 3 functions?
+                funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
 
             else
                 Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
@@ -252,19 +259,17 @@ viewRoute route =
         Function arity functionIndex ->
             case arity of
                 1 ->
-                    Html.text "Function with arity 1 - TODO"
+                    BoolFun.truthTable BoolFun.arity1Config functionIndex
+                        -- TODO add link to meaningful page
+                        |> Maybe.withDefault (Html.text "Invalid function index for arity 1")
 
                 2 ->
-                    case BoolFun.mkF2 functionIndex of
-                        Just f2 ->
-                            BoolFun.truthTableF2 f2
-
-                        Nothing ->
-                            -- TODO add link to meaningful page
-                            Html.text "Invalid function index for arity 2"
+                    BoolFun.truthTable BoolFun.arity2Config functionIndex
+                        |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
 
                 3 ->
-                    Html.text "Function with arity 3 - TODO"
+                    BoolFun.truthTable BoolFun.arity3Config functionIndex
+                        |> Maybe.withDefault (Html.text "Invalid function index for arity 3")
 
                 _ ->
                     -- TODO add link to meaningful page

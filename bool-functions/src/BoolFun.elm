@@ -1,9 +1,10 @@
 module BoolFun exposing
-    ( F2
-    , evalF2
+    ( arity1Config
+    , arity2Config
+    , arity3Config
     , f2Names
-    , mkF2
-    , truthTableF2
+    , funCount
+    , truthTable, f1Names
     )
 
 import Array exposing (Array)
@@ -12,11 +13,14 @@ import Html exposing (Html)
 import Html.Attributes as A
 
 
-{-| A compact representation of a function of two Boolean variables
-We interpret the last 4 bits of an integer as a truth table for the function.
--}
-type F2
-    = F2 Int
+f1Names : Array String
+f1Names =
+    Array.fromList
+        [ "FALSE"
+        , "NOT"
+        , "ID"
+        , "TRUE"
+        ]
 
 
 f2Names : Array String
@@ -34,45 +38,81 @@ f2Names =
         , "XNOR"
         , "b"
         , "a → b"
-        , "b"
+        , "a"
         , "b → a"
         , "∨"
         , "TRUE"
         ]
 
 
-truthTableF2 : F2 -> Html a
-truthTableF2 ((F2 funIdx) as f2) =
-    Html.table [ A.class "truth-table" ]
-        [ Html.thead []
-            [ Html.tr []
-                [ Html.th [] [ Html.text "a" ]
-                , Html.th [] [ Html.text "b" ]
-                , Html.th [] [ Html.text (Array.get funIdx f2Names |> Maybe.withDefault "f(a, b)") ]
-                ]
-            ]
-        , Html.tbody []
-            (List.range 0 3
-                |> List.map
-                    (\i ->
-                        let
-                            a =
-                                getBit 1 i
+type alias ArityConfig =
+    { arity : Int
+    , getName : Int -> String
+    }
 
-                            b =
-                                getBit 0 i
 
-                            result =
-                                evalF2 f2 a b
-                        in
-                        Html.tr []
-                            [ boolCell a
-                            , boolCell b
-                            , boolCell result
-                            ]
+funCount : Int -> Int
+funCount arity =
+    2 ^ (2 ^ arity)
+
+
+arity1Config : ArityConfig
+arity1Config =
+    { arity = 1
+    , getName = \i -> Array.get i f1Names |> Maybe.withDefault "f(a)"
+    }
+
+
+arity2Config : ArityConfig
+arity2Config =
+    { arity = 2
+    , getName = \i -> Array.get i f2Names |> Maybe.withDefault "f(a, b)"
+    }
+
+
+arity3Config : ArityConfig
+arity3Config =
+    { arity = 3
+    , -- TODO see if any of these are named
+      getName = \_ -> "f(a,b,c)"
+    }
+
+
+truthTable : ArityConfig -> Int -> Maybe (Html a)
+truthTable { arity, getName } funIndex =
+    let
+        rowCount =
+            2 ^ arity
+    in
+    if funIndex < 0 || funIndex >= funCount arity then
+        -- Index out of bounds
+        Nothing
+
+    else
+        Just <|
+            Html.table [ A.class "truth-table" ]
+                [ Html.thead []
+                    [ Html.tr []
+                        (List.map (\l -> Html.th [] [ Html.text l ]) (letters arity)
+                            ++ [ Html.th [] [ Html.text (getName funIndex) ] ]
+                        )
+                    ]
+                , Html.tbody []
+                    (List.range 0 (rowCount - 1)
+                        |> List.map
+                            (\i ->
+                                Html.tr []
+                                    (List.map boolCell (lastNBits arity i) ++ [ boolCell (eval_internal funIndex i) ])
+                            )
                     )
-            )
-        ]
+                ]
+
+
+letters : Int -> List String
+letters n =
+    List.range 0 (n - 1)
+        |> List.map (\i -> Char.fromCode (97 + i))
+        |> List.map String.fromChar
 
 
 
@@ -102,41 +142,17 @@ showBool b =
         "False"
 
 
-
--- TODO somehow associate names with each function
-
-
-mkF2 : Int -> Maybe F2
-mkF2 i =
-    -- TODO we could potentially get rid of the Maybe - and just ignore all the bits past the first 4
-    if i < 0 || i > 15 then
-        Nothing
-
-    else
-        Just (F2 i)
+eval_internal : Int -> Int -> Bool
+eval_internal funIndex inputRowIndex =
+    getBit inputRowIndex funIndex
 
 
-bitsToIndex : List Bool -> Int
-bitsToIndex bits =
-    List.foldl
-        (\bit acc ->
-            acc
-                * 2
-                + (if bit then
-                    1
-
-                   else
-                    0
-                  )
-        )
-        0
-        bits
-
-
-evalF2 : F2 -> Bool -> Bool -> Bool
-evalF2 (F2 i) a b =
-    -- TODO maybe eval could just take single Int whose last 2 bits would be taken to represent the index of a bit to lookup from F2.
-    getBit (bitsToIndex [ a, b ]) i
+lastNBits : Int -> Int -> List Bool
+lastNBits numBits n =
+    List.range 0 (numBits - 1)
+        |> List.map (\i -> getBit i n)
+        -- reverse the list so that the first bit is the least significant one
+        |> List.reverse
 
 
 getBit : Int -> Int -> Bool
