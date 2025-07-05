@@ -4,11 +4,11 @@ import Array
 import BoolFun
 import Browser
 import Browser.Navigation as Nav
-import Html exposing (Attribute, Html)
+import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
+import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
-import Url.Parser as Parser exposing ((</>), Parser, int, map, oneOf, s, top)
 
 
 main : Program () Model Msg
@@ -30,65 +30,11 @@ type alias Model =
     }
 
 
-type Route
-    = Home
-    | Functions Int
-    | Function Int Int
-    | NotFound
-
-
-routeParser : Parser (Route -> a) a
-routeParser =
-    oneOf
-        [ map Home top
-        , map Functions (s "functions" </> int)
-        , map Function (s "functions" </> int </> s "function" </> int)
-        ]
-
-
-parseUrl : Url.Url -> Route
-parseUrl url =
-    case url.fragment of
-        Nothing ->
-            Home
-
-        Just fragment ->
-            case Parser.parse routeParser { url | path = fragment } of
-                Just route ->
-                    route
-
-                Nothing ->
-                    NotFound
-
-
-renderRoute : Route -> String
-renderRoute route =
-    "#"
-        ++ (case route of
-                Home ->
-                    ""
-
-                NotFound ->
-                    ""
-
-                Functions arity ->
-                    "/functions/" ++ String.fromInt arity
-
-                Function arity functionIndex ->
-                    "/functions/" ++ String.fromInt arity ++ "/function/" ++ String.fromInt functionIndex
-           )
-
-
-routeHref : Route -> Attribute msg
-routeHref route =
-    HA.href (renderRoute route)
-
-
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ url key =
     ( { key = key
       , url = url
-      , route = parseUrl url
+      , route = Route.parseUrl url
       }
     , Cmd.none
     )
@@ -112,13 +58,13 @@ update msg model =
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            ( { model | url = url, route = parseUrl url }
+            ( { model | url = url, route = Route.parseUrl url }
             , Cmd.none
             )
 
         GoToRoute route ->
             ( model
-            , Nav.pushUrl model.key (renderRoute route)
+            , Nav.pushUrl model.key (Route.render route)
             )
 
 
@@ -153,19 +99,19 @@ arityControls : Bool -> Int -> Html Msg
 arityControls renderLink arity =
     Html.span []
         [ if renderLink then
-            Html.a [ routeHref (Functions arity) ] [ Html.text "Arity" ]
+            Html.a [ Route.href (Arity arity AllFunctions) ] [ Html.text "Arity" ]
 
           else
             Html.text "Arity"
         , Html.text " "
         , Html.button
-            [ Events.onClick (GoToRoute (Functions (arity - 1)))
+            [ Events.onClick (GoToRoute (Arity (arity - 1) AllFunctions))
             , HA.disabled (arity <= 1)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt arity ++ " ")
         , Html.button
-            [ Events.onClick (GoToRoute (Functions (arity + 1)))
+            [ Events.onClick (GoToRoute (Arity (arity + 1) AllFunctions))
             , HA.disabled (arity >= maxArity)
             ]
             [ Html.text "+" ]
@@ -176,22 +122,26 @@ buildBreadcrumbs : Route -> List (Html Msg)
 buildBreadcrumbs route =
     let
         homeLink =
-            Html.a [ routeHref Home ] [ Html.text "Home" ]
+            Html.a [ Route.href Home ] [ Html.text "Home" ]
     in
     case route of
         Home ->
             [ homeLink ]
 
-        Functions arity ->
-            [ homeLink
-            , arityControls False arity
-            ]
+        Arity arity aritySubroute ->
+            case aritySubroute of
+                AllFunctions ->
+                    [ homeLink
+                    , arityControls False arity
+                    ]
 
-        Function arity functionIndex ->
-            [ homeLink
-            , arityControls True arity
-            , functionControls arity functionIndex
-            ]
+                Function functionIndex propertySubroute ->
+                    [ homeLink
+                    , arityControls True arity
+                    , functionControls arity functionIndex
+
+                    -- TODO add property subroute links
+                    ]
 
         NotFound ->
             [ homeLink ]
@@ -202,13 +152,13 @@ functionControls arity functionIndex =
     Html.span []
         [ Html.text "Function "
         , Html.button
-            [ Events.onClick (GoToRoute (Function arity (functionIndex - 1)))
+            [ Events.onClick (GoToRoute (Arity arity (Function (functionIndex - 1) PropertiesSummary)))
             , HA.disabled (functionIndex <= 0)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt functionIndex ++ " ")
         , Html.button
-            [ Events.onClick (GoToRoute (Function arity (functionIndex + 1)))
+            [ Events.onClick (GoToRoute (Arity arity (Function (functionIndex + 1) PropertiesSummary)))
             , HA.disabled (functionIndex >= maxFunctionIndex arity)
             ]
             [ Html.text "+" ]
@@ -219,64 +169,118 @@ viewRoute : Route -> Html Msg
 viewRoute route =
     case route of
         Home ->
-            Html.text "Home page - Function Explorer"
+            Html.div []
+                [ Html.text "Explore functions of arity "
+                , Html.a [ Route.href (Arity 1 AllFunctions) ] [ Html.text "1" ]
+                , Html.text ", "
+                , Html.a [ Route.href (Arity 2 AllFunctions) ] [ Html.text "2" ]
+                , Html.text ", "
+                , Html.a [ Route.href (Arity 3 AllFunctions) ] [ Html.text "3" ]
 
-        Functions arity ->
-            let
-                funList names =
-                    Array.toIndexedList names
-                        |> List.map
-                            (\( idx, name ) ->
-                                Html.tr []
-                                    [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                    , Html.td [] [ Html.a [ routeHref (Function arity idx) ] [ Html.text name ] ]
+                -- TODO more substantial home page content
+                ]
+
+        Arity arity arityRoute ->
+            case arityRoute of
+                AllFunctions ->
+                    let
+                        funList names =
+                            Array.toIndexedList names
+                                |> List.map
+                                    (\( idx, name ) ->
+                                        Html.tr []
+                                            [ Html.td [] [ Html.text (String.fromInt idx) ]
+                                            , Html.td [] [ Html.a [ Route.href (Arity arity (Function idx PropertiesSummary)) ] [ Html.text name ] ]
+                                            , BoolFun.boolCell (BoolFun.isFalsityPreserving idx)
+                                            , BoolFun.boolCell (BoolFun.isTruthPreserving arity idx)
+                                            ]
+                                    )
+                                |> (::)
+                                    (Html.thead []
+                                        [ Html.tr []
+                                            [ Html.th [] [ Html.text "Index" ]
+                                            , Html.th [] [ Html.text "Function Name" ]
+                                            , Html.th [] [ Html.text "Falsity-preserving" ]
+                                            , Html.th [] [ Html.text "Truth-preserving" ]
+                                            ]
+                                        ]
+                                    )
+                                |> Html.table
+                                    [ HA.class "functions-table" ]
+                    in
+                    if arity == 1 then
+                        funList BoolFun.f1Names
+
+                    else if arity == 2 then
+                        funList BoolFun.f2Names
+
+                    else if arity == 3 then
+
+                        funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
+
+                    else
+                        Html.text <| "Invalid function arity (must be 1 - " ++ String.fromInt maxArity ++ ")"
+
+                Function functionIndex propSubroute ->
+                    Html.div []
+                        [ case arity of
+                            1 ->
+                                BoolFun.truthTable BoolFun.arity1Config functionIndex
+                                    -- TODO add link to meaningful page
+                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 1")
+
+                            2 ->
+                                BoolFun.truthTable BoolFun.arity2Config functionIndex
+                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
+
+                            3 ->
+                                BoolFun.truthTable BoolFun.arity3Config functionIndex
+                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 3")
+
+                            _ ->
+                                -- TODO add link to meaningful page
+                                Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
+                        , case propSubroute of
+                            PropertiesSummary ->
+                                Html.div []
+                                    [ Html.div []
+                                        [ Html.text "Falsity-preserving: ", yesNo (BoolFun.isFalsityPreserving functionIndex) ]
+                                    , Html.div
+                                        []
+                                        [ Html.text "Truth-preserving: ", yesNo (BoolFun.isTruthPreserving arity functionIndex) ]
+
+                                    -- TODO other properties
                                     ]
-                            )
-                        |> (::)
-                            (Html.thead []
-                                [ Html.tr []
-                                    [ Html.th [] [ Html.text "Index" ]
-                                    , Html.th [] [ Html.text "Function Name" ]
-                                    ]
-                                ]
-                            )
-                        |> Html.table
-                            [ HA.class "functions-table" ]
-            in
-            if arity == 1 then
-                funList BoolFun.f1Names
 
-            else if arity == 2 then
-                funList BoolFun.f2Names
+                            FalsePreserving ->
+                                Html.text "TODO - False preserving"
 
-            else if arity == 3 then
-                -- TODO - some names for arity 3 functions?
-                funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
+                            TruePreserving ->
+                                Html.text "TODO - True preserving"
 
-            else
-                Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
+                            Monotonic ->
+                                Html.text "TODO - Monotonic"
 
-        Function arity functionIndex ->
-            case arity of
-                1 ->
-                    BoolFun.truthTable BoolFun.arity1Config functionIndex
-                        -- TODO add link to meaningful page
-                        |> Maybe.withDefault (Html.text "Invalid function index for arity 1")
+                            Affine ->
+                                Html.text "TODO - Affine"
 
-                2 ->
-                    BoolFun.truthTable BoolFun.arity2Config functionIndex
-                        |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
-
-                3 ->
-                    BoolFun.truthTable BoolFun.arity3Config functionIndex
-                        |> Maybe.withDefault (Html.text "Invalid function index for arity 3")
-
-                _ ->
-                    -- TODO add link to meaningful page
-                    Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
+                            SelfDual ->
+                                Html.text "TODO - Self Dual"
+                        ]
 
         NotFound ->
             Html.text "404 - Page not found"
+
+
+yesNo : Bool -> Html msg
+yesNo condition =
+    Html.text
+        (if condition then
+            "Yes"
+
+         else
+            "No"
+        )
 
 
 maxArity : Int

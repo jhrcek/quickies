@@ -2,9 +2,13 @@ module BoolFun exposing
     ( arity1Config
     , arity2Config
     , arity3Config
+    , boolCell
+    , f1Names
     , f2Names
     , funCount
-    , truthTable, f1Names
+    , isFalsityPreserving
+    , isTruthPreserving
+    , truthTable
     )
 
 import Array exposing (Array)
@@ -49,6 +53,10 @@ type alias ArityConfig =
     { arity : Int
     , getName : Int -> String
     }
+
+
+
+-- TODO hide this
 
 
 funCount : Int -> Int
@@ -162,3 +170,22 @@ getBit bitIndex n =
 
     else
         Bitwise.and n (Bitwise.shiftLeftBy bitIndex 1) /= 0
+
+
+isFalsityPreserving : Int -> Bool
+isFalsityPreserving funIndex =
+    not (getBit 0 funIndex)
+
+
+isTruthPreserving : Int -> Int -> Bool
+isTruthPreserving arity funIndex =
+    let
+        rowCount =
+            2 ^ arity
+    in
+    if funIndex < 0 || funIndex >= funCount arity then
+        -- Index out of bounds
+        False
+
+    else
+        getBit (rowCount - 1) funIndex
