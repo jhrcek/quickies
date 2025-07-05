@@ -7,6 +7,7 @@ import Browser.Navigation as Nav
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
+import Random
 import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
 
@@ -44,6 +45,7 @@ type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | GoToRoute Route
+    | GoToRandomFunction Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -65,6 +67,12 @@ update msg model =
         GoToRoute route ->
             ( model
             , Nav.pushUrl model.key (Route.render route)
+            )
+
+        GoToRandomFunction arity ->
+            ( model
+            , Random.generate (\funIdx -> GoToRoute (Arity arity (Function (Debug.log "funIndex" funIdx) PropertiesSummary)))
+                (Random.int 0 (BoolFun.funCount arity - 1))
             )
 
 
@@ -112,7 +120,7 @@ arityControls renderLink arity =
         , Html.text (" " ++ String.fromInt arity ++ " ")
         , Html.button
             [ Events.onClick (GoToRoute (Arity (arity + 1) AllFunctions))
-            , HA.disabled (arity >= maxArity)
+            , HA.disabled (arity >= BoolFun.maxArity)
             ]
             [ Html.text "+" ]
         ]
@@ -170,15 +178,16 @@ viewRoute route =
     case route of
         Home ->
             Html.div []
-                [ Html.text "Explore functions of arity "
-                , Html.a [ Route.href (Arity 1 AllFunctions) ] [ Html.text "1" ]
-                , Html.text ", "
-                , Html.a [ Route.href (Arity 2 AllFunctions) ] [ Html.text "2" ]
-                , Html.text ", "
-                , Html.a [ Route.href (Arity 3 AllFunctions) ] [ Html.text "3" ]
-
                 -- TODO more substantial home page content
-                ]
+                (Html.text "Explore functions of arity "
+                    :: List.intersperse (Html.text ", ")
+                        (List.map
+                            (\arity ->
+                                Html.a [ Route.href (Arity arity AllFunctions) ] [ Html.text (String.fromInt arity) ]
+                            )
+                            (List.range 1 BoolFun.maxArity)
+                        )
+                )
 
         Arity arity arityRoute ->
             case arityRoute of
@@ -215,11 +224,25 @@ viewRoute route =
                         funList BoolFun.f2Names
 
                     else if arity == 3 then
-
                         funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
 
                     else
-                        Html.text <| "Invalid function arity (must be 1 - " ++ String.fromInt maxArity ++ ")"
+                        Html.div []
+                            [ Html.text
+                                ("There are "
+                                    ++ String.fromInt (BoolFun.funCount arity)
+                                    ++ " functions of arity "
+                                    ++ String.fromInt arity
+                                )
+                            , Html.div []
+                                [ Html.text "Go and look at randomly picked one: "
+                                , Html.button
+                                    [ Events.onClick (GoToRandomFunction arity)
+                                    , HA.title "Go to random function"
+                                    ]
+                                    [ Html.text "⚄" ]
+                                ]
+                            ]
 
                 Function functionIndex propSubroute ->
                     Html.div []
@@ -233,13 +256,10 @@ viewRoute route =
                                 BoolFun.truthTable BoolFun.arity2Config functionIndex
                                     |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
 
-                            3 ->
-                                BoolFun.truthTable BoolFun.arity3Config functionIndex
-                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 3")
-
-                            _ ->
-                                -- TODO add link to meaningful page
-                                Html.text <| "Invalid function arity (must be 1- " ++ String.fromInt maxArity ++ ")"
+                            -- TODO add upper limit + "not supported arity" message
+                            n ->
+                                BoolFun.truthTable (BoolFun.arityNConfig n) functionIndex
+                                    |> Maybe.withDefault (Html.text ("Invalid function index for arity " ++ String.fromInt n))
                         , case propSubroute of
                             PropertiesSummary ->
                                 Html.div []
@@ -281,11 +301,6 @@ yesNo condition =
          else
             "No"
         )
-
-
-maxArity : Int
-maxArity =
-    3
 
 
 maxFunctionIndex : Int -> Int

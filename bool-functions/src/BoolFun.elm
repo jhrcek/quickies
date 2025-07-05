@@ -1,13 +1,14 @@
 module BoolFun exposing
     ( arity1Config
     , arity2Config
-    , arity3Config
+    , arityNConfig
     , boolCell
     , f1Names
     , f2Names
     , funCount
     , isFalsityPreserving
     , isTruthPreserving
+    , maxArity
     , truthTable
     )
 
@@ -55,10 +56,6 @@ type alias ArityConfig =
     }
 
 
-
--- TODO hide this
-
-
 funCount : Int -> Int
 funCount arity =
     2 ^ (2 ^ arity)
@@ -78,11 +75,25 @@ arity2Config =
     }
 
 
-arity3Config : ArityConfig
-arity3Config =
-    { arity = 3
-    , -- TODO see if any of these are named
-      getName = \_ -> "f(a,b,c)"
+arityNConfig : Int -> ArityConfig
+arityNConfig n =
+    let
+        validN =
+            clamp 1 maxArity n
+    in
+    { arity = validN
+    , getName =
+        \_ ->
+            "f("
+                ++ String.join ","
+                    (List.range 1 validN
+                        |> List.map
+                            (\i ->
+                                Char.fromCode (96 + i)
+                                    |> String.fromChar
+                            )
+                    )
+                ++ ")"
     }
 
 
@@ -189,3 +200,11 @@ isTruthPreserving arity funIndex =
 
     else
         getBit (rowCount - 1) funIndex
+
+
+maxArity : Int
+maxArity =
+    -- Capping it to 5, because elm/random doesn't work well with numbers larger than 2147483647 (=2^31 - 1)
+    -- https://package.elm-lang.org/packages/elm/random/latest/Random#maxInt
+    -- And the number of functions 2^(2^5)-1=4294967295
+    5
