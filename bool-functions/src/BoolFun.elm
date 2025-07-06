@@ -75,26 +75,27 @@ arity2Config =
     }
 
 
-arityNConfig : Int -> ArityConfig
+arityNConfig : Int -> Maybe ArityConfig
 arityNConfig n =
-    let
-        validN =
-            clamp 1 maxArity n
-    in
-    { arity = validN
-    , getName =
-        \_ ->
-            "f("
-                ++ String.join ","
-                    (List.range 1 validN
-                        |> List.map
-                            (\i ->
-                                Char.fromCode (96 + i)
-                                    |> String.fromChar
+    if n < 1 || n > maxArity then
+        Nothing
+
+    else
+        Just
+            { arity = n
+            , getName =
+                \_ ->
+                    "f("
+                        ++ String.join ","
+                            (List.range 1 n
+                                |> List.map
+                                    (\i ->
+                                        Char.fromCode (96 + i)
+                                            |> String.fromChar
+                                    )
                             )
-                    )
-                ++ ")"
-    }
+                        ++ ")"
+            }
 
 
 truthTable : ArityConfig -> Int -> Maybe (Html a)

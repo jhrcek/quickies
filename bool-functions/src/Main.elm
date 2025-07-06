@@ -160,6 +160,7 @@ functionControls arity functionIndex =
     Html.span []
         [ Html.text "Function "
         , Html.button
+            -- TODO make this a bit more sophisticated - e.g. +-1 on arity shoudl stay on (clamped) function index, should preserver property if selected etc
             [ Events.onClick (GoToRoute (Arity arity (Function (functionIndex - 1) PropertiesSummary)))
             , HA.disabled (functionIndex <= 0)
             ]
@@ -226,7 +227,7 @@ viewRoute route =
                     else if arity == 3 then
                         funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
 
-                    else
+                    else if arity <= BoolFun.maxArity then
                         Html.div []
                             [ Html.text
                                 ("There are "
@@ -244,6 +245,9 @@ viewRoute route =
                                 ]
                             ]
 
+                    else
+                        unsupportedArity
+
                 Function functionIndex propSubroute ->
                     Html.div []
                         [ case arity of
@@ -256,17 +260,20 @@ viewRoute route =
                                 BoolFun.truthTable BoolFun.arity2Config functionIndex
                                     |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
 
-                            -- TODO add upper limit + "not supported arity" message
                             n ->
-                                BoolFun.truthTable (BoolFun.arityNConfig n) functionIndex
-                                    |> Maybe.withDefault (Html.text ("Invalid function index for arity " ++ String.fromInt n))
+                                case BoolFun.arityNConfig n of
+                                    Just config ->
+                                        BoolFun.truthTable config functionIndex
+                                            |> Maybe.withDefault (Html.text ("Invalid function index for arity " ++ String.fromInt n))
+
+                                    Nothing ->
+                                        unsupportedArity
                         , case propSubroute of
                             PropertiesSummary ->
                                 Html.div []
                                     [ Html.div []
                                         [ Html.text "Falsity-preserving: ", yesNo (BoolFun.isFalsityPreserving functionIndex) ]
-                                    , Html.div
-                                        []
+                                    , Html.div []
                                         [ Html.text "Truth-preserving: ", yesNo (BoolFun.isTruthPreserving arity functionIndex) ]
 
                                     -- TODO other properties
@@ -290,6 +297,11 @@ viewRoute route =
 
         NotFound ->
             Html.text "404 - Page not found"
+
+
+unsupportedArity : Html msg
+unsupportedArity =
+    Html.text ("Unsupported function arity (must be between 1 and " ++ String.fromInt BoolFun.maxArity ++ ")")
 
 
 yesNo : Bool -> Html msg
