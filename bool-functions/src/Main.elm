@@ -46,6 +46,12 @@ type Msg
     | UrlChanged Url.Url
     | GoToRoute Route
     | GoToRandomFunction Int
+    | FlipBitInFunctionIndex Int
+
+
+
+{- index of a bit to flip -}
+{- fun idx -}
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,8 +77,17 @@ update msg model =
 
         GoToRandomFunction arity ->
             ( model
-            , Random.generate (\funIdx -> GoToRoute (Arity arity (Function (Debug.log "funIndex" funIdx) PropertiesSummary)))
+            , Random.generate (\funIdx -> GoToRoute (Arity arity (Function funIdx PropertiesSummary)))
                 (Random.int 0 (BoolFun.funCount arity - 1))
+            )
+
+        FlipBitInFunctionIndex indexOfBitToFlipInFunIndex ->
+            let
+                newRoute =
+                    Route.updateFunIndex (BoolFun.flipBit indexOfBitToFlipInFunIndex) model.route
+            in
+            ( model
+            , Nav.pushUrl model.key (Route.render newRoute)
             )
 
 
@@ -252,18 +267,18 @@ viewRoute route =
                     Html.div []
                         [ case arity of
                             1 ->
-                                BoolFun.truthTable BoolFun.arity1Config functionIndex
+                                BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config functionIndex
                                     -- TODO add link to meaningful page
                                     |> Maybe.withDefault (Html.text "Invalid function index for arity 1")
 
                             2 ->
-                                BoolFun.truthTable BoolFun.arity2Config functionIndex
+                                BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config functionIndex
                                     |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
 
                             n ->
                                 case BoolFun.arityNConfig n of
                                     Just config ->
-                                        BoolFun.truthTable config functionIndex
+                                        BoolFun.truthTable FlipBitInFunctionIndex config functionIndex
                                             |> Maybe.withDefault (Html.text ("Invalid function index for arity " ++ String.fromInt n))
 
                                     Nothing ->

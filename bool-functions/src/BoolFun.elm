@@ -5,6 +5,7 @@ module BoolFun exposing
     , boolCell
     , f1Names
     , f2Names
+    , flipBit
     , funCount
     , isFalsityPreserving
     , isTruthPreserving
@@ -14,8 +15,9 @@ module BoolFun exposing
 
 import Array exposing (Array)
 import Bitwise
-import Html exposing (Html)
+import Html exposing (Attribute, Html)
 import Html.Attributes as A
+import Html.Events as Events
 
 
 f1Names : Array String
@@ -98,8 +100,8 @@ arityNConfig n =
             }
 
 
-truthTable : ArityConfig -> Int -> Maybe (Html a)
-truthTable { arity, getName } funIndex =
+truthTable : (Int -> msg) -> ArityConfig -> Int -> Maybe (Html msg)
+truthTable flipBitInFunctionIndex { arity, getName } funIndex =
     let
         rowCount =
             2 ^ arity
@@ -122,7 +124,14 @@ truthTable { arity, getName } funIndex =
                         |> List.map
                             (\i ->
                                 Html.tr []
-                                    (List.map boolCell (lastNBits arity i) ++ [ boolCell (eval_internal funIndex i) ])
+                                    (List.map boolCell (lastNBits arity i)
+                                        ++ [ boolCellWith
+                                                -- TODO add double border between "input" and "output" columns
+                                                -- TODO fix width/height to prevent jumping when changing to different functions
+                                                [ Events.onClick (flipBitInFunctionIndex i) ]
+                                                (eval_internal funIndex i)
+                                           ]
+                                    )
                             )
                     )
                 ]
@@ -141,15 +150,21 @@ letters n =
 
 boolCell : Bool -> Html a
 boolCell b =
+    boolCellWith [] b
+
+
+boolCellWith : List (Attribute a) -> Bool -> Html a
+boolCellWith attrs b =
     Html.td
-        [ A.style "background-color"
+        (A.style "background-color"
             (if b then
                 "lightgreen"
 
              else
                 "lightcoral"
             )
-        ]
+            :: attrs
+        )
         [ Html.text (showBool b) ]
 
 
@@ -184,6 +199,15 @@ getBit bitIndex n =
         Bitwise.and n (Bitwise.shiftLeftBy bitIndex 1) /= 0
 
 
+flipBit : Int -> Int -> Int
+flipBit bitIndex n =
+    if bitIndex < 0 || bitIndex > 32 then
+        n
+
+    else
+        Bitwise.xor n (Bitwise.shiftLeftBy bitIndex 1)
+
+
 isFalsityPreserving : Int -> Bool
 isFalsityPreserving funIndex =
     not (getBit 0 funIndex)
@@ -208,4 +232,6 @@ maxArity =
     -- Capping it to 5, because elm/random doesn't work well with numbers larger than 2147483647 (=2^31 - 1)
     -- https://package.elm-lang.org/packages/elm/random/latest/Random#maxInt
     -- And the number of functions 2^(2^5)-1=4294967295
-    5
+    -- Actually Capping it to 4, because flipBitInFunctionIndex doesn't work for arity 5 (turns it into negative number)
+    -- TODO find better representation of function (bit array?) to allow for bigger arities
+    4

@@ -5,6 +5,7 @@ module Route exposing
     , href
     , parseUrl
     , render
+    , updateFunIndex
     )
 
 import Html exposing (Attribute)
@@ -126,3 +127,19 @@ parseUrl url =
 href : Route -> Attribute msg
 href route =
     HA.href (render route)
+
+
+updateFunIndex : (Int -> Int) -> Route -> Route
+updateFunIndex f route =
+    case route of
+        Home ->
+            Home
+
+        Arity arity AllFunctions ->
+            Arity arity AllFunctions
+
+        Arity arity (Function funIndex propertyRoute) ->
+            Arity arity (Function (f funIndex) propertyRoute)
+
+        NotFound ->
+            NotFound
