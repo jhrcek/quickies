@@ -5,9 +5,11 @@ module Route exposing
     , href
     , parseUrl
     , render
+    , updateArity
     , updateFunIndex
     )
 
+import BoolFun exposing (maxArity, maxFunctionIndex)
 import Html exposing (Attribute)
 import Html.Attributes as HA
 import Url
@@ -139,7 +141,27 @@ updateFunIndex f route =
             Arity arity AllFunctions
 
         Arity arity (Function funIndex propertyRoute) ->
-            Arity arity (Function (f funIndex) propertyRoute)
+            Arity arity (Function (clamp 0 (maxFunctionIndex arity) (f funIndex)) propertyRoute)
+
+        NotFound ->
+            NotFound
+
+
+updateArity : (Int -> Int) -> Route -> Route
+updateArity f route =
+    case route of
+        Home ->
+            Home
+
+        Arity arity AllFunctions ->
+            Arity (clamp 1 maxArity (f arity)) AllFunctions
+
+        Arity arity (Function funIndex propertyRoute) ->
+            let
+                newArity =
+                    clamp 1 maxArity (f arity)
+            in
+            Arity newArity (Function (clamp 0 (maxFunctionIndex newArity) funIndex) propertyRoute)
 
         NotFound ->
             NotFound

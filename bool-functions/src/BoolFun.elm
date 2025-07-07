@@ -10,6 +10,7 @@ module BoolFun exposing
     , isFalsityPreserving
     , isTruthPreserving
     , maxArity
+    , maxFunctionIndex
     , truthTable
     )
 
@@ -235,3 +236,8 @@ maxArity =
     -- Actually Capping it to 4, because flipBitInFunctionIndex doesn't work for arity 5 (turns it into negative number)
     -- TODO find better representation of function (bit array?) to allow for bigger arities
     4
+
+
+maxFunctionIndex : Int -> Int
+maxFunctionIndex arity =
+    (2 ^ (2 ^ arity)) - 1

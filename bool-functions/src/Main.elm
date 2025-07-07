@@ -45,13 +45,10 @@ type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | GoToRoute Route
-    | GoToRandomFunction Int
-    | FlipBitInFunctionIndex Int
-
-
-
-{- index of a bit to flip -}
-{- fun idx -}
+    | GoToRandomFunction Int -- fun index
+    | FlipBitInFunctionIndex Int -- index of a bit to flip
+    | BumpArity Int -- delta
+    | BumpFunctionIndex Int -- delta
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -85,6 +82,24 @@ update msg model =
             let
                 newRoute =
                     Route.updateFunIndex (BoolFun.flipBit indexOfBitToFlipInFunIndex) model.route
+            in
+            ( model
+            , Nav.pushUrl model.key (Route.render newRoute)
+            )
+
+        BumpArity delta ->
+            let
+                newRoute =
+                    Route.updateArity (\arity -> arity + delta) model.route
+            in
+            ( model
+            , Nav.pushUrl model.key (Route.render newRoute)
+            )
+
+        BumpFunctionIndex delta ->
+            let
+                newRoute =
+                    Route.updateFunIndex (\funIndex -> funIndex + delta) model.route
             in
             ( model
             , Nav.pushUrl model.key (Route.render newRoute)
@@ -128,13 +143,13 @@ arityControls renderLink arity =
             Html.text "Arity"
         , Html.text " "
         , Html.button
-            [ Events.onClick (GoToRoute (Arity (arity - 1) AllFunctions))
+            [ Events.onClick (BumpArity -1)
             , HA.disabled (arity <= 1)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt arity ++ " ")
         , Html.button
-            [ Events.onClick (GoToRoute (Arity (arity + 1) AllFunctions))
+            [ Events.onClick (BumpArity 1)
             , HA.disabled (arity >= BoolFun.maxArity)
             ]
             [ Html.text "+" ]
@@ -175,15 +190,14 @@ functionControls arity functionIndex =
     Html.span []
         [ Html.text "Function "
         , Html.button
-            -- TODO make this a bit more sophisticated - e.g. +-1 on arity shoudl stay on (clamped) function index, should preserver property if selected etc
-            [ Events.onClick (GoToRoute (Arity arity (Function (functionIndex - 1) PropertiesSummary)))
+            [ Events.onClick (BumpFunctionIndex -1)
             , HA.disabled (functionIndex <= 0)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt functionIndex ++ " ")
         , Html.button
-            [ Events.onClick (GoToRoute (Arity arity (Function (functionIndex + 1) PropertiesSummary)))
-            , HA.disabled (functionIndex >= maxFunctionIndex arity)
+            [ Events.onClick (BumpFunctionIndex 1)
+            , HA.disabled (functionIndex >= BoolFun.maxFunctionIndex arity)
             ]
             [ Html.text "+" ]
         ]
@@ -328,11 +342,6 @@ yesNo condition =
          else
             "No"
         )
-
-
-maxFunctionIndex : Int -> Int
-maxFunctionIndex arity =
-    (2 ^ (2 ^ arity)) - 1
 
 
 styles : String
