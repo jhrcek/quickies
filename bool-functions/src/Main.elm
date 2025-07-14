@@ -7,6 +7,7 @@ import Browser.Navigation as Nav
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
+import Natural as N exposing (Natural)
 import Random
 import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
@@ -48,7 +49,12 @@ type Msg
     | GoToRandomFunction Int -- fun index
     | FlipBitInFunctionIndex Int -- index of a bit to flip
     | BumpArity Int -- delta
-    | BumpFunctionIndex Int -- delta
+    | BumpFunctionIndex Delta
+
+
+type Delta
+    = Plus1
+    | Minus1
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -74,8 +80,9 @@ update msg model =
 
         GoToRandomFunction arity ->
             ( model
-            , Random.generate (\funIdx -> GoToRoute (Arity arity (Function funIdx PropertiesSummary)))
-                (Random.int 0 (BoolFun.funCount arity - 1))
+            , Random.list (2 ^ arity) (Random.uniform '0' [ '1' ])
+                |> Random.map (\bitChars -> N.fromBinaryString (String.fromList bitChars) |> Maybe.withDefault N.zero)
+                |> Random.generate (\funIdx -> GoToRoute (Arity arity (Function funIdx PropertiesSummary)))
             )
 
         FlipBitInFunctionIndex indexOfBitToFlipInFunIndex ->
@@ -99,7 +106,16 @@ update msg model =
         BumpFunctionIndex delta ->
             let
                 newRoute =
-                    Route.updateFunIndex (\funIndex -> funIndex + delta) model.route
+                    Route.updateFunIndex
+                        (\funIndex ->
+                            case delta of
+                                Plus1 ->
+                                    N.add funIndex N.one
+
+                                Minus1 ->
+                                    N.sub funIndex N.one
+                        )
+                        model.route
             in
             ( model
             , Nav.pushUrl model.key (Route.render newRoute)
@@ -185,19 +201,19 @@ buildBreadcrumbs route =
             [ homeLink ]
 
 
-functionControls : Int -> Int -> Html Msg
+functionControls : Int -> Natural -> Html Msg
 functionControls arity functionIndex =
     Html.span []
         [ Html.text "Function "
         , Html.button
-            [ Events.onClick (BumpFunctionIndex -1)
-            , HA.disabled (functionIndex <= 0)
+            [ Events.onClick (BumpFunctionIndex Minus1)
+            , HA.disabled (N.isLessThan N.one functionIndex)
             ]
             [ Html.text "-" ]
-        , Html.text (" " ++ String.fromInt functionIndex ++ " ")
+        , Html.text (" " ++ N.toDecimalString functionIndex ++ " ")
         , Html.button
-            [ Events.onClick (BumpFunctionIndex 1)
-            , HA.disabled (functionIndex >= BoolFun.maxFunctionIndex arity)
+            [ Events.onClick (BumpFunctionIndex Plus1)
+            , HA.disabled (N.isGreaterThanOrEqual (BoolFun.maxFunctionIndex arity) functionIndex)
             ]
             [ Html.text "+" ]
         ]
@@ -227,16 +243,20 @@ viewRoute route =
                             Array.toIndexedList names
                                 |> List.filterMap
                                     (\( idx, name ) ->
+                                        let
+                                            natIndex =
+                                                N.fromSafeInt idx
+                                        in
                                         Maybe.map
                                             (\bf ->
                                                 Html.tr []
                                                     [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function idx PropertiesSummary)) ] [ Html.text name ] ]
+                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Html.text name ] ]
                                                     , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
                                                     , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
                                                     ]
                                             )
-                                            (BoolFun.mkBF arity idx)
+                                            (BoolFun.mkBF arity natIndex)
                                     )
                                 |> (::)
                                     (Html.thead []

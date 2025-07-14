@@ -22,6 +22,7 @@ import Bitwise
 import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
+import Natural as N exposing (Natural)
 
 
 
@@ -34,16 +35,16 @@ type BF
 
 type alias BfInternal =
     { arity : Int
-    , funIndex : Int
+    , funIndex : Natural
     }
 
 
-mkBF : Int -> Int -> Maybe BF
+mkBF : Int -> Natural -> Maybe BF
 mkBF arity funIndex =
     if arity < 1 || maxArity < arity then
         Nothing
 
-    else if funIndex < 0 || maxFunctionIndex arity < funIndex then
+    else if N.isLessThan N.zero funIndex || N.isLessThan funIndex (maxFunctionIndex arity) then
         Nothing
 
     else
@@ -131,7 +132,7 @@ arityNConfig n =
 
 
 truthTable : (Int -> msg) -> ArityConfig -> BF -> Html msg
-truthTable flipBitInFunctionIndex { arity, getName } (BF { funIndex }) =
+truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
     let
         rowCount =
             2 ^ arity
@@ -140,7 +141,7 @@ truthTable flipBitInFunctionIndex { arity, getName } (BF { funIndex }) =
         [ Html.thead []
             [ Html.tr []
                 (List.map (\l -> Html.th [] [ Html.text l ]) (letters arity)
-                    ++ [ Html.th [] [ Html.text (getName funIndex) ] ]
+                    ++ [ Html.th [] [ Html.text (getName (N.toInt funIndex)) ] ]
                 )
             ]
         , Html.tbody []
@@ -153,7 +154,7 @@ truthTable flipBitInFunctionIndex { arity, getName } (BF { funIndex }) =
                                         -- TODO add double border between "input" and "output" columns
                                         -- TODO fix width/height to prevent jumping when changing to different functions
                                         [ Events.onClick (flipBitInFunctionIndex i) ]
-                                        (eval_internal funIndex i)
+                                        (eval_internal bf i)
                                    ]
                             )
                     )
@@ -201,9 +202,9 @@ showBool b =
         "False"
 
 
-eval_internal : Int -> Int -> Bool
-eval_internal funIndex inputRowIndex =
-    getBit inputRowIndex funIndex
+eval_internal : BF -> Int -> Bool
+eval_internal (BF { funIndex }) inputRowIndex =
+    getBit2 inputRowIndex funIndex
 
 
 lastNBits : Int -> Int -> List Bool
@@ -223,18 +224,46 @@ getBit bitIndex n =
         Bitwise.and n (Bitwise.shiftLeftBy bitIndex 1) /= 0
 
 
-flipBit : Int -> Int -> Int
+{-| Return `True` when the bit at `bitIndex` (0 = LSB) of `n` is `1`.
+-}
+getBit2 : Int -> Natural -> Bool
+getBit2 bitIndex n =
+    if bitIndex < 0 then
+        False
+
+    else
+        let
+            powerOfTwo =
+                N.exp N.two (N.fromSafeInt bitIndex)
+        in
+        case N.divBy powerOfTwo n of
+            Just quotient ->
+                N.isOdd quotient
+
+            Nothing ->
+                False
+
+
+flipBit : Int -> Natural -> Natural
 flipBit bitIndex n =
-    if bitIndex < 0 || bitIndex > 32 then
+    if bitIndex < 0 then
         n
 
     else
-        Bitwise.xor n (Bitwise.shiftLeftBy bitIndex 1)
+        let
+            mask =
+                N.exp N.two (N.fromSafeInt bitIndex)
+        in
+        if getBit2 bitIndex n then
+            N.sub n mask
+
+        else
+            N.add n mask
 
 
 isFalsityPreserving : BF -> Bool
-isFalsityPreserving (BF r) =
-    not (getBit 0 r.funIndex)
+isFalsityPreserving (BF { funIndex }) =
+    N.isEven funIndex
 
 
 isTruthPreserving : BF -> Bool
@@ -243,24 +272,14 @@ isTruthPreserving (BF { arity, funIndex }) =
         rowCount =
             2 ^ arity
     in
-    if funIndex < 0 || funIndex >= funCount arity then
-        -- Index out of bounds
-        False
-
-    else
-        getBit (rowCount - 1) funIndex
+    getBit2 (rowCount - 1) funIndex
 
 
 maxArity : Int
 maxArity =
-    -- Capping it to 5, because elm/random doesn't work well with numbers larger than 2147483647 (=2^31 - 1)
-    -- https://package.elm-lang.org/packages/elm/random/latest/Random#maxInt
-    -- And the number of functions 2^(2^5)-1=4294967295
-    -- Actually Capping it to 4, because flipBitInFunctionIndex doesn't work for arity 5 (turns it into negative number)
-    -- TODO find better representation of function (bit array?) to allow for bigger arities
-    4
+    6
 
 
-maxFunctionIndex : Int -> Int
+maxFunctionIndex : Int -> Natural
 maxFunctionIndex arity =
-    (2 ^ (2 ^ arity)) - 1
+    N.sub (N.exp N.two (N.fromSafeInt (2 ^ arity))) N.one

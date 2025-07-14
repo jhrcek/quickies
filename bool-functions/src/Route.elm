@@ -12,6 +12,7 @@ module Route exposing
 import BoolFun exposing (maxArity, maxFunctionIndex)
 import Html exposing (Attribute)
 import Html.Attributes as HA
+import Natural as N exposing (Natural)
 import Url
 import Url.Parser as Parser exposing ((</>), Parser, int, map, oneOf, s, top)
 
@@ -24,7 +25,7 @@ type Route
 
 type ArityRoute
     = AllFunctions
-    | Function Int PropertyRoute
+    | Function Natural PropertyRoute
 
 
 type PropertyRoute
@@ -65,8 +66,7 @@ arityRouteParser =
         [ map AllFunctions top
         , map Function
             (s "function"
-                </> -- TODO change to Natural
-                    int
+                </> Parser.custom "Natural" N.fromDecimalString
                 </> propertyRouteParser
             )
         ]
@@ -79,7 +79,7 @@ renderArityRoute route =
             ""
 
         Function functionIndex propertyRoute ->
-            String.join "/" [ "function", String.fromInt functionIndex, renderPropertyRoute propertyRoute ]
+            String.join "/" [ "function", N.toDecimalString functionIndex, renderPropertyRoute propertyRoute ]
 
 
 propertyRouteParser : Parser (PropertyRoute -> a) a
@@ -136,7 +136,7 @@ href route =
     HA.href (render route)
 
 
-updateFunIndex : (Int -> Int) -> Route -> Route
+updateFunIndex : (Natural -> Natural) -> Route -> Route
 updateFunIndex f route =
     case route of
         Home ->
@@ -146,10 +146,22 @@ updateFunIndex f route =
             Arity arity AllFunctions
 
         Arity arity (Function funIndex propertyRoute) ->
-            Arity arity (Function (clamp 0 (maxFunctionIndex arity) (f funIndex)) propertyRoute)
+            Arity arity (Function (naturalClamp N.zero (maxFunctionIndex arity) (f funIndex)) propertyRoute)
 
         NotFound ->
             NotFound
+
+
+naturalClamp : Natural -> Natural -> Natural -> Natural
+naturalClamp min max value =
+    if N.isLessThan min value then
+        min
+
+    else if N.isLessThan value max then
+        max
+
+    else
+        value
 
 
 updateArity : (Int -> Int) -> Route -> Route
@@ -166,7 +178,7 @@ updateArity f route =
                 newArity =
                     clamp 1 maxArity (f arity)
             in
-            Arity newArity (Function (clamp 0 (maxFunctionIndex newArity) funIndex) propertyRoute)
+            Arity newArity (Function (naturalClamp N.zero (maxFunctionIndex newArity) funIndex) propertyRoute)
 
         NotFound ->
             NotFound
