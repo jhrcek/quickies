@@ -1,5 +1,7 @@
 module BoolFun exposing
-    ( arity1Config
+    ( -- Opaque
+      BF
+    , arity1Config
     , arity2Config
     , arityNConfig
     , boolCell
@@ -11,6 +13,7 @@ module BoolFun exposing
     , isTruthPreserving
     , maxArity
     , maxFunctionIndex
+    , mkBF
     , truthTable
     )
 
@@ -19,6 +22,32 @@ import Bitwise
 import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
+
+
+
+-- Boolean Function
+
+
+type BF
+    = BF BfInternal
+
+
+type alias BfInternal =
+    { arity : Int
+    , funIndex : Int
+    }
+
+
+mkBF : Int -> Int -> Maybe BF
+mkBF arity funIndex =
+    if arity < 1 || maxArity < arity then
+        Nothing
+
+    else if funIndex < 0 || maxFunctionIndex arity < funIndex then
+        Nothing
+
+    else
+        Just (BF { arity = arity, funIndex = funIndex })
 
 
 f1Names : Array String
@@ -101,41 +130,35 @@ arityNConfig n =
             }
 
 
-truthTable : (Int -> msg) -> ArityConfig -> Int -> Maybe (Html msg)
-truthTable flipBitInFunctionIndex { arity, getName } funIndex =
+truthTable : (Int -> msg) -> ArityConfig -> BF -> Html msg
+truthTable flipBitInFunctionIndex { arity, getName } (BF { funIndex }) =
     let
         rowCount =
             2 ^ arity
     in
-    if funIndex < 0 || funIndex >= funCount arity then
-        -- Index out of bounds
-        Nothing
-
-    else
-        Just <|
-            Html.table [ A.class "truth-table" ]
-                [ Html.thead []
-                    [ Html.tr []
-                        (List.map (\l -> Html.th [] [ Html.text l ]) (letters arity)
-                            ++ [ Html.th [] [ Html.text (getName funIndex) ] ]
-                        )
-                    ]
-                , Html.tbody []
-                    (List.range 0 (rowCount - 1)
-                        |> List.map
-                            (\i ->
-                                Html.tr []
-                                    (List.map boolCell (lastNBits arity i)
-                                        ++ [ boolCellWith
-                                                -- TODO add double border between "input" and "output" columns
-                                                -- TODO fix width/height to prevent jumping when changing to different functions
-                                                [ Events.onClick (flipBitInFunctionIndex i) ]
-                                                (eval_internal funIndex i)
-                                           ]
-                                    )
+    Html.table [ A.class "truth-table" ]
+        [ Html.thead []
+            [ Html.tr []
+                (List.map (\l -> Html.th [] [ Html.text l ]) (letters arity)
+                    ++ [ Html.th [] [ Html.text (getName funIndex) ] ]
+                )
+            ]
+        , Html.tbody []
+            (List.range 0 (rowCount - 1)
+                |> List.map
+                    (\i ->
+                        Html.tr []
+                            (List.map boolCell (lastNBits arity i)
+                                ++ [ boolCellWith
+                                        -- TODO add double border between "input" and "output" columns
+                                        -- TODO fix width/height to prevent jumping when changing to different functions
+                                        [ Events.onClick (flipBitInFunctionIndex i) ]
+                                        (eval_internal funIndex i)
+                                   ]
                             )
                     )
-                ]
+            )
+        ]
 
 
 letters : Int -> List String
@@ -209,13 +232,13 @@ flipBit bitIndex n =
         Bitwise.xor n (Bitwise.shiftLeftBy bitIndex 1)
 
 
-isFalsityPreserving : Int -> Bool
-isFalsityPreserving funIndex =
-    not (getBit 0 funIndex)
+isFalsityPreserving : BF -> Bool
+isFalsityPreserving (BF r) =
+    not (getBit 0 r.funIndex)
 
 
-isTruthPreserving : Int -> Int -> Bool
-isTruthPreserving arity funIndex =
+isTruthPreserving : BF -> Bool
+isTruthPreserving (BF { arity, funIndex }) =
     let
         rowCount =
             2 ^ arity

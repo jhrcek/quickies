@@ -225,14 +225,18 @@ viewRoute route =
                     let
                         funList names =
                             Array.toIndexedList names
-                                |> List.map
+                                |> List.filterMap
                                     (\( idx, name ) ->
-                                        Html.tr []
-                                            [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                            , Html.td [] [ Html.a [ Route.href (Arity arity (Function idx PropertiesSummary)) ] [ Html.text name ] ]
-                                            , BoolFun.boolCell (BoolFun.isFalsityPreserving idx)
-                                            , BoolFun.boolCell (BoolFun.isTruthPreserving arity idx)
-                                            ]
+                                        Maybe.map
+                                            (\bf ->
+                                                Html.tr []
+                                                    [ Html.td [] [ Html.text (String.fromInt idx) ]
+                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function idx PropertiesSummary)) ] [ Html.text name ] ]
+                                                    , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
+                                                    , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
+                                                    ]
+                                            )
+                                            (BoolFun.mkBF arity idx)
                                     )
                                 |> (::)
                                     (Html.thead []
@@ -278,51 +282,53 @@ viewRoute route =
                         unsupportedArity
 
                 Function functionIndex propSubroute ->
-                    Html.div []
-                        [ case arity of
-                            1 ->
-                                BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config functionIndex
-                                    -- TODO add link to meaningful page
-                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 1")
+                    case BoolFun.mkBF arity functionIndex of
+                        Nothing ->
+                            -- TODO nicer error
+                            Html.text "Invalid function index"
 
-                            2 ->
-                                BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config functionIndex
-                                    |> Maybe.withDefault (Html.text "Invalid function index for arity 2")
+                        Just bf ->
+                            Html.div []
+                                [ case arity of
+                                    1 ->
+                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config bf
 
-                            n ->
-                                case BoolFun.arityNConfig n of
-                                    Just config ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex config functionIndex
-                                            |> Maybe.withDefault (Html.text ("Invalid function index for arity " ++ String.fromInt n))
+                                    2 ->
+                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config bf
 
-                                    Nothing ->
-                                        unsupportedArity
-                        , case propSubroute of
-                            PropertiesSummary ->
-                                Html.div []
-                                    [ Html.div []
-                                        [ Html.text "Falsity-preserving: ", yesNo (BoolFun.isFalsityPreserving functionIndex) ]
-                                    , Html.div []
-                                        [ Html.text "Truth-preserving: ", yesNo (BoolFun.isTruthPreserving arity functionIndex) ]
+                                    n ->
+                                        case BoolFun.arityNConfig n of
+                                            Just config ->
+                                                BoolFun.truthTable FlipBitInFunctionIndex config bf
 
-                                    -- TODO other properties
-                                    ]
+                                            Nothing ->
+                                                unsupportedArity
+                                , case propSubroute of
+                                    PropertiesSummary ->
+                                        Html.div []
+                                            [ Html.div []
+                                                [ Html.text "Falsity-preserving: ", yesNo (BoolFun.isFalsityPreserving bf) ]
+                                            , Html.div []
+                                                [ Html.text "Truth-preserving: ", yesNo (BoolFun.isTruthPreserving bf) ]
 
-                            FalsePreserving ->
-                                Html.text "TODO - False preserving"
+                                            -- TODO other properties
+                                            ]
 
-                            TruePreserving ->
-                                Html.text "TODO - True preserving"
+                                    FalsePreserving ->
+                                        Html.text "TODO - False preserving"
 
-                            Monotonic ->
-                                Html.text "TODO - Monotonic"
+                                    TruePreserving ->
+                                        Html.text "TODO - True preserving"
 
-                            Affine ->
-                                Html.text "TODO - Affine"
+                                    Monotonic ->
+                                        Html.text "TODO - Monotonic"
 
-                            SelfDual ->
-                                Html.text "TODO - Self Dual"
-                        ]
+                                    Affine ->
+                                        Html.text "TODO - Affine"
+
+                                    SelfDual ->
+                                        Html.text "TODO - Self Dual"
+                                ]
 
         NotFound ->
             Html.text "404 - Page not found"

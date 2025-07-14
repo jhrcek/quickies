@@ -63,7 +63,12 @@ arityRouteParser : Parser (ArityRoute -> a) a
 arityRouteParser =
     oneOf
         [ map AllFunctions top
-        , map Function (s "function" </> int </> propertyRouteParser)
+        , map Function
+            (s "function"
+                </> -- TODO change to Natural
+                    int
+                </> propertyRouteParser
+            )
         ]
 
 
