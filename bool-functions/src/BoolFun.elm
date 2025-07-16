@@ -151,9 +151,11 @@ truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
                         Html.tr []
                             (List.map boolCell (lastNBits arity i)
                                 ++ [ boolCellWith
-                                        -- TODO add double border between "input" and "output" columns
                                         -- TODO fix width/height to prevent jumping when changing to different functions
-                                        [ Events.onClick (flipBitInFunctionIndex i) ]
+                                        [ Events.onClick (flipBitInFunctionIndex i)
+                                        , -- double border to distinguish results column from input cols
+                                          A.style "border-left" "3px double #333"
+                                        ]
                                         (eval_internal bf i)
                                    ]
                             )
