@@ -9,6 +9,8 @@ module BoolFun exposing
     , f2Names
     , flipBit
     , funCount
+    , getDummyArguments
+    , isAffine
     , isFalsityPreserving
     , isTruthPreserving
     , maxArity
@@ -275,6 +277,75 @@ isTruthPreserving (BF { arity, funIndex }) =
             2 ^ arity
     in
     getBit2 (rowCount - 1) funIndex
+
+
+isAffine : BF -> Bool
+isAffine ((BF { arity }) as bf) =
+    let
+        rowCount =
+            2 ^ arity
+
+        allBitsMask =
+            rowCount - 1
+
+        -- Creates mask with all bits set for this arity
+        -- Check if there's any input where f(x) ≠ f(flip_all_bits(x))
+        hasCounterexample =
+            List.range 0 (rowCount - 1)
+                |> List.any
+                    (\x ->
+                        let
+                            flippedX =
+                                Bitwise.xor x allBitsMask
+
+                            fx =
+                                eval_internal bf x
+
+                            fFlippedX =
+                                eval_internal bf flippedX
+                        in
+                        fx /= fFlippedX
+                    )
+    in
+    not hasCounterexample
+
+
+getDummyArguments : BF -> List Int
+getDummyArguments ((BF { arity }) as bf) =
+    let
+        rowCount =
+            2 ^ arity
+
+        -- Check if argument at position i (1-based) is dummy
+        isArgumentDummy argIndex =
+            let
+                -- Convert 1-based argument index to bit position
+                -- Due to lastNBits reversing, arg 1 -> bit (arity-1), arg 2 -> bit (arity-2), etc.
+                bitPosition =
+                    arity - argIndex
+
+                bitMask =
+                    Bitwise.shiftLeftBy bitPosition 1
+            in
+            List.range 0 (rowCount - 1)
+                |> List.all
+                    (\x ->
+                        let
+                            -- Flip the bit corresponding to this argument
+                            flippedX =
+                                Bitwise.xor x bitMask
+
+                            fx =
+                                eval_internal bf x
+
+                            fFlippedX =
+                                eval_internal bf flippedX
+                        in
+                        fx == fFlippedX
+                    )
+    in
+    List.range 1 arity
+        |> List.filter isArgumentDummy
 
 
 maxArity : Int

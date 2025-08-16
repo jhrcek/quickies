@@ -254,6 +254,8 @@ viewRoute route =
                                                     , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Html.text name ] ]
                                                     , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
                                                     , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
+                                                    , BoolFun.boolCell (BoolFun.isAffine bf)
+                                                    , Html.td [] [ Html.text (String.join ", " (List.map String.fromInt (BoolFun.getDummyArguments bf))) ]
                                                     ]
                                             )
                                             (BoolFun.mkBF arity natIndex)
@@ -265,6 +267,8 @@ viewRoute route =
                                             , Html.th [] [ Html.text "Function Name" ]
                                             , Html.th [] [ Html.text "Falsity-preserving" ]
                                             , Html.th [] [ Html.text "Truth-preserving" ]
+                                            , Html.th [] [ Html.text "Affine" ]
+                                            , Html.th [] [ Html.text "Dummy arguments" ]
                                             ]
                                         ]
                                     )
