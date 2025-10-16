@@ -11,6 +11,7 @@ projects=(
   ["bayes"]="Manipulable to explore Bayes' theorem"
   ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
   ["binomial"]="Binomial distribution calculator"
+  ["click-searcher"]="Search dictionary by clicking a word in text"
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
   ["covariance"]="Covariance intuition builder"
