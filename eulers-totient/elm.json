@@ -13,7 +13,7 @@
             "elmcraft/core-extra": "2.2.0"
         },
         "indirect": {
-            "elm/json": "1.1.3",
+            "elm/json": "1.1.4",
             "elm/regex": "1.0.0",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
