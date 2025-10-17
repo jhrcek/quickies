@@ -75,6 +75,7 @@ view model =
             [ style "flex" "1"
             , style "padding" "16px"
             , style "overflow-y" "auto"
+            , style "overflow-x" "hidden"
             , style "display" "flex"
             , style "flex-direction" "column"
             , style "gap" "12px"
@@ -91,6 +92,7 @@ view model =
                         , style "border" "1px solid #e5e7eb"
                         , style "border-radius" "6px"
                         , style "resize" "vertical"
+                        , style "box-sizing" "border-box" -- include padding+border in width
                         ]
                         []
                     , Html.button
@@ -156,7 +158,7 @@ view model =
 
 viewPortugueseText : String -> Html Msg
 viewPortugueseText text =
-    Html.div [ style "line-height" "1.7", style "font-size" "18px" ]
+    Html.div [ style "font-size" "18px" ]
         (text
             |> String.lines
             |> List.map viewSentence
@@ -165,7 +167,7 @@ viewPortugueseText text =
 
 viewSentence : String -> Html Msg
 viewSentence sentence =
-    Html.div [ style "margin-bottom" "12px" ]
+    Html.div [ style "margin-bottom" "4px" ]
         (sentence
             |> String.words
             |> List.map viewWord
