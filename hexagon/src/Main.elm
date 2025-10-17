@@ -12,6 +12,13 @@ import Svg.Attributes as SA
 import Svg.Events as SE
 
 
+
+{- IDEAS:
+   TODO when cell highlighted, show histogram of its row's values
+   TODO when cell highlighted, show the ratio, multiplying by which takes you to the neighboring cells
+-}
+
+
 main : Program () Model Msg
 main =
     Browser.element
