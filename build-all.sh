@@ -20,6 +20,7 @@ projects=(
   ["elm-cube"]="3D cube visualization"
   ["hexagon"]="Pascal's triangle in hexagonal grid"
   ["IEEE-754"]="IEEE-754 floating point visualizer"
+  ["legendres-formula"]="Intuition behind Legendre's formula"
   ["sampling"]="Random sampling toy"
   ["sampling-weighted"]="Weighted random sampling toy"
   ["trigonometric-hyperbolic"]="Mini reference of goniometric and trigonometric functions"
