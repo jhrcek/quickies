@@ -91,7 +91,6 @@ update msg model =
                 val =
                     String.toInt str |> Maybe.withDefault 2
 
-                -- Clamp between 2 and 36
                 newBase =
                     clamp 2 36 val
 
@@ -144,8 +143,7 @@ toDigit val =
 view : Model -> Html Msg
 view model =
     div [ class "min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-800" ]
-        [ viewTailwind
-        , viewCustomStyles
+        [ viewCustomStyles
         , div [ class "max-w-6xl mx-auto space-y-6" ]
             [ viewHeader model
             , div [ class "grid grid-cols-1 lg:grid-cols-12 gap-6" ]
@@ -175,15 +173,6 @@ view model =
         ]
 
 
-viewTailwind : Html msg
-viewTailwind =
-    node "link"
-        [ href "https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css"
-        , rel "stylesheet"
-        ]
-        []
-
-
 viewCustomStyles : Html msg
 viewCustomStyles =
     node "style" [] [ text """
@@ -196,8 +185,7 @@ viewCustomStyles =
         .slide-in-from-left-4 { animation-name: slideInLeft; }
         .zoom-in-95 { animation-name: zoomIn; }
         .duration-300 { animation-duration: 300ms; }
-        .duration-500 { animation-duration: 500ms; }
-    """ ]
+        .duration-500 { animation-duration: 500ms; }""" ]
 
 
 viewHeader : Model -> Html Msg
@@ -239,34 +227,27 @@ viewHeader model =
 
 viewExpansionHeader : Model -> Html Msg
 viewExpansionHeader model =
+    let
+        viewModeBtn mode icon label =
+            button
+                [ onClick (SetViewMode mode)
+                , class <|
+                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all "
+                        ++ (if model.viewMode == mode then
+                                "bg-white text-blue-600 shadow-sm"
+
+                            else
+                                "text-gray-500 hover:text-gray-700"
+                           )
+                ]
+                [ icon, text label ]
+    in
     div [ class "bg-gray-100 p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10" ]
         [ h2 [ class "font-semibold flex items-center gap-2 pl-2 text-gray-700" ]
             [ iconCalculator, text "Breakdown" ]
         , div [ class "bg-gray-200 p-1 rounded-lg flex gap-1" ]
-            [ button
-                [ onClick (SetViewMode TreeMode)
-                , class <|
-                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all "
-                        ++ (if model.viewMode == TreeMode then
-                                "bg-white text-blue-600 shadow-sm"
-
-                            else
-                                "text-gray-500 hover:text-gray-700"
-                           )
-                ]
-                [ iconNetwork, text "Tree" ]
-            , button
-                [ onClick (SetViewMode TextMode)
-                , class <|
-                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all "
-                        ++ (if model.viewMode == TextMode then
-                                "bg-white text-blue-600 shadow-sm"
-
-                            else
-                                "text-gray-500 hover:text-gray-700"
-                           )
-                ]
-                [ iconAlignLeft, text "Text" ]
+            [ viewModeBtn TreeMode iconNetwork "Tree"
+            , viewModeBtn TextMode iconAlignLeft "Text"
             ]
         ]
 
@@ -422,64 +403,58 @@ viewTreeStep model startX startY siblingGap levelHeight nodeRadius index step =
 
         rightLine =
             getAdjustedEndpoints currentX currentY rightChildX rightChildY nodeRadius
+
+        renderNode x y fill stroke textFill content =
+            Svg.g []
+                [ Svg.circle
+                    [ SA.cx (String.fromFloat x)
+                    , SA.cy (String.fromFloat y)
+                    , SA.r (String.fromFloat nodeRadius)
+                    , SA.fill fill
+                    , SA.stroke stroke
+                    , SA.strokeWidth "2"
+                    ]
+                    []
+                , Svg.text_
+                    [ SA.x (String.fromFloat x)
+                    , SA.y (String.fromFloat y)
+                    , SA.dy ".3em"
+                    , SA.textAnchor "middle"
+                    , SA.class ("text-sm font-bold " ++ textFill)
+                    ]
+                    [ Svg.text content ]
+                ]
+
+        renderEdge line labelX labelY labelText =
+            Svg.g []
+                [ Svg.line
+                    [ SA.x1 (String.fromFloat line.x1)
+                    , SA.y1 (String.fromFloat line.y1)
+                    , SA.x2 (String.fromFloat line.x2)
+                    , SA.y2 (String.fromFloat line.y2)
+                    , SA.stroke "#cbd5e1"
+                    , SA.strokeWidth "2"
+                    , SA.markerEnd "url(#arrowhead)"
+                    ]
+                    []
+                , Svg.text_
+                    [ SA.x (String.fromFloat labelX)
+                    , SA.y (String.fromFloat labelY)
+                    , SA.class "text-[10px] fill-gray-400 font-semibold"
+                    ]
+                    [ Svg.text labelText ]
+                ]
     in
     Svg.g []
         [ -- 1. Parent Node
-          Svg.circle
-            [ SA.cx (String.fromFloat currentX)
-            , SA.cy (String.fromFloat currentY)
-            , SA.r (String.fromFloat nodeRadius)
-            , SA.fill "white"
-            , SA.stroke "#3b82f6"
-            , SA.strokeWidth "2"
-            ]
-            []
-        , Svg.text_
-            [ SA.x (String.fromFloat currentX)
-            , SA.y (String.fromFloat currentY)
-            , SA.dy ".3em"
-            , SA.textAnchor "middle"
-            , SA.class "text-sm font-bold fill-gray-700"
-            ]
-            [ Svg.text (String.fromInt step.current) ]
+          renderNode currentX currentY "white" "#3b82f6" "fill-gray-700" (String.fromInt step.current)
 
         -- 2. Edge to Remainder
-        , Svg.line
-            [ SA.x1 (String.fromFloat leftLine.x1)
-            , SA.y1 (String.fromFloat leftLine.y1)
-            , SA.x2 (String.fromFloat leftLine.x2)
-            , SA.y2 (String.fromFloat leftLine.y2)
-            , SA.stroke "#cbd5e1"
-            , SA.strokeWidth "2"
-            , SA.markerEnd "url(#arrowhead)"
-            ]
-            []
-        , Svg.text_
-            [ SA.x (String.fromFloat ((currentX + leftChildX) / 2.0 - 12.0))
-            , SA.y (String.fromFloat ((currentY + leftChildY) / 2.0))
-            , SA.class "text-[10px] fill-gray-400 font-semibold"
-            ]
-            [ Svg.text "rem" ]
+        , renderEdge leftLine ((currentX + leftChildX) / 2.0 - 12.0) ((currentY + leftChildY) / 2.0) "rem"
 
         -- 3. Remainder Node
         , Svg.g []
-            [ Svg.circle
-                [ SA.cx (String.fromFloat leftChildX)
-                , SA.cy (String.fromFloat leftChildY)
-                , SA.r (String.fromFloat nodeRadius)
-                , SA.fill "#ecfdf5"
-                , SA.stroke "#10b981"
-                , SA.strokeWidth "2"
-                ]
-                []
-            , Svg.text_
-                [ SA.x (String.fromFloat leftChildX)
-                , SA.y (String.fromFloat leftChildY)
-                , SA.dy ".3em"
-                , SA.textAnchor "middle"
-                , SA.class "text-sm font-bold fill-green-700"
-                ]
-                [ Svg.text (toDigit step.remainder) ]
+            [ renderNode leftChildX leftChildY "#ecfdf5" "#10b981" "fill-green-700" (toDigit step.remainder)
             , Svg.text_
                 [ SA.x (String.fromFloat leftChildX)
                 , SA.y (String.fromFloat (leftChildY + 35.0))
@@ -490,22 +465,7 @@ viewTreeStep model startX startY siblingGap levelHeight nodeRadius index step =
             ]
 
         -- 4. Edge to Quotient
-        , Svg.line
-            [ SA.x1 (String.fromFloat rightLine.x1)
-            , SA.y1 (String.fromFloat rightLine.y1)
-            , SA.x2 (String.fromFloat rightLine.x2)
-            , SA.y2 (String.fromFloat rightLine.y2)
-            , SA.stroke "#cbd5e1"
-            , SA.strokeWidth "2"
-            , SA.markerEnd "url(#arrowhead)"
-            ]
-            []
-        , Svg.text_
-            [ SA.x (String.fromFloat ((currentX + rightChildX) / 2.0 + 8.0))
-            , SA.y (String.fromFloat ((currentY + rightChildY) / 2.0))
-            , SA.class "text-[10px] fill-gray-400 font-semibold"
-            ]
-            [ Svg.text ("div " ++ String.fromInt model.baseVal) ]
+        , renderEdge rightLine ((currentX + rightChildX) / 2.0 + 8.0) ((currentY + rightChildY) / 2.0) ("div " ++ String.fromInt model.baseVal)
 
         -- 5. Final Quotient Node (Only for last step)
         , if isLastStep then
@@ -539,25 +499,7 @@ viewTreeStep model startX startY siblingGap levelHeight nodeRadius index step =
                     ]
 
             else
-                Svg.g []
-                    [ Svg.circle
-                        [ SA.cx (String.fromFloat rightChildX)
-                        , SA.cy (String.fromFloat rightChildY)
-                        , SA.r (String.fromFloat nodeRadius)
-                        , SA.fill "white"
-                        , SA.stroke "#3b82f6"
-                        , SA.strokeWidth "2"
-                        ]
-                        []
-                    , Svg.text_
-                        [ SA.x (String.fromFloat rightChildX)
-                        , SA.y (String.fromFloat rightChildY)
-                        , SA.dy ".3em"
-                        , SA.textAnchor "middle"
-                        , SA.class "text-sm font-bold fill-gray-700"
-                        ]
-                        [ Svg.text (String.fromInt step.quotient) ]
-                    ]
+                renderNode rightChildX rightChildY "white" "#3b82f6" "fill-gray-700" (String.fromInt step.quotient)
 
           else
             Svg.text ""
