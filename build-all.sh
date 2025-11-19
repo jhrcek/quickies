@@ -8,6 +8,7 @@ mkdir -p "$BUILD_DIR"
 # Define projects with descriptions
 declare -A projects
 projects=(
+  ["base-converter"]="Visualize conversions to different number bases"
   ["bayes"]="Manipulable to explore Bayes' theorem"
   ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
   ["binomial"]="Binomial distribution calculator"
