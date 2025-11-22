@@ -49,8 +49,7 @@ view model =
     Html.div []
         [ Html.h2 [] [ Html.text "Legendre's Formula Visualization" ]
         , inputSection model.n model.p
-        , factorialVisualization model
-        , divisionSteps model.p steps
+        , factorialVisualization model steps
         , summarySection model.n model.p steps
         ]
 
@@ -58,162 +57,310 @@ view model =
 inputSection : Int -> Int -> Html Msg
 inputSection n p =
     Html.div []
-        [ Html.div []
-            [ Html.text "n = "
-            , Html.input
-                [ A.type_ "number"
-                , A.min "1"
-                , A.value (String.fromInt n)
-                , onInput (\s -> SetN (Basics.max 1 (Maybe.withDefault 1 (String.toInt s))))
-                ]
-                []
-            ]
-        , Html.div []
-            [ Html.text "p = "
-            , Html.input
-                [ A.type_ "number"
-                , A.min "2"
-                , A.value (String.fromInt p)
-                , onInput (\s -> SetP (Basics.max 2 (Maybe.withDefault 2 (String.toInt s))))
-                ]
-                []
-            ]
+        [ renderInput "n = " n 1 SetN
+        , renderInput "p = " p 2 SetP
         ]
 
 
-factorialVisualization : Model -> Html Msg
-factorialVisualization { n, p, hoveredStep } =
+renderInput : String -> Int -> Int -> (Int -> Msg) -> Html Msg
+renderInput label val minVal msgConstructor =
+    Html.div []
+        [ Html.text label
+        , Html.input
+            [ A.type_ "number"
+            , A.min (String.fromInt minVal)
+            , A.value (String.fromInt val)
+            , onInput (\s -> msgConstructor (Basics.max minVal (Maybe.withDefault minVal (String.toInt s))))
+            ]
+            []
+        ]
+
+
+factorialVisualization : Model -> List ( Int, Int ) -> Html Msg
+factorialVisualization ({ n, p } as model) steps =
     Html.div []
         [ Html.h3 [] [ Html.text ("Numbers 1 to " ++ String.fromInt n ++ " (colored square = factor of " ++ String.fromInt p ++ ")") ]
-        , Html.div [] (List.map (\i -> renderRow p i hoveredStep) (List.range 1 n))
-        ]
-
-
-divisionSteps : Int -> List ( Int, Int ) -> Html Msg
-divisionSteps p steps =
-    Html.div []
-        [ Html.h3 [] [ Html.text "Division Steps (hover to see factors above)" ]
-        , Html.div [] (List.indexedMap (renderStep p) steps)
-        ]
-
-
-renderStep : Int -> Int -> ( Int, Int ) -> Html Msg
-renderStep p stepIdx ( x, q ) =
-    Html.div
-        [ onMouseEnter (HoverStep (Just stepIdx))
-        , onMouseLeave (HoverStep Nothing)
-        , A.style "cursor" "pointer"
-        ]
-        [ Html.text
-            (String.fromInt x
-                ++ " ÷ "
-                ++ String.fromInt p
-                ++ " = "
-                ++ String.fromInt q
-                ++ " → contributes "
-                ++ String.fromInt q
-                ++ " factors"
+        , headerRow n
+        , Html.div []
+            (List.map
+                (\r ->
+                    let
+                        step =
+                            steps
+                                |> List.drop r
+                                |> List.head
+                    in
+                    renderRowWithStep model r step
+                )
+                (List.range 0 (n - 1))
             )
         ]
+
+
+headerRow : Int -> Html Msg
+headerRow n =
+    Html.div
+        [ A.style "display" "flex"
+        , A.style "align-items" "center"
+        , A.style "margin-bottom" "2px"
+        ]
+        [ renderHeader n
+        , Html.div
+            [ A.style "margin-left" "20px"
+            , A.style "font-weight" "bold"
+            , A.style "font-size" "14px"
+            ]
+            [ Html.text "Division Steps (hover to highlight)" ]
+        ]
+
+
+renderHeader : Int -> Html Msg
+renderHeader n =
+    Html.div flexRow
+        (List.map
+            (\i ->
+                Html.div
+                    (cellStyle
+                        ++ [ A.style "border" "1px solid transparent"
+                           , A.style "display" "flex"
+                           , A.style "justify-content" "center"
+                           , A.style "align-items" "center"
+                           , A.style "font-size" "10px"
+                           ]
+                    )
+                    [ Html.text (String.fromInt i) ]
+            )
+            (List.range 1 n)
+        )
+
+
+renderRowWithStep : Model -> Int -> Maybe ( Int, Int ) -> Html Msg
+renderRowWithStep model r maybeStep =
+    let
+        stepContent =
+            case maybeStep of
+                Just ( dividend, quotient ) ->
+                    let
+                        remainder =
+                            modBy model.p dividend
+
+                        text =
+                            String.fromInt dividend
+                                ++ " ÷ "
+                                ++ String.fromInt model.p
+                                ++ " = "
+                                ++ String.fromInt quotient
+                                ++ " → contributes "
+                                ++ String.fromInt quotient
+                                ++ " factors, remainder "
+                                ++ String.fromInt remainder
+                    in
+                    Html.div
+                        [ onMouseEnter (HoverStep (Just r))
+                        , onMouseLeave (HoverStep Nothing)
+                        , A.style "cursor" "pointer"
+                        , A.style "margin-left" "20px"
+                        , A.style "white-space" "nowrap"
+                        ]
+                        [ Html.text text ]
+
+                Nothing ->
+                    Html.text ""
+    in
+    Html.div
+        [ A.style "display" "flex"
+        , A.style "align-items" "center"
+        , A.style "margin-bottom" "2px"
+        ]
+        [ renderTransposedRow model r
+        , stepContent
+        ]
+
+
+renderTransposedRow : Model -> Int -> Html Msg
+renderTransposedRow { n, p, hoveredStep } r =
+    let
+        prevDivisor =
+            intPow p r
+
+        divisor =
+            prevDivisor * p
+
+        cells =
+            List.map
+                (\i ->
+                    if i <= r then
+                        Html.div (cellStyle ++ [ A.style "border" "1px solid transparent" ]) []
+
+                    else
+                        let
+                            status =
+                                getCellStatus n p i prevDivisor divisor
+
+                            isHighlighted =
+                                (Just r == hoveredStep) && (status == Factor)
+                        in
+                        renderCell status isHighlighted
+                )
+                (List.range 1 n)
+    in
+    Html.div flexRow cells
 
 
 summarySection : Int -> Int -> List ( Int, Int ) -> Html Msg
 summarySection n p steps =
     let
+        quotients =
+            List.map Tuple.second steps
+
         total =
-            List.sum (List.map Tuple.second steps)
+            List.sum quotients
 
         sumParts =
-            steps
-                |> List.map Tuple.second
+            quotients
                 |> List.map String.fromInt
                 |> String.join " + "
+
+        remainders =
+            List.map (\( dividend, _ ) -> modBy p dividend) steps
+
+        digits =
+            remainders
+                |> List.reverse
+                |> List.map String.fromInt
+                |> String.join ""
+
+        digitSum =
+            List.sum remainders
     in
     Html.div []
         [ Html.h3 [] [ Html.text "Result" ]
-        , Html.text
-            ("Total factors of "
-                ++ String.fromInt p
-                ++ " in "
-                ++ String.fromInt n
-                ++ "! = "
-                ++ sumParts
-                ++ " = "
-                ++ String.fromInt total
-            )
+        , Html.div []
+            [ Html.text
+                ("Total factors of "
+                    ++ String.fromInt p
+                    ++ " in "
+                    ++ String.fromInt n
+                    ++ "! = "
+                    ++ sumParts
+                    ++ " = "
+                    ++ String.fromInt total
+                )
+            ]
+        , Html.div []
+            [ Html.text
+                ("Base "
+                    ++ String.fromInt p
+                    ++ " representation of number "
+                    ++ String.fromInt n
+                    ++ ": "
+                    ++ digits
+                    ++ " (digit sum "
+                    ++ String.fromInt digitSum
+                    ++ ")"
+                )
+            ]
         ]
 
 
 getSteps : Int -> Int -> List ( Int, Int )
 getSteps n p =
-    let
-        ndivp =
-            n // p
-    in
-    if ndivp > 0 then
+    if n > 0 then
+        let
+            ndivp =
+                n // p
+        in
         ( n, ndivp ) :: getSteps ndivp p
 
     else
         []
 
 
-countFactors : Int -> Int -> Int
-countFactors num p =
-    if p <= 1 || num < p then
-        0
+type CellStatus
+    = Factor
+    | EliminatedStandard
+    | EliminatedRemainder
+    | Ghost
 
-    else if modBy p num == 0 then
-        1 + countFactors (num // p) p
+
+intPow : Int -> Int -> Int
+intPow base exp =
+    if exp <= 0 then
+        1
 
     else
-        0
+        base * intPow base (exp - 1)
 
 
-renderRow : Int -> Int -> Maybe Int -> Html Msg
-renderRow p i hoveredStep =
+getCellStatus : Int -> Int -> Int -> Int -> Int -> CellStatus
+getCellStatus n p i prevDivisor divisor =
+    if modBy prevDivisor i /= 0 then
+        Ghost
+
+    else if modBy divisor i == 0 then
+        Factor
+
+    else
+        let
+            limit =
+                (n // divisor) * p
+
+            k =
+                i // prevDivisor
+        in
+        if k > limit then
+            EliminatedRemainder
+
+        else
+            EliminatedStandard
+
+
+renderCell : CellStatus -> Bool -> Html Msg
+renderCell status isHighlighted =
     let
-        factors =
-            countFactors i p
+        ( border, background ) =
+            case status of
+                Factor ->
+                    ( "1px solid black"
+                    , if isHighlighted then
+                        "red"
 
-        cells =
-            List.map
-                (\idx ->
-                    renderCell (idx < factors)
-                        (Just idx == hoveredStep && idx < factors)
-                )
-                (List.range 0 (i - 1))
+                      else
+                        "salmon"
+                    )
 
-        twoPx =
-            "2px"
+                EliminatedStandard ->
+                    ( "1px solid black"
+                    , "linear-gradient(to top right, transparent 45%, black 49%, black 51%, transparent 55%)"
+                    )
+
+                EliminatedRemainder ->
+                    ( "1px solid black", "yellow" )
+
+                Ghost ->
+                    ( "1px solid lightgray", "white" )
     in
     Html.div
-        [ A.style "display" "flex"
-        , A.style "gap" twoPx
-        , A.style "margin-bottom" twoPx
-        ]
-        [ Html.span [ A.style "width" "30px" ] [ Html.text (String.fromInt i ++ ":") ]
-        , Html.div [ A.style "display" "flex", A.style "gap" twoPx ] cells
-        ]
-
-
-renderCell : Bool -> Bool -> Html Msg
-renderCell isPrimeFactor isHighlighted =
-    Html.div
-        [ A.style "width" "15px"
-        , A.style "height" "15px"
-        , A.style "border" "1px solid black"
-        , A.style "background-color"
-            (if isHighlighted then
-                "red"
-
-             else if isPrimeFactor then
-                "salmon"
-
-             else
-                "white"
-            )
-        ]
+        (cellStyle
+            ++ [ A.style "border" border
+               , A.style "background" background
+               ]
+        )
         []
+
+
+cellStyle : List (Html.Attribute msg)
+cellStyle =
+    [ A.style "width" "15px"
+    , A.style "height" "15px"
+    ]
+
+
+flexRow : List (Html.Attribute msg)
+flexRow =
+    [ A.style "display" "flex"
+    , A.style "gap" "2px"
+    ]
 
 
 main : Program () Model Msg
