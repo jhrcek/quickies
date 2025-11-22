@@ -254,6 +254,10 @@ viewExpansionHeader model =
 
 viewTextMode : Model -> Html Msg
 viewTextMode model =
+    let
+        stepCount =
+            Basics.max 1 (List.length model.steps - 2)
+    in
     div [ class "space-y-6" ]
         [ div [ class "text-xs text-gray-500 bg-blue-50 px-3 py-2 rounded border border-blue-100 mb-4 inline-block" ]
             [ span [ class "text-blue-600 font-bold" ] [ text "Base" ]
@@ -261,12 +265,12 @@ viewTextMode model =
             , span [ class "text-green-600 font-bold" ] [ text "Digit (Remainder)" ]
             ]
         , div []
-            (List.indexedMap (viewTextStep model) model.steps)
+            (List.map (viewTextStep model) (List.range 0 stepCount))
         ]
 
 
-viewTextStep : Model -> Int -> Step -> Html Msg
-viewTextStep model index _ =
+viewTextStep : Model -> Int -> Html Msg
+viewTextStep model index =
     div [ class "animate-in fade-in slide-in-from-left-4 duration-500 mb-6" ]
         [ div [ class "text-xs text-gray-400 mb-1 uppercase tracking-widest font-semibold" ]
             [ text ("Step " ++ String.fromInt (index + 1)) ]
@@ -294,7 +298,7 @@ viewNestedExpression depth maxDepth currentVal baseVal =
                 else
                     "text-gray-800 bg-gray-100 px-1 rounded"
         in
-        span [ class ("font-bold text-lg " ++ classes) ] [ text (toDigit currentVal) ]
+        span [ class ("font-bold text-lg " ++ classes) ] [ text (String.fromInt currentVal) ]
 
     else
         let
