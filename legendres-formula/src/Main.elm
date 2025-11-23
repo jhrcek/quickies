@@ -82,17 +82,11 @@ factorialVisualization ({ n, p } as model) steps =
         [ Html.h3 [] [ Html.text ("Numbers 1 to " ++ String.fromInt n ++ " (colored square = factor of " ++ String.fromInt p ++ ")") ]
         , headerRow n
         , Html.div []
-            (List.map
-                (\r ->
-                    let
-                        step =
-                            steps
-                                |> List.drop r
-                                |> List.head
-                    in
-                    renderRowWithStep model r step
+            (List.indexedMap
+                (\r step ->
+                    renderRowWithStep model r (Just step)
                 )
-                (List.range 0 (n - 1))
+                steps
             )
         ]
 
@@ -338,7 +332,7 @@ renderCell status isHighlighted =
                     ( "1px solid black", "yellow" )
 
                 Ghost ->
-                    ( "1px solid lightgray", "white" )
+                    ( "1px solid transparent", "transparent" )
     in
     Html.div
         (cellStyle
