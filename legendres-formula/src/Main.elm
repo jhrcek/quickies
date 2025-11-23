@@ -297,6 +297,19 @@ renderResults n p steps =
         digitSum =
             List.sum remainders
 
+        numerator =
+            n - digitSum
+
+        denominator =
+            p - 1
+
+        formulaResult =
+            if denominator > 0 then
+                numerator // denominator
+
+            else
+                0
+
         interspersePlus list =
             case list of
                 [] ->
@@ -317,40 +330,87 @@ renderResults n p steps =
             remainders
                 |> List.reverse
                 |> List.map (\d -> renderBoxedValue (String.fromInt d) theme.remainder)
+
+        equalsSign =
+            Html.div [ A.style "margin" "0 8px" ] [ Html.text "=" ]
     in
     Html.div
         [ A.style "margin-top" "30px"
         , A.style "padding-top" "20px"
         , A.style "border-top" "1px solid #eee"
         ]
-        [ Html.div
+        [ Html.h4 [ A.style "margin" "0 0 15px 0", A.style "color" "#2c3e50" ] [ Html.text "Method 1: Sum of Quotients" ]
+        , Html.div
             [ A.style "display" "flex"
             , A.style "align-items" "center"
             , A.style "flex-wrap" "wrap"
-            , A.style "margin-bottom" "15px"
+            , A.style "margin-bottom" "30px"
+            , A.style "padding-left" "10px"
             ]
             ([ Html.text ("Total factors of " ++ String.fromInt p ++ " in " ++ String.fromInt n ++ "! = ")
              , Html.div [ A.style "width" "8px" ] []
              ]
                 ++ quotientElements
-                ++ [ Html.div [ A.style "margin" "0 8px" ] [ Html.text "=" ]
+                ++ [ equalsSign
                    , Html.strong [] [ Html.text (String.fromInt total) ]
                    ]
             )
+        , Html.h4 [ A.style "margin" "0 0 15px 0", A.style "color" "#2c3e50" ] [ Html.text "Method 2: Digit Sum Formula" ]
         , Html.div
-            [ A.style "display" "flex"
-            , A.style "align-items" "center"
-            , A.style "flex-wrap" "wrap"
+            [ A.style "padding-left" "10px" ]
+            [ Html.div
+                [ A.style "display" "flex"
+                , A.style "align-items" "center"
+                , A.style "flex-wrap" "wrap"
+                , A.style "margin-bottom" "15px"
+                ]
+                ([ Html.text ("Base " ++ String.fromInt p ++ " representation of " ++ String.fromInt n ++ ": ")
+                 , Html.div [ A.style "width" "8px" ] []
+                 ]
+                    ++ digitElements
+                    ++ [ Html.span
+                            [ A.style "color" "#7f8c8d"
+                            , A.style "font-size" "0.9em"
+                            , A.style "margin-left" "8px"
+                            ]
+                            [ Html.text "(digit sum S"
+                            , Html.sub [ A.style "font-size" "0.7em" ] [ Html.text "p" ]
+                            , Html.text ("(n) = " ++ String.fromInt digitSum ++ ")")
+                            ]
+                       ]
+                )
+            , Html.div
+                [ A.style "display" "flex"
+                , A.style "align-items" "center"
+                ]
+                [ Html.text ("Total factors of " ++ String.fromInt p ++ " in " ++ String.fromInt n ++ "! = ")
+                , Html.div [ A.style "width" "8px" ] []
+                , renderFraction
+                    (Html.span [] [ Html.text "n - S", Html.sub [] [ Html.text "p" ], Html.text "(n)" ])
+                    (Html.text "p - 1")
+                , equalsSign
+                , renderFraction (Html.text (String.fromInt n ++ " - " ++ String.fromInt digitSum)) (Html.text (String.fromInt p ++ " - 1"))
+                , equalsSign
+                , renderFraction (Html.text (String.fromInt numerator)) (Html.text (String.fromInt denominator))
+                , equalsSign
+                , Html.strong [] [ Html.text (String.fromInt formulaResult) ]
+                ]
             ]
-            ([ Html.text ("Base " ++ String.fromInt p ++ " representation of " ++ String.fromInt n ++ ": ")
-             , Html.div [ A.style "width" "8px" ] []
-             ]
-                ++ digitElements
-                ++ [ Html.div [ A.style "width" "8px" ] []
-                   , Html.span [ A.style "color" "#7f8c8d", A.style "font-size" "0.9em" ]
-                        [ Html.text ("(digit sum " ++ String.fromInt digitSum ++ ")") ]
-                   ]
-            )
+        ]
+
+
+renderFraction : Html msg -> Html msg -> Html msg
+renderFraction num den =
+    Html.div
+        [ A.style "display" "flex"
+        , A.style "flex-direction" "column"
+        , A.style "align-items" "center"
+        , A.style "margin" "0 2px"
+        ]
+        [ Html.div [ A.style "border-bottom" "1px solid black", A.style "padding-bottom" "2px" ]
+            [ num ]
+        , Html.div [ A.style "padding-top" "2px" ]
+            [ den ]
         ]
 
 
