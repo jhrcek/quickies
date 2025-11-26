@@ -1,4 +1,4 @@
-#!/bin/bash
+# This script is wrapped by flake.nix to use nix-provided dependencies.
 set -euo pipefail
 
 ROOT_DIR=$(pwd)
