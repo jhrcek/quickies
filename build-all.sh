@@ -11,6 +11,7 @@ projects=(
   ["base-converter"]="Visualize conversions to different number bases"
   ["bayes"]="Manipulable to explore Bayes' theorem"
   ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
+  ["binary-addition"]="Game to practice binary addition"
   ["binomial"]="Binomial distribution calculator"
   ["click-searcher"]="Search dictionary by clicking a word in text"
   ["congruence-equations"]="Linear congruence equation solver"
