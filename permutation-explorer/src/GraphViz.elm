@@ -2,6 +2,7 @@ module GraphViz exposing
     ( Graph, Node, Edge, Attribute, AttributeValue, Engine(..)
     , emptyGraph, simpleEdge, str, num
     , graphviz
+    , simpleNode
     )
 
 {-| Module for declarative Graphviz rendering using viz-js.
@@ -208,6 +209,11 @@ str =
 num : Float -> AttributeValue
 num =
     NumberValue
+
+
+simpleNode : String -> Node
+simpleNode name =
+    { name = name, attributes = [] }
 
 
 

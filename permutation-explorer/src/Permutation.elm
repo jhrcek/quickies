@@ -1,4 +1,4 @@
-module Permutation exposing (Permutation, fromCycles, toCycleGraph)
+module Permutation exposing (Permutation, fromArray, fromCycles, toCycleGraph)
 
 import Array exposing (Array)
 import GraphViz as GV
@@ -9,6 +9,37 @@ The array at index i contains the value that i maps to.
 -}
 type Permutation
     = Permutation Int (Array Int)
+
+
+
+{- VALIDATION HELPERS -}
+
+
+{-| Check if a list contains duplicates.
+Assumes the list is sorted for efficiency.
+-}
+hasDuplicates : List Int -> Bool
+hasDuplicates lst =
+    case lst of
+        [] ->
+            False
+
+        [ _ ] ->
+            False
+
+        x :: ((y :: _) as rest) ->
+            x == y || hasDuplicates rest
+
+
+{-| Check if all values in a list are in the valid range [0, n).
+-}
+hasInvalidValues : Int -> List Int -> Bool
+hasInvalidValues n values =
+    List.any (\x -> x < 0 || x >= n) values
+
+
+
+{- CONSTRUCTORS -}
 
 
 {-| Create a permutation from a list of cycles.
@@ -30,27 +61,6 @@ fromCycles n cycles =
         -- Flatten all cycles to check for duplicates
         allNumbers =
             List.concatMap identity cycles
-
-        -- Check for invalid numbers (>= n or < 0)
-        hasInvalidNumbers =
-            List.any (\x -> x < 0 || x >= n) allNumbers
-
-        -- Check for duplicates using a helper function
-        hasDuplicates =
-            let
-                checkDups : List Int -> Bool
-                checkDups lst =
-                    case lst of
-                        [] ->
-                            False
-
-                        [ _ ] ->
-                            False
-
-                        x :: ((y :: _) as rest) ->
-                            x == y || checkDups rest
-            in
-            checkDups (List.sort allNumbers)
 
         -- Apply cycles to the permutation array
         applyOneCycle : List Int -> Array Int -> Maybe (Array Int)
@@ -77,12 +87,34 @@ fromCycles n cycles =
                         (Just arr)
                         pairs
     in
-    if hasInvalidNumbers || hasDuplicates then
+    if hasInvalidValues n allNumbers || hasDuplicates (List.sort allNumbers) then
         Nothing
 
     else
         List.foldl (\cycle maybeArr -> Maybe.andThen (applyOneCycle cycle) maybeArr) (Just identityArray) cycles
             |> Maybe.map (Permutation n)
+
+
+{-| Create a permutation from an array representation.
+
+The array should have length n, and contain values 0 to n-1 in some order.
+Returns Nothing if the input is invalid.
+
+-}
+fromArray : Int -> Array Int -> Maybe Permutation
+fromArray n arr =
+    let
+        arrList =
+            Array.toList arr
+
+        isValidLength =
+            Array.length arr == n
+    in
+    if isValidLength && not (hasInvalidValues n arrList) && not (hasDuplicates (List.sort arrList)) then
+        Just (Permutation n arr)
+
+    else
+        Nothing
 
 
 {-| Convert a permutation to a GraphViz graph showing its cycle structure.
@@ -170,4 +202,5 @@ toCycleGraph (Permutation n arr) =
             , ( "fontname", GV.str "sans-serif" )
             ]
         , edges = edges
+        , nodes = List.map (\i -> GV.simpleNode (String.fromInt i)) (List.range 0 (n - 1))
     }
