@@ -1,5 +1,6 @@
 module Main exposing (main)
 
+import Browser
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes exposing (style)
@@ -30,8 +31,26 @@ permutationGraph =
     }
 
 
-view : Html msg
-view =
+type Msg
+    = NoOp
+
+
+type alias Model =
+    ()
+
+
+init : Model
+init =
+    ()
+
+
+update : Msg -> Model -> Model
+update _ model =
+    model
+
+
+view : Model -> Html Msg
+view _ =
     Html.div
         [ style "font-family" "sans-serif"
         , style "padding" "20px"
@@ -49,6 +68,10 @@ view =
         ]
 
 
-main : Html msg
+main : Program () Model Msg
 main =
-    view
+    Browser.sandbox
+        { init = init
+        , update = update
+        , view = view
+        }
