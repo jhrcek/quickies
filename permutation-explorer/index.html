@@ -43,7 +43,7 @@
 
         class GraphvizGraph extends HTMLElement {
             static get observedAttributes() {
-                return ['graph'];
+                return ['graph', 'engine'];
             }
 
             constructor() {
@@ -56,21 +56,24 @@
             }
 
             attributeChangedCallback(name, oldValue, newValue) {
-                if (name === 'graph' && oldValue !== newValue) {
+                if ((name === 'graph' || name === 'engine') && oldValue !== newValue) {
                     this.render();
                 }
             }
 
             async render() {
-                const dotSource = this.getAttribute('graph');
-                if (!dotSource) {
+                const graphAttr = this.getAttribute('graph');
+                if (!graphAttr) {
                     this.shadowRoot.innerHTML = '<div style="color: #999;">No graph specified</div>';
                     return;
                 }
 
                 try {
+                    // Parse the JSON graph object from the attribute
+                    const graphObject = JSON.parse(graphAttr);
+                    const engine = this.getAttribute('engine') || 'dot';
                     const viz = await vizPromise;
-                    const svgElement = viz.renderSVGElement(dotSource);
+                    const svgElement = viz.renderSVGElement(graphObject, { engine });
 
                     // Clear previous content and append the new SVG
                     this.shadowRoot.innerHTML = '';
