@@ -1,34 +1,26 @@
-module Main exposing (main)
+module Main exposing (Msg(..), main)
 
 import Browser
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes exposing (style)
+import Permutation
 
 
 permutationGraph : GV.Graph
 permutationGraph =
     let
-        empty =
-            GV.emptyGraph
+        -- Create a permutation from cycles: (1 2 3)(4 5)
+        -- Using 0-based indexing: (0 1 2)(3 4)
+        perm =
+            Permutation.fromCycles 5 [ [ 0, 1, 2 ], [ 3, 4 ] ]
     in
-    { empty
-        | name = Just "Permutation"
-        , nodeAttributes =
-            [ ( "shape", GV.str "circle" )
-            , ( "fontname", GV.str "sans-serif" )
-            ]
-        , edges =
-            [ -- Cycle (1 2 3)
-              GV.simpleEdge "1" "2"
-            , GV.simpleEdge "2" "3"
-            , GV.simpleEdge "3" "1"
+    case perm of
+        Just p ->
+            Permutation.toCycleGraph p
 
-            -- Cycle (4 5)
-            , GV.simpleEdge "4" "5"
-            , GV.simpleEdge "5" "4"
-            ]
-    }
+        Nothing ->
+            GV.emptyGraph
 
 
 type Msg
