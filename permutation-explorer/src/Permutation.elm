@@ -40,11 +40,16 @@ type BadPermutation
 {- VALIDATION HELPERS -}
 
 
-{-| Find the first duplicate in a sorted list.
+{-| Find the first duplicate in a list.
 -}
 findDuplicate : List Int -> Maybe Int
 findDuplicate lst =
-    case lst of
+    findDuplicateHelp (List.sort lst)
+
+
+findDuplicateHelp : List Int -> Maybe Int
+findDuplicateHelp sortedList =
+    case sortedList of
         [] ->
             Nothing
 
@@ -56,7 +61,7 @@ findDuplicate lst =
                 Just x
 
             else
-                findDuplicate rest
+                findDuplicateHelp rest
 
 
 {-| Find the first value out of range [0, n).
@@ -98,9 +103,6 @@ fromCycles n cycles =
         allNumbers =
             List.concat cycles
 
-        sortedNumbers =
-            List.sort allNumbers
-
         -- Apply cycles to the permutation array
         applyOneCycle : List Int -> Array Int -> Array Int
         applyOneCycle cycle arr =
@@ -126,7 +128,7 @@ fromCycles n cycles =
             Err (ValueOutOfRange { value = value, n = n })
 
         Nothing ->
-            case findDuplicate sortedNumbers of
+            case findDuplicate allNumbers of
                 Just dup ->
                     Err (DuplicateValue dup)
 
@@ -154,7 +156,7 @@ fromArray arr =
             Err (ValueOutOfRange { value = value, n = n })
 
         Nothing ->
-            case findDuplicate (List.sort arrList) of
+            case findDuplicate arrList of
                 Just dup ->
                     Err (DuplicateValue dup)
 
