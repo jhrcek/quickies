@@ -27,7 +27,6 @@ type Permutation
 type ValidationError
     = ValueOutOfRange { value : Int, n : Int }
     | DuplicateValue Int
-    | InvalidArrayLength { expected : Int, actual : Int }
 
 
 {-| Errors that can occur when parsing or creating a permutation.
@@ -137,34 +136,30 @@ fromCycles n cycles =
 
 {-| Create a permutation from an array representation.
 
-The array should have length n, and contain values 0 to n-1 in some order.
+The array should contain values 0 to n-1 in some order, where n is the array length.
 Returns Err with ValidationError if the input is invalid.
 
 -}
-fromArray : Int -> Array Int -> Result ValidationError Permutation
-fromArray n arr =
+fromArray : Array Int -> Result ValidationError Permutation
+fromArray arr =
     let
+        n =
+            Array.length arr
+
         arrList =
             Array.toList arr
-
-        actualLength =
-            Array.length arr
     in
-    if actualLength /= n then
-        Err (InvalidArrayLength { expected = n, actual = actualLength })
+    case findOutOfRange n arrList of
+        Just value ->
+            Err (ValueOutOfRange { value = value, n = n })
 
-    else
-        case findOutOfRange n arrList of
-            Just value ->
-                Err (ValueOutOfRange { value = value, n = n })
+        Nothing ->
+            case findDuplicate (List.sort arrList) of
+                Just dup ->
+                    Err (DuplicateValue dup)
 
-            Nothing ->
-                case findDuplicate (List.sort arrList) of
-                    Just dup ->
-                        Err (DuplicateValue dup)
-
-                    Nothing ->
-                        Ok (Permutation n arr)
+                Nothing ->
+                    Ok (Permutation n arr)
 
 
 {-| Parse a permutation from cycle notation string.

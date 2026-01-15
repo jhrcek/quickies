@@ -61,7 +61,7 @@ generateRandomPermutation n =
     Random.Array.shuffle (Array.initialize n Basics.identity)
         |> Random.map
             (\shuffled ->
-                Permutation.fromArray n shuffled
+                Permutation.fromArray shuffled
                     |> Result.withDefault (Permutation.identity n)
             )
 
