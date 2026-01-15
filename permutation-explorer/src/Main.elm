@@ -241,6 +241,7 @@ viewCycleNotation model =
                         [ type_ "text"
                         , value input
                         , onInput UpdateCycleInput
+                        , Attr.placeholder "(1 2 3)(4 5)"
                         , style "padding" "8px"
                         , style "font-size" "16px"
                         , style "font-family" "monospace"
