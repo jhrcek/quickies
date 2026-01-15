@@ -1,4 +1,4 @@
-module Main exposing (Msg(..), main)
+module Main exposing (main)
 
 import Array
 import Browser
@@ -62,7 +62,7 @@ generateRandomPermutation n =
         |> Random.map
             (\shuffled ->
                 Permutation.fromArray n shuffled
-                    |> Maybe.withDefault (Permutation.identity n)
+                    |> Result.withDefault (Permutation.identity n)
             )
 
 
