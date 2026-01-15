@@ -1,4 +1,4 @@
-module Permutation exposing (Permutation, fromArray, fromCycles, toCycleGraph)
+module Permutation exposing (Permutation, fromArray, fromCycles, identity, toCycleGraph)
 
 import Array exposing (Array)
 import GraphViz as GV
@@ -42,6 +42,13 @@ hasInvalidValues n values =
 {- CONSTRUCTORS -}
 
 
+{-| Create the identity permutation in S_n.
+-}
+identity : Int -> Permutation
+identity n =
+    Permutation n (Array.initialize n Basics.identity)
+
+
 {-| Create a permutation from a list of cycles.
 
 The first argument is n (from S\_n), the second is a list of cycles.
@@ -56,11 +63,11 @@ fromCycles n cycles =
     let
         -- Initialize array with identity permutation
         identityArray =
-            Array.initialize n identity
+            Array.initialize n Basics.identity
 
         -- Flatten all cycles to check for duplicates
         allNumbers =
-            List.concatMap identity cycles
+            List.concat cycles
 
         -- Apply cycles to the permutation array
         applyOneCycle : List Int -> Array Int -> Maybe (Array Int)

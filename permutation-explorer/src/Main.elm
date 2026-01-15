@@ -4,8 +4,8 @@ import Array
 import Browser
 import GraphViz as GV
 import Html exposing (Html)
-import Html.Attributes exposing (style)
-import Html.Events exposing (onClick)
+import Html.Attributes as Attr exposing (style, type_, value)
+import Html.Events exposing (onClick, onInput)
 import Permutation
 import Random
 import Random.Array
@@ -13,12 +13,13 @@ import Random.Array
 
 type Msg
     = GenerateRandomPermutation
-    | SetPermutation (Maybe Permutation.Permutation)
+    | SetPermutation Permutation.Permutation
+    | ChangeN String
 
 
 type alias Model =
     { n : Int
-    , permutation : Maybe Permutation.Permutation
+    , permutation : Permutation.Permutation
     }
 
 
@@ -27,12 +28,9 @@ init =
     let
         n =
             5
-
-        perm =
-            Permutation.fromCycles n [ [ 0, 1, 2 ], [ 3, 4 ] ]
     in
     { n = n
-    , permutation = perm
+    , permutation = Permutation.identity n
     }
 
 
@@ -45,21 +43,27 @@ update msg model =
         SetPermutation perm ->
             ( { model | permutation = perm }, Cmd.none )
 
+        ChangeN nStr ->
+            case String.toInt nStr of
+                Just newN ->
+                    if newN >= 1 && newN <= 10 then
+                        ( { model | n = newN }, Random.generate SetPermutation (generateRandomPermutation newN) )
 
-generateRandomPermutation : Int -> Random.Generator (Maybe Permutation.Permutation)
+                    else
+                        ( model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+
+generateRandomPermutation : Int -> Random.Generator Permutation.Permutation
 generateRandomPermutation n =
-    Random.Array.shuffle (Array.initialize n identity)
-        |> Random.map (\shuffled -> Permutation.fromArray n shuffled)
-
-
-permutationGraph : Model -> GV.Graph
-permutationGraph model =
-    case model.permutation of
-        Just p ->
-            Permutation.toCycleGraph p
-
-        Nothing ->
-            GV.emptyGraph
+    Random.Array.shuffle (Array.initialize n Basics.identity)
+        |> Random.map
+            (\shuffled ->
+                Permutation.fromArray n shuffled
+                    |> Maybe.withDefault (Permutation.identity n)
+            )
 
 
 view : Model -> Html Msg
@@ -71,25 +75,45 @@ view model =
         , style "margin" "0 auto"
         ]
         [ Html.h1 [] [ Html.text ("Permutation Cycles in S" ++ String.fromInt model.n) ]
-        , Html.button
-            [ onClick GenerateRandomPermutation
-            , style "padding" "10px 20px"
-            , style "font-size" "16px"
-            , style "margin-bottom" "20px"
-            , style "background-color" "#4CAF50"
-            , style "color" "white"
-            , style "border" "none"
-            , style "border-radius" "4px"
-            , style "cursor" "pointer"
+        , Html.div
+            [ style "margin-bottom" "20px"
+            , style "display" "flex"
+            , style "align-items" "center"
+            , style "gap" "10px"
             ]
-            [ Html.text "Generate Random Permutation" ]
+            [ Html.label [ style "font-weight" "bold" ] [ Html.text "n:" ]
+            , Html.input
+                [ type_ "number"
+                , value (String.fromInt model.n)
+                , onInput ChangeN
+                , Attr.min "1"
+                , Attr.max "10"
+                , style "padding" "8px"
+                , style "font-size" "16px"
+                , style "width" "60px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                ]
+                []
+            , Html.button
+                [ onClick GenerateRandomPermutation
+                , style "padding" "10px 20px"
+                , style "font-size" "16px"
+                , style "background-color" "#4CAF50"
+                , style "color" "white"
+                , style "border" "none"
+                , style "border-radius" "4px"
+                , style "cursor" "pointer"
+                ]
+                [ Html.text "Generate Random Permutation" ]
+            ]
         , Html.div
             [ style "background" "#f5f5f5"
             , style "padding" "20px"
             , style "border-radius" "8px"
             , style "text-align" "center"
             ]
-            [ GV.graphviz GV.Circo (permutationGraph model) ]
+            [ GV.graphviz GV.Circo (Permutation.toCycleGraph model.permutation) ]
         ]
 
 
