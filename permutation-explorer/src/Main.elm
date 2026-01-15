@@ -15,11 +15,24 @@ type Msg
     = GenerateRandomPermutation
     | SetPermutation Permutation.Permutation
     | ChangeN String
+    | EnterEditMode
+    | ExitEditMode
+    | UpdateCycleInput String
+    | SavePermutation
+
+
+type EditState
+    = NotEditing
+    | Editing
+        { input : String
+        , validationResult : Result Permutation.BadPermutation Permutation.Permutation
+        }
 
 
 type alias Model =
     { n : Int
     , permutation : Permutation.Permutation
+    , editState : EditState
     }
 
 
@@ -31,6 +44,7 @@ init =
     in
     { n = n
     , permutation = Permutation.identity n
+    , editState = NotEditing
     }
 
 
@@ -41,18 +55,66 @@ update msg model =
             ( model, Random.generate SetPermutation (generateRandomPermutation model.n) )
 
         SetPermutation perm ->
-            ( { model | permutation = perm }, Cmd.none )
+            ( { model | permutation = perm, editState = NotEditing }, Cmd.none )
 
         ChangeN nStr ->
             case String.toInt nStr of
                 Just newN ->
                     if newN >= 1 && newN <= 10 then
-                        ( { model | n = newN }, Random.generate SetPermutation (generateRandomPermutation newN) )
+                        ( { model | n = newN, editState = NotEditing }
+                        , Random.generate SetPermutation (generateRandomPermutation newN)
+                        )
 
                     else
                         ( model, Cmd.none )
 
                 Nothing ->
+                    ( model, Cmd.none )
+
+        EnterEditMode ->
+            let
+                currentCycleStr =
+                    Permutation.toCyclesString model.permutation
+            in
+            ( { model
+                | editState =
+                    Editing
+                        { input = currentCycleStr
+                        , validationResult = Ok model.permutation
+                        }
+              }
+            , Cmd.none
+            )
+
+        ExitEditMode ->
+            ( { model | editState = NotEditing }, Cmd.none )
+
+        UpdateCycleInput newInput ->
+            let
+                validationResult =
+                    Permutation.parseCycles model.n newInput
+            in
+            ( { model
+                | editState =
+                    Editing
+                        { input = newInput
+                        , validationResult = validationResult
+                        }
+              }
+            , Cmd.none
+            )
+
+        SavePermutation ->
+            case model.editState of
+                Editing { validationResult } ->
+                    case validationResult of
+                        Ok perm ->
+                            ( { model | permutation = perm, editState = NotEditing }, Cmd.none )
+
+                        Err _ ->
+                            ( model, Cmd.none )
+
+                NotEditing ->
                     ( model, Cmd.none )
 
 
@@ -80,6 +142,7 @@ view model =
             , style "display" "flex"
             , style "align-items" "center"
             , style "gap" "10px"
+            , style "flex-wrap" "wrap"
             ]
             [ Html.label [ style "font-weight" "bold" ] [ Html.text "n:" ]
             , Html.input
@@ -95,6 +158,7 @@ view model =
                 , style "border-radius" "4px"
                 ]
                 []
+            , viewCycleNotation model
             , Html.button
                 [ onClick GenerateRandomPermutation
                 , style "padding" "10px 20px"
@@ -115,6 +179,146 @@ view model =
             ]
             [ GV.graphviz GV.Circo (Permutation.toCycleGraph model.permutation) ]
         ]
+
+
+viewCycleNotation : Model -> Html Msg
+viewCycleNotation model =
+    case model.editState of
+        NotEditing ->
+            Html.div
+                [ style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "8px"
+                , style "padding" "8px 12px"
+                , style "background" "#e8e8e8"
+                , style "border-radius" "4px"
+                , style "font-family" "monospace"
+                , style "font-size" "16px"
+                ]
+                [ Html.span [] [ Html.text (Permutation.toCyclesString model.permutation) ]
+                , Html.button
+                    [ onClick EnterEditMode
+                    , Attr.title "Edit"
+                    , style "padding" "4px 8px"
+                    , style "font-size" "14px"
+                    , style "background-color" "#fff"
+                    , style "border" "1px solid #ccc"
+                    , style "border-radius" "4px"
+                    , style "cursor" "pointer"
+                    ]
+                    [ Html.text "✏" ]
+                ]
+
+        Editing { input, validationResult } ->
+            let
+                isValid =
+                    case validationResult of
+                        Ok _ ->
+                            True
+
+                        Err _ ->
+                            False
+
+                errorMessage =
+                    case validationResult of
+                        Ok _ ->
+                            ""
+
+                        Err err ->
+                            badPermutationToString err
+            in
+            Html.div
+                [ style "display" "flex"
+                , style "flex-direction" "column"
+                , style "gap" "4px"
+                ]
+                [ Html.div
+                    [ style "display" "flex"
+                    , style "align-items" "center"
+                    , style "gap" "8px"
+                    ]
+                    [ Html.input
+                        [ type_ "text"
+                        , value input
+                        , onInput UpdateCycleInput
+                        , style "padding" "8px"
+                        , style "font-size" "16px"
+                        , style "font-family" "monospace"
+                        , style "width" "200px"
+                        , style "border"
+                            (if isValid then
+                                "1px solid #ccc"
+
+                             else
+                                "2px solid #e74c3c"
+                            )
+                        , style "border-radius" "4px"
+                        ]
+                        []
+                    , Html.button
+                        [ onClick SavePermutation
+                        , Attr.disabled (not isValid)
+                        , Attr.title "Save"
+                        , style "padding" "8px 12px"
+                        , style "font-size" "14px"
+                        , style "background-color"
+                            (if isValid then
+                                "#4CAF50"
+
+                             else
+                                "#ccc"
+                            )
+                        , style "color" "white"
+                        , style "border" "none"
+                        , style "border-radius" "4px"
+                        , style "cursor"
+                            (if isValid then
+                                "pointer"
+
+                             else
+                                "not-allowed"
+                            )
+                        ]
+                        [ Html.text "Save" ]
+                    , Html.button
+                        [ onClick ExitEditMode
+                        , Attr.title "Cancel"
+                        , style "padding" "8px 12px"
+                        , style "font-size" "14px"
+                        , style "background-color" "#e74c3c"
+                        , style "color" "white"
+                        , style "border" "none"
+                        , style "border-radius" "4px"
+                        , style "cursor" "pointer"
+                        ]
+                        [ Html.text "Cancel" ]
+                    ]
+                , if not isValid then
+                    Html.div
+                        [ style "color" "#e74c3c"
+                        , style "font-size" "12px"
+                        , style "max-width" "300px"
+                        ]
+                        [ Html.text errorMessage ]
+
+                  else
+                    Html.text ""
+                ]
+
+
+badPermutationToString : Permutation.BadPermutation -> String
+badPermutationToString err =
+    case err of
+        Permutation.ParseError msg ->
+            msg
+
+        Permutation.InvalidPermutation validationErr ->
+            case validationErr of
+                Permutation.ValueOutOfRange { value, n } ->
+                    "Value " ++ String.fromInt value ++ " is out of range [0, " ++ String.fromInt (n - 1) ++ "]"
+
+                Permutation.DuplicateValue v ->
+                    "Duplicate value: " ++ String.fromInt v
 
 
 main : Program () Model Msg

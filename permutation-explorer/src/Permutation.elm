@@ -343,9 +343,10 @@ toCycles (Permutation n arr) =
 {-| Convert a permutation to its cycle notation string.
 
 For example, a permutation that maps 0->1, 1->2, 2->0, 3->3 would be
-represented as "(0 1 2)(3)".
+represented as "(0 1 2)".
 
-Fixed points (1-cycles) are included in the output.
+Fixed points (1-cycles) are omitted from the output.
+The identity permutation is represented as "()".
 
 -}
 toCyclesString : Permutation -> String
@@ -354,10 +355,18 @@ toCyclesString perm =
         cycleToString : List Int -> String
         cycleToString cycle =
             "(" ++ String.join " " (List.map String.fromInt cycle) ++ ")"
+
+        nonTrivialCycles =
+            toCycles perm
+                |> List.filter (\cycle -> List.length cycle > 1)
     in
-    toCycles perm
-        |> List.map cycleToString
-        |> String.concat
+    if List.isEmpty nonTrivialCycles then
+        "()"
+
+    else
+        nonTrivialCycles
+            |> List.map cycleToString
+            |> String.concat
 
 
 {-| Convert a permutation to a GraphViz graph showing its cycle structure.

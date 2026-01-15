@@ -95,11 +95,11 @@ suite =
                         |> Expect.equal (Err (P.InvalidPermutation (P.ValueOutOfRange { value = 3, n = 3 })))
             ]
         , describe "toCyclesString"
-            [ test "identity permutation shows all fixed points" <|
+            [ test "identity permutation is represented as ()" <|
                 \_ ->
                     P.identity 3
                         |> P.toCyclesString
-                        |> Expect.equal "(0)(1)(2)"
+                        |> Expect.equal "()"
             , test "single cycle" <|
                 \_ ->
                     P.fromCycles 3 [ [ 0, 1, 2 ] ]
@@ -109,17 +109,17 @@ suite =
                 \_ ->
                     P.fromCycles 4 [ [ 1, 3 ] ]
                         |> Result.map P.toCyclesString
-                        |> Expect.equal (Ok "(0)(1 3)(2)")
+                        |> Expect.equal (Ok "(1 3)")
             , test "multiple disjoint cycles" <|
                 \_ ->
                     P.fromCycles 6 [ [ 0, 2, 4 ], [ 1, 3 ] ]
                         |> Result.map P.toCyclesString
-                        |> Expect.equal (Ok "(0 2 4)(1 3)(5)")
+                        |> Expect.equal (Ok "(0 2 4)(1 3)")
             , test "empty permutation (n=0)" <|
                 \_ ->
                     P.identity 0
                         |> P.toCyclesString
-                        |> Expect.equal ""
+                        |> Expect.equal "()"
             ]
         ]
 
