@@ -2,6 +2,7 @@ module Permutation exposing
     ( BadPermutation(..)
     , Permutation
     , ValidationError(..)
+    , compose
     , fromArray
     , fromCycles
     , identity
@@ -121,6 +122,31 @@ resize newN ((Permutation currentN arr) as perm) =
         -- fromCycles cannot fail here since we're filtering valid elements
         fromCycles clampedN filteredCycles
             |> Result.withDefault (identity clampedN)
+
+
+{-| Compose two permutations using "diagrammatic" order.
+
+compose p q applies p first, then q.
+So (compose p q)(i) = q(p(i)).
+
+Both permutations must have the same size n.
+
+-}
+compose : Permutation -> Permutation -> Permutation
+compose (Permutation n1 arr1) (Permutation n2 arr2) =
+    let
+        n =
+            max n1 n2
+
+        composedArr =
+            Array.initialize n
+                (\i ->
+                    Array.get i arr1
+                        |> Maybe.andThen (\j -> Array.get j arr2)
+                        |> Maybe.withDefault i
+                )
+    in
+    Permutation n composedArr
 
 
 {-| Create a permutation from a list of cycles.

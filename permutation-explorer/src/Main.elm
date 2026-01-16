@@ -14,12 +14,12 @@ import Random.Array
 
 {-
    TODO
-   - [ ] add Permutation.composeDiagrammatic : Permutation -> Permutation -> Permutation
    - [ ] add Permutation.conjugateBy : Permutation -> Permutation -> Permutation
    - [ ] add UI to compose two permutations
    - [ ] add UI to conjugate one permutation by another
    - [ ] show cycle type
    - [ ] show (just size of?) centralizer of a permutation
+   - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
 -}
 
 

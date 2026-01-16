@@ -190,6 +190,71 @@ suite =
                         |> P.toCyclesString
                         |> Expect.equal "()"
             ]
+        , describe "compose"
+            [ test "compose with identity (left)" <|
+                \_ ->
+                    -- id ∘ p = p
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (\p -> P.compose (P.identity 3) p)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1 2)")
+            , test "compose with identity (right)" <|
+                \_ ->
+                    -- p ∘ id = p
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (\p -> P.compose p (P.identity 3))
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1 2)")
+            , test "compose two transpositions (disjoint)" <|
+                \_ ->
+                    -- (0 1) ∘ (2 3) = (0 1)(2 3) - disjoint cycles commute
+                    case ( P.fromCycles 4 [ [ 0, 1 ] ], P.fromCycles 4 [ [ 2, 3 ] ] ) of
+                        ( Ok p, Ok q ) ->
+                            P.compose p q
+                                |> P.toCyclesString
+                                |> Expect.equal "(0 1)(2 3)"
+
+                        _ ->
+                            Expect.fail "Failed to create permutations"
+            , test "compose two transpositions (overlapping)" <|
+                \_ ->
+                    -- (0 1) then (1 2): 0->1->2, 1->0->0, 2->2->1, so result is (0 2 1)
+                    case ( P.fromCycles 3 [ [ 0, 1 ] ], P.fromCycles 3 [ [ 1, 2 ] ] ) of
+                        ( Ok p, Ok q ) ->
+                            P.compose p q
+                                |> P.toCyclesString
+                                |> Expect.equal "(0 2 1)"
+
+                        _ ->
+                            Expect.fail "Failed to create permutations"
+            , test "compose inverse gives identity" <|
+                \_ ->
+                    -- (0 1 2) ∘ (0 2 1) = id
+                    case ( P.fromCycles 3 [ [ 0, 1, 2 ] ], P.fromCycles 3 [ [ 0, 2, 1 ] ] ) of
+                        ( Ok p, Ok pInv ) ->
+                            P.compose p pInv
+                                |> P.toCyclesString
+                                |> Expect.equal "()"
+
+                        _ ->
+                            Expect.fail "Failed to create permutations"
+            , test "compose is associative" <|
+                \_ ->
+                    -- (p ∘ q) ∘ r = p ∘ (q ∘ r)
+                    case ( P.fromCycles 4 [ [ 0, 1 ] ], P.fromCycles 4 [ [ 1, 2 ] ], P.fromCycles 4 [ [ 2, 3 ] ] ) of
+                        ( Ok p, Ok q, Ok r ) ->
+                            let
+                                left =
+                                    P.compose (P.compose p q) r |> P.toCyclesString
+
+                                right =
+                                    P.compose p (P.compose q r) |> P.toCyclesString
+                            in
+                            Expect.equal left right
+
+                        _ ->
+                            Expect.fail "Failed to create permutations"
+            ]
         ]
 
 
