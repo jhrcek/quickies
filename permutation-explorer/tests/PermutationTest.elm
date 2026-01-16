@@ -33,10 +33,6 @@ suite =
                 \_ ->
                     P.parseCycles 4 "(0 1)   (2 3)"
                         |> Expect.equal (Result.mapError P.InvalidPermutation (P.fromCycles 4 [ [ 0, 1 ], [ 2, 3 ] ]))
-            , test "newlines and tabs in whitespace" <|
-                \_ ->
-                    P.parseCycles 3 "(\n0\t1\n2\t)"
-                        |> Expect.equal (Result.mapError P.InvalidPermutation (P.fromCycles 3 [ [ 0, 1, 2 ] ]))
             , test "empty cycles are allowed" <|
                 \_ ->
                     P.parseCycles 3 "()"

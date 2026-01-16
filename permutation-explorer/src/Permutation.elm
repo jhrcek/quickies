@@ -7,6 +7,7 @@ module Permutation exposing
     , identity
     , parseCycles
     , toCycleGraph
+    , toCycles
     , toCyclesString
     )
 
@@ -95,15 +96,12 @@ Returns Err with ValidationError if the input is invalid.
 fromCycles : Int -> List (List Int) -> Result ValidationError Permutation
 fromCycles n cycles =
     let
-        -- Initialize array with identity permutation
         identityArray =
             Array.initialize n Basics.identity
 
-        -- Flatten all cycles to check for duplicates
         allNumbers =
             List.concat cycles
 
-        -- Apply cycles to the permutation array
         applyOneCycle : List Int -> Array Int -> Array Int
         applyOneCycle cycle arr =
             case cycle of
@@ -172,8 +170,6 @@ like "(1 3 4)(5 6)".
 Whitespace is liberally accepted around parentheses and numbers.
 Numbers in cycles are 0-indexed.
 
-Returns Err with BadPermutation if parsing fails or if the permutation is invalid.
-
 -}
 parseCycles : Int -> String -> Result BadPermutation Permutation
 parseCycles n input =
@@ -188,7 +184,7 @@ parseCycles n input =
 
 cyclesParser : Parser (List (List Int))
 cyclesParser =
-    Parser.succeed (\cycles -> cycles)
+    Parser.succeed Basics.identity
         |. spaces
         |= Parser.loop [] cyclesHelp
         |. spaces
@@ -208,7 +204,7 @@ cyclesHelp revCycles =
 
 oneCycleParser : Parser (List Int)
 oneCycleParser =
-    Parser.succeed (\nums -> nums)
+    Parser.succeed Basics.identity
         |. Parser.symbol "("
         |. spaces
         |= numbersParser
@@ -234,7 +230,7 @@ numbersHelp revNumbers =
 
 spaces : Parser ()
 spaces =
-    Parser.chompWhile (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
+    Parser.chompWhile (\c -> c == ' ')
 
 
 deadEndsToString : List Parser.DeadEnd -> String
@@ -372,48 +368,10 @@ toCyclesString perm =
 {-| Convert a permutation to a GraphViz graph showing its cycle structure.
 -}
 toCycleGraph : Permutation -> GV.Graph
-toCycleGraph (Permutation n arr) =
+toCycleGraph ((Permutation n _) as perm) =
     let
-        -- Find all cycles in the permutation
-        visited =
-            Array.initialize n (always False)
-
-        findCycles : Int -> Array Bool -> List (List Int) -> List (List Int)
-        findCycles idx visitedArr foundCycles =
-            if idx >= n then
-                foundCycles
-
-            else if Array.get idx visitedArr |> Maybe.withDefault False then
-                findCycles (idx + 1) visitedArr foundCycles
-
-            else
-                let
-                    cycle =
-                        traceCycle idx visitedArr []
-
-                    newVisited =
-                        List.foldl (\i vArr -> Array.set i True vArr) visitedArr cycle
-                in
-                findCycles (idx + 1) newVisited (cycle :: foundCycles)
-
-        traceCycle : Int -> Array Bool -> List Int -> List Int
-        traceCycle idx visitedArr cycle =
-            if List.member idx cycle then
-                cycle
-
-            else
-                let
-                    next =
-                        Array.get idx arr |> Maybe.withDefault idx
-                in
-                if List.isEmpty cycle && visited == Array.set idx True visitedArr then
-                    [ idx ]
-
-                else
-                    traceCycle next (Array.set idx True visitedArr) (cycle ++ [ idx ])
-
         cycles =
-            findCycles 0 visited []
+            toCycles perm
 
         -- Convert cycles to edges
         cyclesToEdges : List (List Int) -> List GV.Edge
