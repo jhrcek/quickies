@@ -14,7 +14,6 @@ import Random.Array
 
 {-
    TODO
-   - [ ] add Permutation.resize : Int -> Permutation -> Permutation
    - [ ] add Permutation.composeDiagrammatic : Permutation -> Permutation -> Permutation
    - [ ] add Permutation.conjugateBy : Permutation -> Permutation -> Permutation
    - [ ] add UI to compose two permutations
@@ -74,8 +73,12 @@ update msg model =
             case String.toInt nStr of
                 Just newN ->
                     if newN >= 1 && newN <= 10 then
-                        ( { model | n = newN, editState = NotEditing }
-                        , Random.generate SetPermutation (generateRandomPermutation newN)
+                        ( { model
+                            | n = newN
+                            , permutation = Permutation.resize newN model.permutation
+                            , editState = NotEditing
+                          }
+                        , Cmd.none
                         )
 
                     else

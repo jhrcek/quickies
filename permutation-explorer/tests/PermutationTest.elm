@@ -90,6 +90,79 @@ suite =
                     P.parseCycles 3 "(0 1 3)"
                         |> Expect.equal (Err (P.InvalidPermutation (P.ValueOutOfRange { value = 3, n = 3 })))
             ]
+        , describe "resize"
+            [ test "resize to same size returns same permutation" <|
+                \_ ->
+                    P.fromCycles 4 [ [ 0, 1 ], [ 2, 3 ] ]
+                        |> Result.map (P.resize 4)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1)(2 3)")
+            , test "resize to larger size adds fixed points" <|
+                \_ ->
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (P.resize 5)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1 2)")
+            , test "resize identity to larger preserves identity" <|
+                \_ ->
+                    P.identity 2
+                        |> P.resize 5
+                        |> P.toCyclesString
+                        |> Expect.equal "()"
+            , test "resize to 0 gives empty permutation" <|
+                \_ ->
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (P.resize 0)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "()")
+            , test "resize to negative clamps to 0" <|
+                \_ ->
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (P.resize -5)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "()")
+            , test "resize shrink removes fixed point" <|
+                \_ ->
+                    -- (0 1) in S_4 with 2,3 as fixed points -> shrink to S_2
+                    P.fromCycles 4 [ [ 0, 1 ] ]
+                        |> Result.map (P.resize 2)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1)")
+            , test "resize shrink reconnects cycle when removing element" <|
+                \_ ->
+                    -- (0 1 2) shrunk to S_2: 0->1->2->0 becomes 0->1->0
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (P.resize 2)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1)")
+            , test "resize shrink on larger cycle" <|
+                \_ ->
+                    -- (0 1 2 3 4) shrunk to S_3: should become (0 1 2)
+                    P.fromCycles 5 [ [ 0, 1, 2, 3, 4 ] ]
+                        |> Result.map (P.resize 3)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1 2)")
+            , test "resize shrink with multiple cycles" <|
+                \_ ->
+                    -- (0 1)(2 3) shrunk to S_3: removes 3 from cycle (2 3), leaving 2 as fixed point
+                    P.fromCycles 4 [ [ 0, 1 ], [ 2, 3 ] ]
+                        |> Result.map (P.resize 3)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 1)")
+            , test "resize shrink complex case" <|
+                \_ ->
+                    -- (0 3)(1 2) shrunk to S_3: removes 3, need to reconnect 0->3->0 to 0->0
+                    P.fromCycles 4 [ [ 0, 3 ], [ 1, 2 ] ]
+                        |> Result.map (P.resize 3)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(1 2)")
+            , test "resize shrink to 1" <|
+                \_ ->
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map (P.resize 1)
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "()")
+            ]
         , describe "toCyclesString"
             [ test "identity permutation is represented as ()" <|
                 \_ ->

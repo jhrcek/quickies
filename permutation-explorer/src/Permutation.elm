@@ -6,6 +6,7 @@ module Permutation exposing
     , fromCycles
     , identity
     , parseCycles
+    , resize
     , toCycleGraph
     , toCycles
     , toCyclesString
@@ -82,6 +83,91 @@ findOutOfRange n values =
 identity : Int -> Permutation
 identity n =
     Permutation n (Array.initialize n Basics.identity)
+
+
+{-| Resize a permutation to operate on a set of a different size.
+
+  - If newN < 0, clamps to 0 (empty permutation).
+  - If newN > currentN, extends the permutation with fixed points.
+  - If newN == currentN, returns the permutation unchanged.
+  - If newN < currentN, removes elements from largest to smallest,
+    reconnecting cycles to maintain a valid permutation.
+    When removing element k where a -> k -> c, we set a -> c.
+
+-}
+resize : Int -> Permutation -> Permutation
+resize newN (Permutation currentN arr) =
+    let
+        clampedN =
+            max 0 newN
+    in
+    if clampedN == currentN then
+        Permutation currentN arr
+
+    else if clampedN > currentN then
+        -- Extend with fixed points
+        let
+            extension =
+                Array.initialize (clampedN - currentN) (\i -> currentN + i)
+        in
+        Permutation clampedN (Array.append arr extension)
+
+    else
+        -- Shrink: remove elements from largest to smallest
+        shrink clampedN currentN arr
+
+
+{-| Helper to shrink a permutation from currentN to targetN.
+Removes elements one by one from (currentN-1) down to targetN,
+reconnecting cycles at each step.
+-}
+shrink : Int -> Int -> Array Int -> Permutation
+shrink targetN currentN arr =
+    if currentN <= targetN then
+        Permutation currentN arr
+
+    else
+        let
+            -- We're removing element (currentN - 1)
+            elementToRemove =
+                currentN - 1
+
+            -- Find what elementToRemove maps to
+            mapsTo =
+                Array.get elementToRemove arr |> Maybe.withDefault elementToRemove
+
+            -- Find what maps to elementToRemove (the predecessor in the cycle)
+            predecessor =
+                findPredecessor elementToRemove arr
+
+            -- Update the array: make predecessor point to mapsTo (bypass elementToRemove)
+            updatedArr =
+                case predecessor of
+                    Just pred ->
+                        if pred == elementToRemove then
+                            -- elementToRemove is a fixed point, just remove it
+                            Array.slice 0 elementToRemove arr
+
+                        else
+                            -- Reconnect: pred -> elementToRemove -> mapsTo becomes pred -> mapsTo
+                            Array.set pred mapsTo arr
+                                |> Array.slice 0 elementToRemove
+
+                    Nothing ->
+                        -- Should not happen in a valid permutation
+                        Array.slice 0 elementToRemove arr
+        in
+        shrink targetN elementToRemove updatedArr
+
+
+{-| Find the element that maps to the given target.
+-}
+findPredecessor : Int -> Array Int -> Maybe Int
+findPredecessor target arr =
+    Array.toIndexedList arr
+        |> List.filter (\( _, v ) -> v == target)
+        |> List.head
+        |> Maybe.map Tuple.first
 
 
 {-| Create a permutation from a list of cycles.
