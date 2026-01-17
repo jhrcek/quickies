@@ -255,6 +255,27 @@ suite =
                         _ ->
                             Expect.fail "Failed to create permutations"
             ]
+        , describe "inverse"
+            [ test "inverse of identity is identity" <|
+                \_ ->
+                    P.identity 5
+                        |> P.inverse
+                        |> P.toCyclesString
+                        |> Expect.equal "()"
+            , test "inverse of a cycle reverses the cycle" <|
+                \_ ->
+                    -- inverse of (0 1 2) is (0 2 1)
+                    P.fromCycles 3 [ [ 0, 1, 2 ] ]
+                        |> Result.map P.inverse
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "(0 2 1)")
+            , test "p composed with its inverse gives identity" <|
+                \_ ->
+                    P.fromCycles 4 [ [ 0, 1, 2 ], [ 3 ] ]
+                        |> Result.map (\p -> P.compose p (P.inverse p))
+                        |> Result.map P.toCyclesString
+                        |> Expect.equal (Ok "()")
+            ]
         ]
 
 

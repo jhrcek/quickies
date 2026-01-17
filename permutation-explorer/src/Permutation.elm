@@ -6,6 +6,7 @@ module Permutation exposing
     , fromArray
     , fromCycles
     , identity
+    , inverse
     , parseCycles
     , resize
     , toCycleGraph
@@ -147,6 +148,17 @@ compose (Permutation n1 arr1) (Permutation n2 arr2) =
                 )
     in
     Permutation n composedArr
+
+
+inverse : Permutation -> Permutation
+inverse (Permutation n arr) =
+    let
+        invArr =
+            Array.toIndexedList arr
+                |> List.sortBy Tuple.second
+                |> List.map Tuple.first
+    in
+    Permutation n (Array.fromList invArr)
 
 
 {-| Create a permutation from a list of cycles.

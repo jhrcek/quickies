@@ -20,11 +20,13 @@ import Random.Array
    - [ ] show cycle type
    - [ ] show (just size of?) centralizer of a permutation
    - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
+   - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
 -}
 
 
 type Msg
     = GenerateRandomPermutation
+    | InvertPermutation
     | SetPermutation Permutation.Permutation
     | ChangeN String
     | EnterEditMode
@@ -65,6 +67,9 @@ update msg model =
     case msg of
         GenerateRandomPermutation ->
             ( model, Random.generate SetPermutation (generateRandomPermutation model.n) )
+
+        InvertPermutation ->
+            ( { model | permutation = Permutation.inverse model.permutation, editState = NotEditing }, Cmd.none )
 
         SetPermutation perm ->
             ( { model | permutation = perm, editState = NotEditing }, Cmd.none )
@@ -186,6 +191,17 @@ view model =
                 , style "cursor" "pointer"
                 ]
                 [ Html.text "Generate Random Permutation" ]
+            , Html.button
+                [ onClick InvertPermutation
+                , style "padding" "10px 20px"
+                , style "font-size" "16px"
+                , style "background-color" "#2196F3"
+                , style "color" "white"
+                , style "border" "none"
+                , style "border-radius" "4px"
+                , style "cursor" "pointer"
+                ]
+                [ Html.text "Invert" ]
             ]
         , Html.div
             [ style "background" "#f5f5f5"
