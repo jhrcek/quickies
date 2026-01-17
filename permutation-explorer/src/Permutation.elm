@@ -5,6 +5,7 @@ module Permutation exposing
     , compose
     , fromArray
     , fromCycles
+    , getSize
     , identity
     , inverse
     , parseCycles
@@ -23,7 +24,14 @@ import Parser exposing ((|.), (|=), Parser)
 The array at index i contains the value that i maps to.
 -}
 type Permutation
-    = Permutation Int (Array Int)
+    = Permutation (Array Int)
+
+
+{-| Get the size n of a permutation in S\_n.
+-}
+getSize : Permutation -> Int
+getSize (Permutation arr) =
+    Array.length arr
 
 
 {-| Errors that can occur when validating permutation input.
@@ -84,7 +92,7 @@ findOutOfRange n values =
 -}
 identity : Int -> Permutation
 identity n =
-    Permutation n (Array.initialize n Basics.identity)
+    Permutation (Array.initialize n Basics.identity)
 
 
 {-| Resize a permutation to operate on a set of a different size.
@@ -97,13 +105,16 @@ identity n =
 
 -}
 resize : Int -> Permutation -> Permutation
-resize newN ((Permutation currentN arr) as perm) =
+resize newN ((Permutation arr) as perm) =
     let
+        currentN =
+            Array.length arr
+
         clampedN =
             max 0 newN
     in
     if clampedN == currentN then
-        Permutation currentN arr
+        Permutation arr
 
     else if clampedN > currentN then
         -- Extend with fixed points
@@ -111,7 +122,7 @@ resize newN ((Permutation currentN arr) as perm) =
             extension =
                 Array.initialize (clampedN - currentN) (\i -> currentN + i)
         in
-        Permutation clampedN (Array.append arr extension)
+        Permutation (Array.append arr extension)
 
     else
         -- Shrink: filter out elements >= clampedN from cycles
@@ -134,10 +145,10 @@ Both permutations must have the same size n.
 
 -}
 compose : Permutation -> Permutation -> Permutation
-compose (Permutation n1 arr1) (Permutation n2 arr2) =
+compose (Permutation arr1) (Permutation arr2) =
     let
         n =
-            max n1 n2
+            max (Array.length arr1) (Array.length arr2)
 
         composedArr =
             Array.initialize n
@@ -147,18 +158,18 @@ compose (Permutation n1 arr1) (Permutation n2 arr2) =
                         |> Maybe.withDefault i
                 )
     in
-    Permutation n composedArr
+    Permutation composedArr
 
 
 inverse : Permutation -> Permutation
-inverse (Permutation n arr) =
+inverse (Permutation arr) =
     let
         invArr =
             Array.toIndexedList arr
                 |> List.sortBy Tuple.second
                 |> List.map Tuple.first
     in
-    Permutation n (Array.fromList invArr)
+    Permutation (Array.fromList invArr)
 
 
 {-| Create a permutation from a list of cycles.
@@ -208,7 +219,7 @@ fromCycles n cycles =
                     Err (DuplicateValue dup)
 
                 Nothing ->
-                    Ok (Permutation n (List.foldl applyOneCycle identityArray cycles))
+                    Ok (Permutation (List.foldl applyOneCycle identityArray cycles))
 
 
 {-| Create a permutation from an array representation.
@@ -236,7 +247,7 @@ fromArray arr =
                     Err (DuplicateValue dup)
 
                 Nothing ->
-                    Ok (Permutation n arr)
+                    Ok (Permutation arr)
 
 
 {-| Parse a permutation from cycle notation string.
@@ -374,8 +385,11 @@ Cycles are returned in ascending order by their smallest element.
 
 -}
 toCycles : Permutation -> List (List Int)
-toCycles (Permutation n arr) =
+toCycles (Permutation arr) =
     let
+        n =
+            Array.length arr
+
         visited =
             Array.initialize n (always False)
 
@@ -445,8 +459,11 @@ toCyclesString perm =
 {-| Convert a permutation to a GraphViz graph showing its cycle structure.
 -}
 toCycleGraph : Permutation -> GV.Graph
-toCycleGraph ((Permutation n _) as perm) =
+toCycleGraph perm =
     let
+        n =
+            getSize perm
+
         cycles =
             toCycles perm
 
