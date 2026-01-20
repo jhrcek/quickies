@@ -13,14 +13,12 @@ import PermutationEditor
 {-
    TODO
    - [ ] add Permutation.conjugateBy : Permutation -> Permutation -> Permutation
-   - [x] add UI to compose two permutations
    - [ ] add UI to conjugate one permutation by another
    - [ ] show cycle type
    - [ ] show (just size of?) centralizer of a permutation
    - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
    - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
    - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)
-   - [ ] add a button to swap P and Q
 -}
 
 
@@ -29,6 +27,7 @@ type Msg
     | EditorPMsg PermutationEditor.Msg
     | EditorQMsg PermutationEditor.Msg
     | SetCompositionViewMode CompositionViewMode
+    | SwapPQ
 
 
 type CompositionViewMode
@@ -98,6 +97,9 @@ update msg model =
 
         SetCompositionViewMode mode ->
             ( { model | compositionViewMode = mode }, Cmd.none )
+
+        SwapPQ ->
+            ( { model | editorP = model.editorQ, editorQ = model.editorP }, Cmd.none )
 
 
 view : Model -> Html Msg
@@ -182,6 +184,16 @@ view model =
                 [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
                 , viewModeRadio model.compositionViewMode
                 ]
+            , Html.button
+                [ onClick SwapPQ
+                , style "padding" "8px 16px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ddd"
+                , style "border-radius" "4px"
+                , style "background" "#f9f9f9"
+                , style "cursor" "pointer"
+                ]
+                [ Html.text "Swap P Q" ]
             ]
         , Html.div
             [ style "display" "flex"
