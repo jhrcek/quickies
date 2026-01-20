@@ -7,6 +7,7 @@ import Html.Attributes as Attr exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Permutation
 import PermutationEditor
+import Styles exposing (buttonAttrs)
 
 
 
@@ -185,14 +186,7 @@ view model =
                 , viewModeRadio model.compositionViewMode
                 ]
             , Html.button
-                [ onClick SwapPQ
-                , style "padding" "8px 16px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ddd"
-                , style "border-radius" "4px"
-                , style "background" "#f9f9f9"
-                , style "cursor" "pointer"
-                ]
+                (onClick SwapPQ :: buttonAttrs)
                 [ Html.text "Swap P Q" ]
             ]
         , Html.div

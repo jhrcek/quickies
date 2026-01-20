@@ -19,6 +19,7 @@ import Json.Decode as Decode
 import Permutation
 import Random
 import Random.Array
+import Styles exposing (buttonAttrs)
 
 
 type Msg
@@ -168,26 +169,10 @@ view title edgeColor model =
                     , style "flex-wrap" "wrap"
                     ]
                     [ Html.button
-                        [ onClick GenerateRandomPermutation
-                        , style "padding" "8px 16px"
-                        , style "font-size" "14px"
-                        , style "background-color" "#4CAF50"
-                        , style "color" "white"
-                        , style "border" "none"
-                        , style "border-radius" "4px"
-                        , style "cursor" "pointer"
-                        ]
+                        (onClick GenerateRandomPermutation :: buttonAttrs)
                         [ Html.text "Random" ]
                     , Html.button
-                        [ onClick InvertPermutation
-                        , style "padding" "8px 16px"
-                        , style "font-size" "14px"
-                        , style "background-color" "#2196F3"
-                        , style "color" "white"
-                        , style "border" "none"
-                        , style "border-radius" "4px"
-                        , style "cursor" "pointer"
-                        ]
+                        (onClick InvertPermutation :: buttonAttrs)
                         [ Html.text "Invert" ]
                     ]
                 ]
@@ -258,15 +243,7 @@ viewCycleNotation model =
                 ]
                 [ Html.span [] [ Html.text (Permutation.toCyclesString model.permutation) ]
                 , Html.button
-                    [ onClick EnterEditMode
-                    , Attr.title "Edit"
-                    , style "padding" "4px 8px"
-                    , style "font-size" "14px"
-                    , style "background-color" "#fff"
-                    , style "border" "1px solid #ccc"
-                    , style "border-radius" "4px"
-                    , style "cursor" "pointer"
-                    ]
+                    (onClick EnterEditMode :: Attr.title "Edit" :: buttonAttrs)
                     [ Html.text "✏" ]
                 ]
 
@@ -319,41 +296,21 @@ viewCycleNotation model =
                         ]
                         []
                     , Html.button
-                        [ onClick SavePermutation
-                        , Attr.disabled (not isValid)
-                        , Attr.title "Save"
-                        , style "padding" "8px 12px"
-                        , style "font-size" "14px"
-                        , style "background-color"
-                            (if isValid then
-                                "#4CAF50"
+                        (buttonAttrs
+                            ++ [ onClick SavePermutation
+                               , Attr.disabled (not isValid)
+                               , Attr.title "Save"
+                               ]
+                            ++ (if isValid then
+                                    []
 
-                             else
-                                "#ccc"
-                            )
-                        , style "color" "white"
-                        , style "border" "none"
-                        , style "border-radius" "4px"
-                        , style "cursor"
-                            (if isValid then
-                                "pointer"
-
-                             else
-                                "not-allowed"
-                            )
-                        ]
+                                else
+                                    [ style "opacity" "0.5", style "cursor" "not-allowed" ]
+                               )
+                        )
                         [ Html.text "Save" ]
                     , Html.button
-                        [ onClick ExitEditMode
-                        , Attr.title "Cancel"
-                        , style "padding" "8px 12px"
-                        , style "font-size" "14px"
-                        , style "background-color" "#e74c3c"
-                        , style "color" "white"
-                        , style "border" "none"
-                        , style "border-radius" "4px"
-                        , style "cursor" "pointer"
-                        ]
+                        (onClick ExitEditMode :: Attr.title "Cancel" :: buttonAttrs)
                         [ Html.text "Cancel" ]
                     ]
                 , if not isValid then
