@@ -15,6 +15,7 @@ import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Json.Decode as Decode
 import Permutation
 import Random
 import Random.Array
@@ -150,67 +151,76 @@ generateRandomPermutation n =
 
 {-| View an editable permutation editor with title, controls, and graph.
 -}
-view : String -> Model -> Html Msg
-view title model =
-    Html.div
-        [ style "flex" "1"
-        , style "min-width" "250px"
-        , style "border" "1px solid #ddd"
-        , style "border-radius" "8px"
-        , style "padding" "16px"
-        , style "background" "#fff"
-        ]
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
-        , Html.div
-            [ style "margin-bottom" "12px"
-            , style "display" "flex"
-            , style "flex-direction" "column"
-            , style "gap" "8px"
-            ]
-            [ viewCycleNotation model
-            , Html.div
-                [ style "display" "flex"
+view : String -> Maybe String -> Model -> Html Msg
+view title edgeColor model =
+    let
+        controls =
+            Html.div
+                [ style "margin-bottom" "12px"
+                , style "display" "flex"
+                , style "flex-direction" "column"
                 , style "gap" "8px"
-                , style "flex-wrap" "wrap"
                 ]
-                [ Html.button
-                    [ onClick GenerateRandomPermutation
-                    , style "padding" "8px 16px"
-                    , style "font-size" "14px"
-                    , style "background-color" "#4CAF50"
-                    , style "color" "white"
-                    , style "border" "none"
-                    , style "border-radius" "4px"
-                    , style "cursor" "pointer"
+                [ viewCycleNotation model
+                , Html.div
+                    [ style "display" "flex"
+                    , style "gap" "8px"
+                    , style "flex-wrap" "wrap"
                     ]
-                    [ Html.text "Random" ]
-                , Html.button
-                    [ onClick InvertPermutation
-                    , style "padding" "8px 16px"
-                    , style "font-size" "14px"
-                    , style "background-color" "#2196F3"
-                    , style "color" "white"
-                    , style "border" "none"
-                    , style "border-radius" "4px"
-                    , style "cursor" "pointer"
+                    [ Html.button
+                        [ onClick GenerateRandomPermutation
+                        , style "padding" "8px 16px"
+                        , style "font-size" "14px"
+                        , style "background-color" "#4CAF50"
+                        , style "color" "white"
+                        , style "border" "none"
+                        , style "border-radius" "4px"
+                        , style "cursor" "pointer"
+                        ]
+                        [ Html.text "Random" ]
+                    , Html.button
+                        [ onClick InvertPermutation
+                        , style "padding" "8px 16px"
+                        , style "font-size" "14px"
+                        , style "background-color" "#2196F3"
+                        , style "color" "white"
+                        , style "border" "none"
+                        , style "border-radius" "4px"
+                        , style "cursor" "pointer"
+                        ]
+                        [ Html.text "Invert" ]
                     ]
-                    [ Html.text "Invert" ]
                 ]
-            ]
-        , Html.div
-            [ style "background" "#f5f5f5"
-            , style "padding" "12px"
-            , style "border-radius" "8px"
-            , style "text-align" "center"
-            ]
-            [ GV.graphviz GV.Circo (Permutation.toCycleGraph model.permutation) ]
-        ]
+    in
+    viewContainer title edgeColor model.permutation [ controls ]
 
 
 {-| View a read-only permutation (no editing controls).
 -}
 viewReadOnly : String -> Permutation.Permutation -> Html msg
 viewReadOnly title perm =
+    let
+        cycleDisplay =
+            Html.div
+                [ style "margin-bottom" "12px"
+                , style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "8px"
+                , style "padding" "8px 12px"
+                , style "background" "#e8e8e8"
+                , style "border-radius" "4px"
+                , style "font-family" "monospace"
+                , style "font-size" "16px"
+                ]
+                [ Html.span [] [ Html.text (Permutation.toCyclesString perm) ] ]
+    in
+    viewContainer title Nothing perm [ cycleDisplay ]
+
+
+{-| Helper function to create the common container structure for both view and viewReadOnly.
+-}
+viewContainer : String -> Maybe String -> Permutation.Permutation -> List (Html msg) -> Html msg
+viewContainer title maybeEdgeColor perm controls =
     Html.div
         [ style "flex" "1"
         , style "min-width" "250px"
@@ -219,27 +229,17 @@ viewReadOnly title perm =
         , style "padding" "16px"
         , style "background" "#fff"
         ]
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
-        , Html.div
-            [ style "margin-bottom" "12px"
-            , style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "8px"
-            , style "padding" "8px 12px"
-            , style "background" "#e8e8e8"
-            , style "border-radius" "4px"
-            , style "font-family" "monospace"
-            , style "font-size" "16px"
-            ]
-            [ Html.span [] [ Html.text (Permutation.toCyclesString perm) ] ]
-        , Html.div
-            [ style "background" "#f5f5f5"
-            , style "padding" "12px"
-            , style "border-radius" "8px"
-            , style "text-align" "center"
-            ]
-            [ GV.graphviz GV.Circo (Permutation.toCycleGraph perm) ]
-        ]
+        (Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
+            :: controls
+            ++ [ Html.div
+                    [ style "background" "#f5f5f5"
+                    , style "padding" "12px"
+                    , style "border-radius" "8px"
+                    , style "text-align" "center"
+                    ]
+                    [ GV.graphviz GV.Circo (Permutation.toCycleGraph maybeEdgeColor perm) ]
+               ]
+        )
 
 
 viewCycleNotation : Model -> Html Msg
@@ -302,6 +302,7 @@ viewCycleNotation model =
                         [ type_ "text"
                         , value input
                         , onInput UpdateCycleInput
+                        , onEnter SavePermutation
                         , Attr.placeholder "(1 2 3)(4 5)"
                         , style "padding" "8px"
                         , style "font-size" "16px"
@@ -381,3 +382,18 @@ badPermutationToString err =
 
                 Permutation.DuplicateValue v ->
                     "Duplicate value: " ++ String.fromInt v
+
+
+onEnter : msg -> Html.Attribute msg
+onEnter msg =
+    Html.Events.on "keydown"
+        (Decode.field "key" Decode.string
+            |> Decode.andThen
+                (\key ->
+                    if key == "Enter" then
+                        Decode.succeed msg
+
+                    else
+                        Decode.fail "Not Enter"
+                )
+        )

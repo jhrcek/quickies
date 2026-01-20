@@ -13,6 +13,8 @@ module Permutation exposing
     , toCycleGraph
     , toCycles
     , toCyclesString
+    , toExpandedCompositionGraph
+    , toMappings
     )
 
 import Array exposing (Array)
@@ -32,6 +34,13 @@ type Permutation
 getSize : Permutation -> Int
 getSize (Permutation arr) =
     Array.length arr
+
+
+{-| Get all mappings of a permutation as a list of (from, to) pairs.
+-}
+toMappings : Permutation -> List ( Int, Int )
+toMappings (Permutation arr) =
+    Array.toIndexedList arr
 
 
 {-| Errors that can occur when validating permutation input.
@@ -456,10 +465,10 @@ toCyclesString perm =
             |> String.concat
 
 
-{-| Convert a permutation to a GraphViz graph showing its cycle structure.
+{-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).
 -}
-toCycleGraph : Permutation -> GV.Graph
-toCycleGraph perm =
+toCycleGraph : Maybe String -> Permutation -> GV.Graph
+toCycleGraph mEdgeColor perm =
     let
         n =
             getSize perm
@@ -486,7 +495,16 @@ toCycleGraph perm =
                             in
                             List.map2
                                 (\from to ->
-                                    GV.simpleEdge (String.fromInt from) (String.fromInt to)
+                                    { tail = String.fromInt from
+                                    , head = String.fromInt to
+                                    , attributes =
+                                        case mEdgeColor of
+                                            Nothing ->
+                                                []
+
+                                            Just colorStr ->
+                                                [ ( "color", GV.str colorStr ) ]
+                                    }
                                 )
                                 (List.take (List.length cycle) cycleWithFirst)
                                 (List.drop 1 cycleWithFirst)
@@ -507,4 +525,81 @@ toCycleGraph perm =
             ]
         , edges = edges
         , nodes = List.map (\i -> GV.simpleNode (String.fromInt i)) (List.range 0 (n - 1))
+    }
+
+
+{-| Create a graph showing composition in progress.
+Nodes are shown in two columns: left column for domain, right column for intermediate.
+P edges (blue) go from left to right: L\_i -> R\_P(i)
+Q edges (red) go from right back to left: R\_j -> L\_Q(j)
+This makes the graph homeomorphic to the composed permutation's cycle structure.
+-}
+toExpandedCompositionGraph : Permutation -> Permutation -> GV.Graph
+toExpandedCompositionGraph permP permQ =
+    let
+        n =
+            getSize permP
+
+        -- Left column nodes (domain of P)
+        leftNodes =
+            List.map
+                (\i ->
+                    { name = "L" ++ String.fromInt i
+                    , attributes =
+                        [ ( "label", GV.str (String.fromInt i) )
+                        ]
+                    }
+                )
+                (List.range 0 (n - 1))
+
+        -- Right column nodes (intermediate values) - dotted to show they'll disappear
+        rightNodes =
+            List.map
+                (\i ->
+                    { name = "R" ++ String.fromInt i
+                    , attributes =
+                        [ ( "label", GV.str (String.fromInt i) )
+                        , ( "style", GV.str "dotted" )
+                        ]
+                    }
+                )
+                (List.range 0 (n - 1))
+
+        -- P edges: from L_i to R_{P(i)} in blue
+        pEdges =
+            toMappings permP
+                |> List.map
+                    (\( from, to ) ->
+                        { tail = "L" ++ String.fromInt from
+                        , head = "R" ++ String.fromInt to
+                        , attributes = [ ( "color", GV.str "blue" ) ]
+                        }
+                    )
+
+        -- Q edges: from R_j to L_{Q(j)} in red (back to left column!)
+        qEdges =
+            toMappings permQ
+                |> List.map
+                    (\( from, to ) ->
+                        { tail = "R" ++ String.fromInt from
+                        , head = "L" ++ String.fromInt to
+                        , attributes = [ ( "color", GV.str "red" ) ]
+                        }
+                    )
+
+        empty =
+            GV.emptyGraph
+    in
+    { empty
+        | name = Just "Expanded Composition"
+        , graphAttributes =
+            [ ( "rankdir", GV.str "LR" )
+            , ( "ranksep", GV.num 1.5 )
+            ]
+        , nodeAttributes =
+            [ ( "shape", GV.str "circle" )
+            , ( "fontname", GV.str "sans-serif" )
+            ]
+        , nodes = leftNodes ++ rightNodes
+        , edges = pEdges ++ qEdges
     }
