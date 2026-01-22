@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elm + Viz.js - Permutation Cycles</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Loading state for the custom element */
+        graphviz-graph:not(:defined) {
+            display: block;
+            min-height: 200px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+
+        graphviz-graph:not(:defined)::before {
+            content: "Loading graph...";
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: #888;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="elm"></div>
+
+    <!-- Viz.js from CDN (UMD build that exposes global Viz) -->
+    <script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.24/dist/viz-global.js"></script>
+
+    <!-- Define the custom element for rendering Graphviz graphs -->
+    <script>
+        // Wait for Viz.js to initialize once, then reuse the instance
+        const vizPromise = Viz.instance();
+
+        class GraphvizGraph extends HTMLElement {
+            static get observedAttributes() {
+                return ['graph', 'engine'];
+            }
+
+            constructor() {
+                super();
+                this.attachShadow({ mode: 'open' });
+            }
+
+            connectedCallback() {
+                this.render();
+            }
+
+            attributeChangedCallback(name, oldValue, newValue) {
+                if ((name === 'graph' || name === 'engine') && oldValue !== newValue) {
+                    this.render();
+                }
+            }
+
+            async render() {
+                const graphAttr = this.getAttribute('graph');
+                if (!graphAttr) {
+                    this.shadowRoot.innerHTML = '<div style="color: #999;">No graph specified</div>';
+                    return;
+                }
+
+                try {
+                    // Parse the JSON graph object from the attribute
+                    const graphObject = JSON.parse(graphAttr);
+                    const engine = this.getAttribute('engine') || 'dot';
+                    const viz = await vizPromise;
+                    const svgElement = viz.renderSVGElement(graphObject, { engine });
+
+                    // Clear previous content and append the new SVG
+                    this.shadowRoot.innerHTML = '';
+                    this.shadowRoot.appendChild(svgElement);
+
+                    // Make SVG responsive
+                    svgElement.style.maxWidth = '100%';
+                    svgElement.style.height = 'auto';
+                } catch (error) {
+                    console.error('Graphviz render error:', error);
+                    this.shadowRoot.innerHTML = `
+                        <div style="color: #c00; padding: 10px; background: #fee; border-radius: 4px;">
+                            <strong>Render Error:</strong> ${error.message}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Register the custom element
+        customElements.define('graphviz-graph', GraphvizGraph);
+    </script>
+
+    <script src="elm.min.js"></script>
+    <script>
+        Elm.Main.init({
+            node: document.getElementById('elm')
+        });
+    </script>
+</body>
+
+</html>
