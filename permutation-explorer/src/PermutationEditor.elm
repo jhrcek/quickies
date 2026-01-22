@@ -7,7 +7,6 @@ module PermutationEditor exposing
     , setPermutation
     , update
     , view
-    , viewReadOnly
     )
 
 import Array
@@ -163,49 +162,8 @@ view title edgeColor model =
                 , style "gap" "8px"
                 ]
                 [ viewCycleNotation model
-                , Html.div
-                    [ style "display" "flex"
-                    , style "gap" "8px"
-                    , style "flex-wrap" "wrap"
-                    ]
-                    [ Html.button
-                        (onClick GenerateRandomPermutation :: Attr.title "Generate Random Permutation" :: buttonAttrs)
-                        [ Html.text "⚄" ]
-                    , Html.button
-                        (onClick InvertPermutation :: Attr.title "Invert Permutation" :: buttonAttrs)
-                        [ Html.text "↺" ]
-                    ]
                 ]
     in
-    viewContainer title edgeColor model.permutation [ controls ]
-
-
-{-| View a read-only permutation (no editing controls).
--}
-viewReadOnly : String -> Permutation.Permutation -> Html msg
-viewReadOnly title perm =
-    let
-        cycleDisplay =
-            Html.div
-                [ style "margin-bottom" "12px"
-                , style "display" "flex"
-                , style "align-items" "center"
-                , style "gap" "8px"
-                , style "padding" "8px 12px"
-                , style "background" "#e8e8e8"
-                , style "border-radius" "4px"
-                , style "font-family" "monospace"
-                , style "font-size" "16px"
-                ]
-                [ Html.span [] [ Html.text (Permutation.toCyclesString perm) ] ]
-    in
-    viewContainer title Nothing perm [ cycleDisplay ]
-
-
-{-| Helper function to create the common container structure for both view and viewReadOnly.
--}
-viewContainer : String -> Maybe String -> Permutation.Permutation -> List (Html msg) -> Html msg
-viewContainer title maybeEdgeColor perm controls =
     Html.div
         [ style "flex" "1"
         , style "min-width" "250px"
@@ -214,37 +172,53 @@ viewContainer title maybeEdgeColor perm controls =
         , style "padding" "16px"
         , style "background" "#fff"
         ]
-        (Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
-            :: controls
-            ++ [ Html.div
-                    [ style "background" "#f5f5f5"
-                    , style "padding" "12px"
-                    , style "border-radius" "8px"
-                    , style "text-align" "center"
-                    ]
-                    [ GV.graphviz GV.Circo (Permutation.toCycleGraph maybeEdgeColor perm) ]
-               ]
-        )
+        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
+        , controls
+        , Html.div
+            [ style "background" "#f5f5f5"
+            , style "padding" "12px"
+            , style "border-radius" "8px"
+            , style "text-align" "center"
+            ]
+            [ GV.graphviz GV.Circo (Permutation.toCycleGraph edgeColor model.permutation) ]
+        ]
 
 
 viewCycleNotation : Model -> Html Msg
 viewCycleNotation model =
+    let
+        containerAttrs =
+            [ style "display" "flex"
+            , style "align-items" "center"
+            , style "justify-content" "space-between"
+            , style "gap" "8px"
+            , style "padding" "8px 12px"
+            , style "background" "#e8e8e8"
+            , style "border-radius" "4px"
+            , style "font-family" "monospace"
+            , style "font-size" "16px"
+            ]
+    in
     case model.editState of
         NotEditing ->
-            Html.div
-                [ style "display" "flex"
-                , style "align-items" "center"
-                , style "gap" "8px"
-                , style "padding" "8px 12px"
-                , style "background" "#e8e8e8"
-                , style "border-radius" "4px"
-                , style "font-family" "monospace"
-                , style "font-size" "16px"
-                ]
+            let
+                iconButton msg title icon =
+                    Html.button
+                        (onClick msg
+                            :: Attr.title title
+                            :: style "width" "40px"
+                            :: style "height" "40px"
+                            :: buttonAttrs
+                        )
+                        [ Html.text icon ]
+            in
+            Html.div containerAttrs
                 [ Html.span [] [ Html.text (Permutation.toCyclesString model.permutation) ]
-                , Html.button
-                    (onClick EnterEditMode :: Attr.title "Edit Permutation" :: buttonAttrs)
-                    [ Html.text "🖉" ]
+                , Html.div [ style "display" "flex", style "gap" "8px" ]
+                    [ iconButton EnterEditMode "Edit Permutation" "🖉"
+                    , iconButton InvertPermutation "Invert Permutation" "↺"
+                    , iconButton GenerateRandomPermutation "Generate Random Permutation" "⚄"
+                    ]
                 ]
 
         Editing { input, validationResult } ->
@@ -265,16 +239,8 @@ viewCycleNotation model =
                         Err err ->
                             badPermutationToString err
             in
-            Html.div
-                [ style "display" "flex"
-                , style "flex-direction" "column"
-                , style "gap" "4px"
-                ]
-                [ Html.div
-                    [ style "display" "flex"
-                    , style "align-items" "center"
-                    , style "gap" "8px"
-                    ]
+            Html.div []
+                [ Html.div containerAttrs
                     [ Html.input
                         [ type_ "text"
                         , value input
@@ -284,7 +250,8 @@ viewCycleNotation model =
                         , style "padding" "8px"
                         , style "font-size" "16px"
                         , style "font-family" "monospace"
-                        , style "width" "150px"
+                        , style "flex" "1"
+                        , style "min-width" "100px"
                         , style "border"
                             (if isValid then
                                 "1px solid #ccc"
@@ -295,29 +262,31 @@ viewCycleNotation model =
                         , style "border-radius" "4px"
                         ]
                         []
-                    , Html.button
-                        (buttonAttrs
-                            ++ [ onClick SavePermutation
-                               , Attr.disabled (not isValid)
-                               , Attr.title "Save"
-                               ]
-                            ++ (if isValid then
-                                    []
+                    , Html.div [ style "display" "flex", style "gap" "8px" ]
+                        [ Html.button
+                            (buttonAttrs
+                                ++ [ onClick SavePermutation
+                                   , Attr.disabled (not isValid)
+                                   , Attr.title "Save"
+                                   ]
+                                ++ (if isValid then
+                                        []
 
-                                else
-                                    [ style "opacity" "0.5", style "cursor" "not-allowed" ]
-                               )
-                        )
-                        [ Html.text "Save" ]
-                    , Html.button
-                        (onClick ExitEditMode :: Attr.title "Cancel" :: buttonAttrs)
-                        [ Html.text "Cancel" ]
+                                    else
+                                        [ style "opacity" "0.5", style "cursor" "not-allowed" ]
+                                   )
+                            )
+                            [ Html.text "Save" ]
+                        , Html.button
+                            (onClick ExitEditMode :: Attr.title "Cancel" :: buttonAttrs)
+                            [ Html.text "Cancel" ]
+                        ]
                     ]
                 , if not isValid then
                     Html.div
                         [ style "color" "#e74c3c"
                         , style "font-size" "12px"
-                        , style "max-width" "300px"
+                        , style "margin-top" "4px"
                         ]
                         [ Html.text errorMessage ]
 

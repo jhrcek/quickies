@@ -223,6 +223,7 @@ viewComposition mode edgeColor permP permQ composed =
             , style "border-radius" "4px"
             , style "font-family" "monospace"
             , style "font-size" "16px"
+            , style "height" "40px"
             ]
             [ Html.span [] [ Html.text (Permutation.toCyclesString composed) ] ]
         , Html.div
