@@ -23,6 +23,7 @@ projects=(
   ["hexagon"]="Pascal's triangle in hexagonal grid"
   ["IEEE-754"]="IEEE-754 floating point visualizer"
   ["legendres-formula"]="Intuition behind Legendre's formula"
+  ["permutation-explorer"]="Playground for exploring permutations"
   ["sampling"]="Random sampling toy"
   ["sampling-weighted"]="Weighted random sampling toy"
   ["trigonometric-hyperbolic"]="Mini reference of goniometric and trigonometric functions"
