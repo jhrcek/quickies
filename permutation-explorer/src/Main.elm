@@ -20,6 +20,7 @@ import Styles exposing (buttonAttrs)
    - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
    - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
    - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)
+   - [x] improve expanded composition graph (show composed edges both dotted + resulting solid black; don't show "intermediate" composition node if either P's or Q's edge is fixed point of the respective permutation)
 -}
 
 

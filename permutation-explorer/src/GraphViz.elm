@@ -1,6 +1,6 @@
 module GraphViz exposing
     ( Graph, Node, Edge, Attribute, AttributeValue, Engine(..)
-    , emptyGraph, str, num
+    , emptyGraph, str, num, bool
     , graphviz
     , simpleNode
     )
@@ -8,7 +8,7 @@ module GraphViz exposing
 {-| Module for declarative Graphviz rendering using viz-js.
 
 @docs Graph, Node, Edge, Attribute, AttributeValue, Engine
-@docs emptyGraph, str, num
+@docs emptyGraph, str, num, bool
 @docs graphviz
 
 -}
@@ -27,15 +27,15 @@ Supports strings, numbers, and booleans.
 -}
 type AttributeValue
     = StringValue String
-    | NumberValue Float
     | BoolValue Bool
+    | NumberValue Float
 
 
 {-| Graphviz layout engine.
 -}
 type Engine
-    = Dot
-    | Circo
+    = -- TODO maybe add other engines (Dot, Neato etc.) if needed later
+      Circo
 
 
 {-| A key-value pair representing a Graphviz attribute.
@@ -147,9 +147,6 @@ encodeGraph g =
 engineToString : Engine -> String
 engineToString engine =
     case engine of
-        Dot ->
-            "dot"
-
         Circo ->
             "circo"
 
@@ -202,6 +199,11 @@ str =
 num : Float -> AttributeValue
 num =
     NumberValue
+
+
+bool : Bool -> AttributeValue
+bool =
+    BoolValue
 
 
 simpleNode : String -> Node

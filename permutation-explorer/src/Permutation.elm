@@ -18,6 +18,7 @@ module Permutation exposing
 import Array exposing (Array)
 import GraphViz as GV
 import Parser exposing ((|.), (|=), Parser)
+import Set
 
 
 {-| A permutation in S\_n, represented internally as an Array.
@@ -484,8 +485,19 @@ toCycleGraph mEdgeColor perm =
                         [] ->
                             []
 
-                        [ _ ] ->
-                            []
+                        [ single ] ->
+                            -- Fixed point: show as self-loop
+                            [ { tail = String.fromInt single
+                              , head = String.fromInt single
+                              , attributes =
+                                    case mEdgeColor of
+                                        Nothing ->
+                                            []
+
+                                        Just colorStr ->
+                                            [ ( "color", GV.str colorStr ) ]
+                              }
+                            ]
 
                         first :: _ ->
                             let
@@ -531,6 +543,8 @@ toCycleGraph mEdgeColor perm =
 Nodes are shown in two columns: left column for domain, right column for intermediate.
 P edges (blue) go from left to right: L\_i -> R\_P(i)
 Q edges (red) go from right back to left: R\_j -> L\_Q(j)
+Composed edges (black solid) show the result: L\_i -> L\_{Q(P(i))}
+Intermediate nodes are hidden when they would be fixed points.
 This makes the graph homeomorphic to the composed permutation's cycle structure.
 -}
 toExpandedCompositionGraph : Permutation -> Permutation -> GV.Graph
@@ -539,50 +553,68 @@ toExpandedCompositionGraph permP permQ =
         n =
             getSize permP
 
-        -- Left column nodes (domain of P)
+        leftName i =
+            "L" ++ String.fromInt i
+
+        rightName i =
+            "R" ++ String.fromInt i
+
+        -- An intermediate node R_b is needed only when there exists a chain a → b → c
+        -- where a ≠ b (non-trivial P edge into b) AND b ≠ c (non-trivial Q edge out of b)
+        nonTrivialP =
+            toMappings permP |> List.filter (\( from, to ) -> from /= to)
+
+        nonTrivialQ =
+            toMappings permQ |> List.filter (\( from, to ) -> from /= to)
+
+        neededIntermediates =
+            Set.intersect
+                (Set.fromList (List.map Tuple.second nonTrivialP))
+                (Set.fromList (List.map Tuple.first nonTrivialQ))
+
         leftNodes =
             List.map
-                (\i ->
-                    { name = "L" ++ String.fromInt i
-                    , attributes =
-                        [ ( "label", GV.str (String.fromInt i) )
-                        ]
-                    }
-                )
+                (\i -> { name = leftName i, attributes = [ ( "label", GV.str (String.fromInt i) ) ] })
                 (List.range 0 (n - 1))
 
-        -- Right column nodes (intermediate values) - dotted to show they'll disappear
         rightNodes =
-            List.map
-                (\i ->
-                    { name = "R" ++ String.fromInt i
-                    , attributes =
-                        [ ( "label", GV.str (String.fromInt i) )
-                        , ( "style", GV.str "dotted" )
-                        ]
-                    }
-                )
-                (List.range 0 (n - 1))
-
-        -- P edges: from L_i to R_{P(i)} in blue
-        pEdges =
-            toMappings permP
+            Set.toList neededIntermediates
                 |> List.map
-                    (\( from, to ) ->
-                        { tail = "L" ++ String.fromInt from
-                        , head = "R" ++ String.fromInt to
-                        , attributes = [ ( "color", GV.str "blue" ) ]
+                    (\i ->
+                        { name = rightName i
+                        , attributes = [ ( "label", GV.str (String.fromInt i) ), ( "style", GV.str "dotted" ) ]
                         }
                     )
 
-        -- Q edges: from R_j to L_{Q(j)} in red (back to left column!)
+        pEdges =
+            nonTrivialP
+                |> List.filterMap
+                    (\( from, to ) ->
+                        if Set.member to neededIntermediates then
+                            Just { tail = leftName from, head = rightName to, attributes = [ ( "color", GV.str "blue" ) ] }
+
+                        else
+                            Nothing
+                    )
+
         qEdges =
-            toMappings permQ
+            nonTrivialQ
+                |> List.filterMap
+                    (\( from, to ) ->
+                        if Set.member from neededIntermediates then
+                            Just { tail = rightName from, head = leftName to, attributes = [ ( "color", GV.str "red" ) ] }
+
+                        else
+                            Nothing
+                    )
+
+        composedEdges =
+            toMappings (compose permP permQ)
                 |> List.map
                     (\( from, to ) ->
-                        { tail = "R" ++ String.fromInt from
-                        , head = "L" ++ String.fromInt to
-                        , attributes = [ ( "color", GV.str "red" ) ]
+                        { tail = leftName from
+                        , head = leftName to
+                        , attributes = [ ( "color", GV.str "black" ) ]
                         }
                     )
 
@@ -591,14 +623,8 @@ toExpandedCompositionGraph permP permQ =
     in
     { empty
         | name = Just "Expanded Composition"
-        , graphAttributes =
-            [ ( "rankdir", GV.str "LR" )
-            , ( "ranksep", GV.num 1.5 )
-            ]
-        , nodeAttributes =
-            [ ( "shape", GV.str "circle" )
-            , ( "fontname", GV.str "sans-serif" )
-            ]
+        , graphAttributes = []
+        , nodeAttributes = [ ( "shape", GV.str "circle" ) ]
         , nodes = leftNodes ++ rightNodes
-        , edges = pEdges ++ qEdges
+        , edges = pEdges ++ qEdges ++ composedEdges
     }
