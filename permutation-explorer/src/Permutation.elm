@@ -11,10 +11,8 @@ module Permutation exposing
     , parseCycles
     , resize
     , toCycleGraph
-    , toCycles
     , toCyclesString
     , toExpandedCompositionGraph
-    , toMappings
     )
 
 import Array exposing (Array)
@@ -193,9 +191,6 @@ Returns Err with ValidationError if the input is invalid.
 fromCycles : Int -> List (List Int) -> Result ValidationError Permutation
 fromCycles n cycles =
     let
-        identityArray =
-            Array.initialize n Basics.identity
-
         allNumbers =
             List.concat cycles
 
@@ -228,6 +223,10 @@ fromCycles n cycles =
                     Err (DuplicateValue dup)
 
                 Nothing ->
+                    let
+                        identityArray =
+                            Array.initialize n Basics.identity
+                    in
                     Ok (Permutation (List.foldl applyOneCycle identityArray cycles))
 
 

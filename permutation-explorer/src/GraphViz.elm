@@ -1,6 +1,6 @@
 module GraphViz exposing
     ( Graph, Node, Edge, Attribute, AttributeValue, Engine(..)
-    , emptyGraph, simpleEdge, str, num
+    , emptyGraph, str, num
     , graphviz
     , simpleNode
     )
@@ -8,7 +8,7 @@ module GraphViz exposing
 {-| Module for declarative Graphviz rendering using viz-js.
 
 @docs Graph, Node, Edge, Attribute, AttributeValue, Engine
-@docs emptyGraph, simpleEdge, str, num
+@docs emptyGraph, str, num
 @docs graphviz
 
 -}
@@ -188,13 +188,6 @@ emptyGraph =
     , nodes = []
     , edges = []
     }
-
-
-{-| Create a simple edge with no attributes.
--}
-simpleEdge : String -> String -> Edge
-simpleEdge tail head =
-    { tail = tail, head = head, attributes = [] }
 
 
 {-| String attribute helper.

@@ -4,7 +4,6 @@ module PermutationEditor exposing
     , init
     , permutation
     , resize
-    , setPermutation
     , update
     , view
     )
@@ -57,13 +56,6 @@ init n =
 permutation : Model -> Permutation.Permutation
 permutation model =
     model.permutation
-
-
-{-| Set the permutation directly (useful for computed permutations).
--}
-setPermutation : Permutation.Permutation -> Model -> Model
-setPermutation perm model =
-    { model | permutation = perm, editState = NotEditing }
 
 
 {-| Resize the permutation to a new n value.
@@ -230,14 +222,6 @@ viewCycleNotation model =
 
                         Err _ ->
                             False
-
-                errorMessage =
-                    case validationResult of
-                        Ok _ ->
-                            ""
-
-                        Err err ->
-                            badPermutationToString err
             in
             Html.div []
                 [ Html.div containerAttrs
@@ -282,16 +266,17 @@ viewCycleNotation model =
                             [ Html.text "Cancel" ]
                         ]
                     ]
-                , if not isValid then
-                    Html.div
-                        [ style "color" "#e74c3c"
-                        , style "font-size" "12px"
-                        , style "margin-top" "4px"
-                        ]
-                        [ Html.text errorMessage ]
+                , case validationResult of
+                    Err err ->
+                        Html.div
+                            [ style "color" "#e74c3c"
+                            , style "font-size" "12px"
+                            , style "margin-top" "4px"
+                            ]
+                            [ Html.text (badPermutationToString err) ]
 
-                  else
-                    Html.text ""
+                    Ok _ ->
+                        Html.text ""
                 ]
 
 
