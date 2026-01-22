@@ -169,11 +169,11 @@ view title edgeColor model =
                     , style "flex-wrap" "wrap"
                     ]
                     [ Html.button
-                        (onClick GenerateRandomPermutation :: buttonAttrs)
-                        [ Html.text "Random" ]
+                        (onClick GenerateRandomPermutation :: Attr.title "Generate Random Permutation" :: buttonAttrs)
+                        [ Html.text "⚄" ]
                     , Html.button
-                        (onClick InvertPermutation :: buttonAttrs)
-                        [ Html.text "Invert" ]
+                        (onClick InvertPermutation :: Attr.title "Invert Permutation" :: buttonAttrs)
+                        [ Html.text "↺" ]
                     ]
                 ]
     in
@@ -243,8 +243,8 @@ viewCycleNotation model =
                 ]
                 [ Html.span [] [ Html.text (Permutation.toCyclesString model.permutation) ]
                 , Html.button
-                    (onClick EnterEditMode :: Attr.title "Edit" :: buttonAttrs)
-                    [ Html.text "✏" ]
+                    (onClick EnterEditMode :: Attr.title "Edit Permutation" :: buttonAttrs)
+                    [ Html.text "🖉" ]
                 ]
 
         Editing { input, validationResult } ->

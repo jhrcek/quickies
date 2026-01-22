@@ -186,8 +186,8 @@ view model =
                 , viewModeRadio model.compositionViewMode
                 ]
             , Html.button
-                (onClick SwapPQ :: buttonAttrs)
-                [ Html.text "Swap P Q" ]
+                (onClick SwapPQ :: Attr.title "Swap P and Q" :: buttonAttrs)
+                [ Html.text "⇆" ]
             ]
         , Html.div
             [ style "display" "flex"
