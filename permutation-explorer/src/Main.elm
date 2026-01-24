@@ -7,6 +7,7 @@ import Html.Attributes as Attr exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Permutation
 import PermutationEditor
+import PermutationView
 import Styles exposing (buttonAttrs)
 
 
@@ -15,12 +16,10 @@ import Styles exposing (buttonAttrs)
    TODO
    - [ ] add Permutation.conjugateBy : Permutation -> Permutation -> Permutation
    - [ ] add UI to conjugate one permutation by another
-   - [ ] show cycle type
    - [ ] show (just size of?) centralizer of a permutation
    - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
    - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
    - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)
-   - [x] improve expanded composition graph (show composed edges both dotted + resulting solid black; don't show "intermediate" composition node if either P's or Q's edge is fixed point of the respective permutation)
 -}
 
 
@@ -189,47 +188,31 @@ viewComposition mode editorP editorQ =
 
         composed =
             Permutation.compose permP permQ
-    in
-    Html.div
-        [ style "flex" "1"
-        , style "min-width" "250px"
-        , style "border" "1px solid #ddd"
-        , style "border-radius" "8px"
-        , style "padding" "16px"
-        , style "background" "#fff"
-        ]
-        [ Html.h2 [ style "margin-top" "0" ]
-            [ Html.text <|
-                PermutationEditor.getLabel editorP
-                    ++ " ; "
-                    ++ PermutationEditor.getLabel editorQ
-            ]
-        , Html.div
-            [ style "margin-bottom" "12px"
-            , style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "8px"
-            , style "padding" "8px 12px"
-            , style "background" "#e8e8e8"
-            , style "border-radius" "4px"
-            , style "font-family" "monospace"
-            , style "font-size" "16px"
-            , style "height" "40px"
-            ]
-            [ Html.span [] [ Html.text (Permutation.toCyclesString composed) ] ]
-        , Html.div
-            [ style "background" "#f5f5f5"
-            , style "padding" "12px"
-            , style "border-radius" "8px"
-            , style "text-align" "center"
-            ]
-            [ case mode of
+
+        title =
+            PermutationEditor.getLabel editorP
+                ++ " ; "
+                ++ PermutationEditor.getLabel editorQ
+
+        graphView =
+            case mode of
                 CollapsedView ->
-                    GV.graphviz GV.Circo (Permutation.toCycleGraph Nothing composed)
+                    PermutationView.viewGraph Nothing composed
 
                 ExpandedView ->
-                    GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permP permQ)
-            ]
+                    Html.div
+                        [ style "background" "#f5f5f5"
+                        , style "padding" "12px"
+                        , style "border-radius" "8px"
+                        , style "text-align" "center"
+                        ]
+                        [ GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permP permQ) ]
+    in
+    PermutationView.viewCard
+        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
+        , PermutationView.viewCycleNotation composed
+        , PermutationView.viewCharacteristics composed
+        , graphView
         ]
 
 

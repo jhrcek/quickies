@@ -1,8 +1,10 @@
 module Permutation exposing
     ( BadPermutation(..)
     , Permutation
+    , Sign(..)
     , ValidationError(..)
     , compose
+    , cycleType
     , fromArray
     , fromCycles
     , getSize
@@ -10,6 +12,7 @@ module Permutation exposing
     , inverse
     , parseCycles
     , resize
+    , sign
     , toCycleGraph
     , toCyclesString
     , toExpandedCompositionGraph
@@ -463,6 +466,52 @@ toCyclesString perm =
         nonTrivialCycles
             |> List.map cycleToString
             |> String.concat
+
+
+{-| The sign (parity) of a permutation: Even or Odd.
+-}
+type Sign
+    = Even
+    | Odd
+
+
+{-| Compute the sign of a permutation.
+
+The sign is Even if the permutation can be written as a product of an even
+number of transpositions, Odd otherwise.
+
+Formula: sign = (-1)^(n - number of cycles)
+
+-}
+sign : Permutation -> Sign
+sign perm =
+    let
+        n =
+            getSize perm
+
+        numCycles =
+            List.length (toCycles perm)
+    in
+    if modBy 2 (n - numCycles) == 0 then
+        Even
+
+    else
+        Odd
+
+
+{-| Compute the cycle type of a permutation.
+
+Returns a list of cycle lengths in descending order (a partition of n).
+For example, (0 1 2)(3 4) has cycle type [3, 2].
+
+Fixed points are included, so the sum always equals n.
+
+-}
+cycleType : Permutation -> List Int
+cycleType perm =
+    toCycles perm
+        |> List.map List.length
+        |> List.sortBy negate
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).

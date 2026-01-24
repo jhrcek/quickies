@@ -10,12 +10,12 @@ module PermutationEditor exposing
     )
 
 import Array
-import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Json.Decode as Decode
 import Permutation
+import PermutationView
 import Random
 import Random.Array
 import Styles exposing (buttonAttrs)
@@ -153,39 +153,23 @@ generateRandomPermutation n =
 -}
 view : Maybe String -> Model -> Html Msg
 view edgeColor model =
-    let
-        controls =
-            Html.div
-                [ style "margin-bottom" "12px"
-                , style "display" "flex"
-                , style "flex-direction" "column"
-                , style "gap" "8px"
-                ]
-                [ viewCycleNotation model
-                ]
-    in
-    Html.div
-        [ style "flex" "1"
-        , style "min-width" "250px"
-        , style "border" "1px solid #ddd"
-        , style "border-radius" "8px"
-        , style "padding" "16px"
-        , style "background" "#fff"
-        ]
+    PermutationView.viewCard
         [ Html.h2 [ style "margin-top" "0" ] [ Html.text model.label ]
-        , controls
         , Html.div
-            [ style "background" "#f5f5f5"
-            , style "padding" "12px"
-            , style "border-radius" "8px"
-            , style "text-align" "center"
+            [ style "margin-bottom" "12px"
+            , style "display" "flex"
+            , style "flex-direction" "column"
+            , style "gap" "8px"
             ]
-            [ GV.graphviz GV.Circo (Permutation.toCycleGraph edgeColor model.permutation) ]
+            [ viewEditableCycleNotation model
+            ]
+        , PermutationView.viewCharacteristics model.permutation
+        , PermutationView.viewGraph edgeColor model.permutation
         ]
 
 
-viewCycleNotation : Model -> Html Msg
-viewCycleNotation model =
+viewEditableCycleNotation : Model -> Html Msg
+viewEditableCycleNotation model =
     let
         containerAttrs =
             [ style "display" "flex"
