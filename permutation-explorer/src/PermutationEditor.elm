@@ -1,6 +1,7 @@
 module PermutationEditor exposing
     ( Model
     , Msg
+    , getLabel
     , init
     , permutation
     , resize
@@ -41,14 +42,21 @@ type EditState
 type alias Model =
     { permutation : Permutation.Permutation
     , editState : EditState
+    , label : String
     }
 
 
-init : Int -> Model
-init n =
+init : Int -> String -> Model
+init n label =
     { permutation = Permutation.identity n
     , editState = NotEditing
+    , label = label
     }
+
+
+getLabel : Model -> String
+getLabel model =
+    model.label
 
 
 {-| Get the current permutation from the model.
@@ -143,8 +151,8 @@ generateRandomPermutation n =
 
 {-| View an editable permutation editor with title, controls, and graph.
 -}
-view : String -> Maybe String -> Model -> Html Msg
-view title edgeColor model =
+view : Maybe String -> Model -> Html Msg
+view edgeColor model =
     let
         controls =
             Html.div
@@ -164,7 +172,7 @@ view title edgeColor model =
         , style "padding" "16px"
         , style "background" "#fff"
         ]
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
+        [ Html.h2 [ style "margin-top" "0" ] [ Html.text model.label ]
         , controls
         , Html.div
             [ style "background" "#f5f5f5"

@@ -52,8 +52,8 @@ init =
             5
     in
     { n = n
-    , editorP = PermutationEditor.init n
-    , editorQ = PermutationEditor.init n
+    , editorP = PermutationEditor.init n "P"
+    , editorQ = PermutationEditor.init n "Q"
     , compositionViewMode = CollapsedView
     }
 
@@ -107,15 +107,6 @@ update msg model =
 view : Model -> Html Msg
 view model =
     let
-        permP =
-            PermutationEditor.permutation model.editorP
-
-        permQ =
-            PermutationEditor.permutation model.editorQ
-
-        composed =
-            Permutation.compose permP permQ
-
         edgeColorP =
             case model.compositionViewMode of
                 CollapsedView ->
@@ -131,14 +122,6 @@ view model =
 
                 ExpandedView ->
                     Just "red"
-
-        edgeColorComposed =
-            case model.compositionViewMode of
-                CollapsedView ->
-                    Just "black"
-
-                ExpandedView ->
-                    Nothing
     in
     Html.div
         [ style "font-family" "sans-serif"
@@ -196,15 +179,25 @@ view model =
             , style "flex-wrap" "wrap"
             , style "align-items" "flex-start"
             ]
-            [ Html.map EditorPMsg (PermutationEditor.view "P" edgeColorP model.editorP)
-            , Html.map EditorQMsg (PermutationEditor.view "Q" edgeColorQ model.editorQ)
-            , viewComposition model.compositionViewMode edgeColorComposed permP permQ composed
+            [ Html.map EditorPMsg (PermutationEditor.view edgeColorP model.editorP)
+            , Html.map EditorQMsg (PermutationEditor.view edgeColorQ model.editorQ)
+            , viewComposition model.compositionViewMode model.editorP model.editorQ
             ]
         ]
 
 
-viewComposition : CompositionViewMode -> Maybe String -> Permutation.Permutation -> Permutation.Permutation -> Permutation.Permutation -> Html Msg
-viewComposition mode edgeColor permP permQ composed =
+viewComposition : CompositionViewMode -> PermutationEditor.Model -> PermutationEditor.Model -> Html Msg
+viewComposition mode editorP editorQ =
+    let
+        permP =
+            PermutationEditor.permutation editorP
+
+        permQ =
+            PermutationEditor.permutation editorQ
+
+        composed =
+            Permutation.compose permP permQ
+    in
     Html.div
         [ style "flex" "1"
         , style "min-width" "250px"
@@ -213,7 +206,12 @@ viewComposition mode edgeColor permP permQ composed =
         , style "padding" "16px"
         , style "background" "#fff"
         ]
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text "P ; Q" ]
+        [ Html.h2 [ style "margin-top" "0" ]
+            [ Html.text <|
+                PermutationEditor.getLabel editorP
+                    ++ " ; "
+                    ++ PermutationEditor.getLabel editorQ
+            ]
         , Html.div
             [ style "margin-bottom" "12px"
             , style "display" "flex"
@@ -235,7 +233,7 @@ viewComposition mode edgeColor permP permQ composed =
             ]
             [ case mode of
                 CollapsedView ->
-                    GV.graphviz GV.Circo (Permutation.toCycleGraph edgeColor composed)
+                    GV.graphviz GV.Circo (Permutation.toCycleGraph Nothing composed)
 
                 ExpandedView ->
                     GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permP permQ)
