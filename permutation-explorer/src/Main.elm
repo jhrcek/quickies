@@ -107,21 +107,13 @@ update msg model =
 view : Model -> Html Msg
 view model =
     let
-        edgeColorP =
+        ( edgeColorP, edgeColorQ ) =
             case model.compositionViewMode of
                 CollapsedView ->
-                    Just "black"
+                    ( Nothing, Nothing )
 
                 ExpandedView ->
-                    Just "blue"
-
-        edgeColorQ =
-            case model.compositionViewMode of
-                CollapsedView ->
-                    Just "black"
-
-                ExpandedView ->
-                    Just "red"
+                    ( Just "blue", Just "red" )
     in
     Html.div
         [ style "font-family" "sans-serif"
@@ -243,40 +235,30 @@ viewComposition mode editorP editorQ =
 
 viewModeRadio : CompositionViewMode -> Html Msg
 viewModeRadio currentMode =
+    let
+        item viewMode label =
+            Html.label
+                [ style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "4px"
+                , style "cursor" "pointer"
+                ]
+                [ Html.input
+                    [ type_ "radio"
+                    , Attr.name "compositionViewMode"
+                    , Attr.checked (currentMode == viewMode)
+                    , onClick (SetCompositionViewMode viewMode)
+                    ]
+                    []
+                , Html.text label
+                ]
+    in
     Html.div
         [ style "display" "flex"
         , style "gap" "16px"
         ]
-        [ Html.label
-            [ style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "4px"
-            , style "cursor" "pointer"
-            ]
-            [ Html.input
-                [ type_ "radio"
-                , Attr.name "compositionViewMode"
-                , Attr.checked (currentMode == CollapsedView)
-                , onClick (SetCompositionViewMode CollapsedView)
-                ]
-                []
-            , Html.text "Collapsed"
-            ]
-        , Html.label
-            [ style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "4px"
-            , style "cursor" "pointer"
-            ]
-            [ Html.input
-                [ type_ "radio"
-                , Attr.name "compositionViewMode"
-                , Attr.checked (currentMode == ExpandedView)
-                , onClick (SetCompositionViewMode ExpandedView)
-                ]
-                []
-            , Html.text "Expanded"
-            ]
+        [ item CollapsedView "Collapsed"
+        , item ExpandedView "Expanded"
         ]
 
 

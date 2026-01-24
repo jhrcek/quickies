@@ -476,6 +476,14 @@ toCycleGraph mEdgeColor perm =
         cycles =
             toCycles perm
 
+        edgeAttrs =
+            case mEdgeColor of
+                Nothing ->
+                    []
+
+                Just colorStr ->
+                    [ ( "color", GV.str colorStr ) ]
+
         -- Convert cycles to edges
         cyclesToEdges : List (List Int) -> List GV.Edge
         cyclesToEdges cycs =
@@ -489,13 +497,7 @@ toCycleGraph mEdgeColor perm =
                             -- Fixed point: show as self-loop
                             [ { tail = String.fromInt single
                               , head = String.fromInt single
-                              , attributes =
-                                    case mEdgeColor of
-                                        Nothing ->
-                                            []
-
-                                        Just colorStr ->
-                                            [ ( "color", GV.str colorStr ) ]
+                              , attributes = edgeAttrs
                               }
                             ]
 
@@ -508,13 +510,7 @@ toCycleGraph mEdgeColor perm =
                                 (\from to ->
                                     { tail = String.fromInt from
                                     , head = String.fromInt to
-                                    , attributes =
-                                        case mEdgeColor of
-                                            Nothing ->
-                                                []
-
-                                            Just colorStr ->
-                                                [ ( "color", GV.str colorStr ) ]
+                                    , attributes = edgeAttrs
                                     }
                                 )
                                 (List.take (List.length cycle) cycleWithFirst)
@@ -614,7 +610,7 @@ toExpandedCompositionGraph permP permQ =
                     (\( from, to ) ->
                         { tail = leftName from
                         , head = leftName to
-                        , attributes = [ ( "color", GV.str "black" ) ]
+                        , attributes = []
                         }
                     )
 
@@ -624,7 +620,10 @@ toExpandedCompositionGraph permP permQ =
     { empty
         | name = Just "Expanded Composition"
         , graphAttributes = []
-        , nodeAttributes = [ ( "shape", GV.str "circle" ) ]
+        , nodeAttributes =
+            [ ( "shape", GV.str "circle" )
+            , ( "fontname", GV.str "sans-serif" )
+            ]
         , nodes = leftNodes ++ rightNodes
         , edges = pEdges ++ qEdges ++ composedEdges
     }
