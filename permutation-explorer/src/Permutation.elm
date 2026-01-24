@@ -10,6 +10,8 @@ module Permutation exposing
     , getSize
     , identity
     , inverse
+    , isInvolution
+    , order
     , parseCycles
     , resize
     , sign
@@ -512,6 +514,47 @@ cycleType perm =
     toCycles perm
         |> List.map List.length
         |> List.sortBy negate
+
+
+{-| Compute the order of a permutation.
+
+The order is the smallest positive integer k such that σ^k = identity.
+This equals the LCM of all cycle lengths.
+
+-}
+order : Permutation -> Int
+order perm =
+    cycleType perm
+        |> List.foldl lcm 1
+
+
+{-| Least common multiple of two positive integers.
+-}
+lcm : Int -> Int -> Int
+lcm a b =
+    (a * b) // gcd a b
+
+
+{-| Greatest common divisor using Euclidean algorithm.
+-}
+gcd : Int -> Int -> Int
+gcd a b =
+    if b == 0 then
+        a
+
+    else
+        gcd b (modBy b a)
+
+
+{-| Check if a permutation is an involution (its own inverse).
+-}
+isInvolution : Permutation -> Bool
+isInvolution perm =
+    toCycles perm
+        |> List.all
+            (\cycle ->
+                List.length cycle <= 2
+            )
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).

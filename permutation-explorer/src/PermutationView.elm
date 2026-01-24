@@ -67,6 +67,9 @@ viewCharacteristics perm =
                 |> String.join ", "
                 |> (\s -> "[" ++ s ++ "]")
 
+        orderStr =
+            String.fromInt (Permutation.order perm)
+
         characteristic : String -> String -> Html msg
         characteristic label val =
             Html.div
@@ -90,6 +93,14 @@ viewCharacteristics perm =
         ]
         [ characteristic "Sign:" signStr
         , characteristic "Cycle type:" cycleTypeStr
+        , characteristic "Order:" orderStr
+        , characteristic "Is involution:"
+            (if Permutation.isInvolution perm then
+                "Yes"
+
+             else
+                "No"
+            )
         ]
 
 
