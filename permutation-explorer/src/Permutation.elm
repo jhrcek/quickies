@@ -560,8 +560,8 @@ isInvolution perm =
 {-| Check if a permutation is the identity (all fixed points).
 -}
 isIdentity : Permutation -> Bool
-isIdentity perm =
-    cycleType perm |> List.all (\len -> len == 1)
+isIdentity (Permutation arr) =
+    Array.toIndexedList arr |> List.all (\( i, j ) -> i == j)
 
 
 {-| Count the number of cycles (including fixed points).
