@@ -10,7 +10,7 @@ module PermutationEditor exposing
     )
 
 import Array
-import Html exposing (Html)
+import Html exposing (Attribute, Html)
 import Html.Attributes as Attr exposing (style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Json.Decode as Decode
@@ -18,7 +18,6 @@ import Permutation
 import PermutationView
 import Random
 import Random.Array
-import Styles exposing (buttonAttrs)
 
 
 type Msg
@@ -300,3 +299,15 @@ onEnter msg =
                         Decode.fail "Not Enter"
                 )
         )
+
+
+buttonAttrs : List (Attribute msg)
+buttonAttrs =
+    [ style "padding" "8px 12px"
+    , style "font-size" "14px"
+    , style "border" "1px solid #ccc"
+    , style "border-radius" "4px"
+    , style "background" "#fff"
+    , style "color" "#000"
+    , style "cursor" "pointer"
+    ]

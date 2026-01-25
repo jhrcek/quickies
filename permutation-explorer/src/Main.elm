@@ -8,17 +8,6 @@ import Html.Events exposing (onClick, onInput)
 import Permutation
 import PermutationEditor
 import PermutationView
-import Styles exposing (buttonAttrs)
-
-
-
-{-
-   TODO
-   - [ ] add UI to conjugate one permutation by another
-   - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
-   - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
-   - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)
--}
 
 
 type Msg
@@ -26,7 +15,7 @@ type Msg
     | EditorPMsg PermutationEditor.Msg
     | EditorQMsg PermutationEditor.Msg
     | SetCompositionViewMode CompositionViewMode
-    | SwapPQ
+    | SetResultTab ResultTab
 
 
 type CompositionViewMode
@@ -34,11 +23,19 @@ type CompositionViewMode
     | ExpandedView
 
 
+type ResultTab
+    = CompositionPQTab
+    | CompositionQPTab
+    | ConjugatePByQTab
+    | ConjugateQByPTab
+
+
 type alias Model =
     { n : Int
     , editorP : PermutationEditor.Model
     , editorQ : PermutationEditor.Model
     , compositionViewMode : CompositionViewMode
+    , resultTab : ResultTab
     }
 
 
@@ -52,6 +49,7 @@ init =
     , editorP = PermutationEditor.init n "P"
     , editorQ = PermutationEditor.init n "Q"
     , compositionViewMode = CollapsedView
+    , resultTab = CompositionPQTab
     }
 
 
@@ -97,8 +95,8 @@ update msg model =
         SetCompositionViewMode mode ->
             ( { model | compositionViewMode = mode }, Cmd.none )
 
-        SwapPQ ->
-            ( { model | editorP = model.editorQ, editorQ = model.editorP }, Cmd.none )
+        SetResultTab tab ->
+            ( { model | resultTab = tab }, Cmd.none )
 
 
 view : Model -> Html Msg
@@ -158,9 +156,6 @@ view model =
                 [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
                 , viewModeRadio model.compositionViewMode
                 ]
-            , Html.button
-                (onClick SwapPQ :: Attr.title "Swap P and Q" :: buttonAttrs)
-                [ Html.text "⇆" ]
             ]
         , Html.div
             [ style "display" "flex"
@@ -170,13 +165,13 @@ view model =
             ]
             [ Html.map EditorPMsg (PermutationEditor.view edgeColorP model.editorP)
             , Html.map EditorQMsg (PermutationEditor.view edgeColorQ model.editorQ)
-            , viewComposition model.compositionViewMode model.editorP model.editorQ
+            , viewResultCard model.resultTab model.compositionViewMode model.editorP model.editorQ
             ]
         ]
 
 
-viewComposition : CompositionViewMode -> PermutationEditor.Model -> PermutationEditor.Model -> Html Msg
-viewComposition mode editorP editorQ =
+viewResultCard : ResultTab -> CompositionViewMode -> PermutationEditor.Model -> PermutationEditor.Model -> Html Msg
+viewResultCard activeTab compositionMode editorP editorQ =
     let
         permP =
             PermutationEditor.permutation editorP
@@ -184,20 +179,37 @@ viewComposition mode editorP editorQ =
         permQ =
             PermutationEditor.permutation editorQ
 
-        composed =
-            Permutation.compose permP permQ
-
-        title =
+        labelP =
             PermutationEditor.getLabel editorP
-                ++ " ; "
-                ++ PermutationEditor.getLabel editorQ
+
+        labelQ =
+            PermutationEditor.getLabel editorQ
+
+        -- Tab definitions: (tab, label)
+        tabs =
+            [ ( CompositionPQTab, labelP ++ " ; " ++ labelQ )
+            , ( CompositionQPTab, labelQ ++ " ; " ++ labelP )
+            , ( ConjugatePByQTab, labelQ ++ " ; " ++ labelP ++ " ; " ++ labelQ ++ "⁻¹" )
+            , ( ConjugateQByPTab, labelP ++ " ; " ++ labelQ ++ " ; " ++ labelP ++ "⁻¹" )
+            ]
+
+        activeResult =
+            case activeTab of
+                CompositionPQTab ->
+                    Permutation.compose permP permQ
+
+                CompositionQPTab ->
+                    Permutation.compose permQ permP
+
+                ConjugatePByQTab ->
+                    Permutation.conjugateBy permQ permP
+
+                ConjugateQByPTab ->
+                    Permutation.conjugateBy permP permQ
 
         graphView =
-            case mode of
-                CollapsedView ->
-                    PermutationView.viewGraph Nothing composed
-
-                ExpandedView ->
+            case ( activeTab, compositionMode ) of
+                ( CompositionPQTab, ExpandedView ) ->
                     Html.div
                         [ style "background" "#f5f5f5"
                         , style "padding" "12px"
@@ -205,12 +217,68 @@ viewComposition mode editorP editorQ =
                         , style "text-align" "center"
                         ]
                         [ GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permP permQ) ]
+
+                ( CompositionQPTab, ExpandedView ) ->
+                    Html.div
+                        [ style "background" "#f5f5f5"
+                        , style "padding" "12px"
+                        , style "border-radius" "8px"
+                        , style "text-align" "center"
+                        ]
+                        [ GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permQ permP) ]
+
+                _ ->
+                    PermutationView.viewGraph Nothing activeResult
+
+        tabButton ( tab, label ) =
+            Html.button
+                [ onClick (SetResultTab tab)
+                , style "padding" "8px 12px"
+                , style "border" "1px solid #ccc"
+                , style "border-bottom"
+                    (if tab == activeTab then
+                        "1px solid #fff"
+
+                     else
+                        "1px solid #ccc"
+                    )
+                , style "border-radius" "4px 4px 0 0"
+                , style "background"
+                    (if tab == activeTab then
+                        "#fff"
+
+                     else
+                        "#f0f0f0"
+                    )
+                , style "cursor" "pointer"
+                , style "font-size" "14px"
+                , style "margin-right" "-1px"
+                , style "position" "relative"
+                , style "z-index"
+                    (if tab == activeTab then
+                        "1"
+
+                     else
+                        "0"
+                    )
+                ]
+                [ Html.text label ]
     in
     PermutationView.viewCard
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text title ]
-        , PermutationView.viewCycleNotation composed
-        , PermutationView.viewCharacteristics composed
-        , graphView
+        [ Html.div
+            [ style "display" "flex"
+            , style "flex-wrap" "wrap"
+            , style "margin-bottom" "-1px"
+            ]
+            (List.map tabButton tabs)
+        , Html.div
+            [ style "border-top" "1px solid #ccc"
+            , style "padding-top" "12px"
+            ]
+            [ PermutationView.viewCycleNotation activeResult
+            , PermutationView.viewCharacteristics activeResult
+            , graphView
+            ]
         ]
 
 
