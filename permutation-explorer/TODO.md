@@ -9,10 +9,10 @@ Cycle-Based Properties
 
 Boolean Classifications
 - [x] 6. Is identity - all fixed points
-- [ ] 7. Is transposition - exactly one 2-cycle, rest fixed
+- [x] 7. Is transposition - exactly one 2-cycle, rest fixed
 - [x] 8. Is involution - σ² = identity (all cycles have length ≤ 2)
-- [ ] 9. Is derangement - no fixed points
-- [ ] 10. Is cyclic - consists of a single n-cycle
+- [x] 9. Is derangement - no fixed points
+- [x] 10. Is cyclic - consists of a single n-cycle
 
 Inversion-Based Statistics
 - [ ] 11. Number of inversions - pairs (i,j) where i < j but σ(i) > σ(j)
@@ -29,7 +29,3 @@ Excedance Statistics
 Group-Theoretic
 - [ ] 19. Centralizer size - # of permutations commuting with σ (formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ cycles of length mᵢ)
 - [ ] 20. Conjugacy class size - n! / centralizer size
-
----
-- Inversions → connects to sorting, Kendall distance
-- Is involution → simple cycle-length check

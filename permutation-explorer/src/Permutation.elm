@@ -10,8 +10,11 @@ module Permutation exposing
     , getSize
     , identity
     , inverse
+    , isCyclic
+    , isDerangement
     , isIdentity
     , isInvolution
+    , isTransposition
     , numCycles
     , numFixedPoints
     , order
@@ -562,6 +565,32 @@ isInvolution perm =
 isIdentity : Permutation -> Bool
 isIdentity (Permutation arr) =
     Array.toIndexedList arr |> List.all (\( i, j ) -> i == j)
+
+
+{-| Check if a permutation is a derangement (no fixed points).
+-}
+isDerangement : Permutation -> Bool
+isDerangement (Permutation arr) =
+    Array.toIndexedList arr |> List.all (\( i, j ) -> i /= j)
+
+
+{-| Check if a permutation is a transposition (exactly one 2-cycle, rest fixed).
+-}
+isTransposition : Permutation -> Bool
+isTransposition perm =
+    case cycleType perm of
+        2 :: rest ->
+            List.all (\len -> len == 1) rest
+
+        _ ->
+            False
+
+
+{-| Check if a permutation is cyclic (a single n-cycle).
+-}
+isCyclic : Permutation -> Bool
+isCyclic perm =
+    cycleType perm == [ getSize perm ]
 
 
 {-| Count the number of cycles (including fixed points).

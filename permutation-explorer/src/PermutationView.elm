@@ -105,6 +105,9 @@ viewCharacteristics perm =
         , characteristic "Order:" orderStr
         , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))
         , characteristic "Is involution:" (boolStr (Permutation.isInvolution perm))
+        , characteristic "Is derangement:" (boolStr (Permutation.isDerangement perm))
+        , characteristic "Is transposition:" (boolStr (Permutation.isTransposition perm))
+        , characteristic "Is cyclic:" (boolStr (Permutation.isCyclic perm))
         ]
 
 
