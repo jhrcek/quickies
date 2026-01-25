@@ -104,6 +104,7 @@ viewCharacteristics perm =
         , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
         , characteristic "Order:" orderStr
         , characteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
+        , characteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
         , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))
         , characteristic "Is involution:" (boolStr (Permutation.isInvolution perm))
         , characteristic "Is derangement:" (boolStr (Permutation.isDerangement perm))

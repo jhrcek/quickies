@@ -3,6 +3,8 @@
 - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
 - [ ] enumerate permutations by index (to allow "next" / "previous" permutation)
 - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)
+- [ ] add concept lattice with all the boolean properties, showing number of permutations belonging to each node for given S_n
+    - [ ] maybe use the lattice to structure characteristics view of boolean properties
 
 ## Permutation characteristics to show
 
@@ -34,4 +36,4 @@
 
 ### Group-Theoretic
 - [x] 19. Centralizer size - # of permutations commuting with σ (formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ cycles of length mᵢ)
-- [ ] 20. Conjugacy class size - n! / centralizer size
+- [x] 20. Conjugacy class size - n! / centralizer size

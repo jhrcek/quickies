@@ -5,6 +5,7 @@ module Permutation exposing
     , ValidationError(..)
     , centralizerSize
     , compose
+    , conjugacyClassSize
     , conjugateBy
     , cycleType
     , fromArray
@@ -652,6 +653,17 @@ centralizerSize perm =
             factorial k * (m ^ k)
     in
     List.foldl (\group acc -> acc * contribution group) 1 groupedCycles
+
+
+{-| Compute the size of the conjugacy class of a permutation.
+
+The conjugacy class is the set of all permutations with the same cycle type.
+Formula: n! / centralizerSize
+
+-}
+conjugacyClassSize : Permutation -> Int
+conjugacyClassSize perm =
+    factorial (getSize perm) // centralizerSize perm
 
 
 {-| Factorial of a non-negative integer.
