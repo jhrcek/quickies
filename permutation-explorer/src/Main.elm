@@ -14,9 +14,7 @@ import Styles exposing (buttonAttrs)
 
 {-
    TODO
-   - [ ] add Permutation.conjugateBy : Permutation -> Permutation -> Permutation
    - [ ] add UI to conjugate one permutation by another
-   - [ ] show (just size of?) centralizer of a permutation
    - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
    - [ ] todo enumerate permutations by index (to allow "next" / "previous" permutation)
    - [ ] turn it into application with url parsing (e.g./n/5/compose/p/...(some encoding).../q/...(some encoding)...)

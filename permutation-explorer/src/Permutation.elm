@@ -5,6 +5,7 @@ module Permutation exposing
     , ValidationError(..)
     , centralizerSize
     , compose
+    , conjugateBy
     , cycleType
     , fromArray
     , fromCycles
@@ -190,6 +191,16 @@ inverse (Permutation arr) =
                 |> List.map Tuple.first
     in
     Permutation (Array.fromList invArr)
+
+
+{-| Conjugate a permutation by another: conjugateBy τ σ = τστ⁻¹.
+
+Conjugation preserves cycle structure (cycle type) but relabels elements.
+
+-}
+conjugateBy : Permutation -> Permutation -> Permutation
+conjugateBy tau sigma =
+    compose (compose tau sigma) (inverse tau)
 
 
 {-| Create a permutation from a list of cycles.
