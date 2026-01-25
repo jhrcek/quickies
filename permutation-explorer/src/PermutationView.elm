@@ -80,6 +80,13 @@ viewCharacteristics perm =
                 [ Html.span [ style "color" "#666" ] [ Html.text label ]
                 , Html.span [ style "font-family" "monospace" ] [ Html.text val ]
                 ]
+
+        boolStr b =
+            if b then
+                "Yes"
+
+            else
+                "No"
     in
     Html.div
         [ style "font-size" "12px"
@@ -93,14 +100,11 @@ viewCharacteristics perm =
         ]
         [ characteristic "Sign:" signStr
         , characteristic "Cycle type:" cycleTypeStr
+        , characteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
+        , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
         , characteristic "Order:" orderStr
-        , characteristic "Is involution:"
-            (if Permutation.isInvolution perm then
-                "Yes"
-
-             else
-                "No"
-            )
+        , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))
+        , characteristic "Is involution:" (boolStr (Permutation.isInvolution perm))
         ]
 
 

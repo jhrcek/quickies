@@ -10,7 +10,10 @@ module Permutation exposing
     , getSize
     , identity
     , inverse
+    , isIdentity
     , isInvolution
+    , numCycles
+    , numFixedPoints
     , order
     , parseCycles
     , resize
@@ -490,11 +493,8 @@ sign perm =
     let
         n =
             getSize perm
-
-        numCycles =
-            List.length (toCycles perm)
     in
-    if modBy 2 (n - numCycles) == 0 then
+    if modBy 2 (n - numCycles perm) == 0 then
         Even
 
     else
@@ -555,6 +555,27 @@ isInvolution perm =
             (\cycle ->
                 List.length cycle <= 2
             )
+
+
+{-| Check if a permutation is the identity (all fixed points).
+-}
+isIdentity : Permutation -> Bool
+isIdentity perm =
+    cycleType perm |> List.all (\len -> len == 1)
+
+
+{-| Count the number of cycles (including fixed points).
+-}
+numCycles : Permutation -> Int
+numCycles perm =
+    List.length (toCycles perm)
+
+
+{-| Count the number of fixed points (elements where σ(i) = i).
+-}
+numFixedPoints : Permutation -> Int
+numFixedPoints perm =
+    cycleType perm |> List.filter (\len -> len == 1) |> List.length
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).
