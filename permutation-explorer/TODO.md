@@ -27,5 +27,5 @@ Excedance Statistics
 - [ ] 18. Anti-excedances - positions where σ(i) < i
 
 Group-Theoretic
-- [ ] 19. Centralizer size - # of permutations commuting with σ (formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ cycles of length mᵢ)
+- [x] 19. Centralizer size - # of permutations commuting with σ (formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ cycles of length mᵢ)
 - [ ] 20. Conjugacy class size - n! / centralizer size

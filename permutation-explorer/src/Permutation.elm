@@ -3,6 +3,7 @@ module Permutation exposing
     , Permutation
     , Sign(..)
     , ValidationError(..)
+    , centralizerSize
     , compose
     , cycleType
     , fromArray
@@ -605,6 +606,57 @@ numCycles perm =
 numFixedPoints : Permutation -> Int
 numFixedPoints perm =
     cycleType perm |> List.filter (\len -> len == 1) |> List.length
+
+
+{-| Compute the size of the centralizer of a permutation.
+
+The centralizer is the set of permutations that commute with σ.
+Formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ is the count of cycles of length mᵢ.
+
+-}
+centralizerSize : Permutation -> Int
+centralizerSize perm =
+    let
+        -- Group cycle lengths and count occurrences
+        -- e.g., [3, 2, 2, 1, 1, 1] -> [(3, 1), (2, 2), (1, 3)]
+        groupedCycles =
+            cycleType perm
+                |> List.foldl
+                    (\len acc ->
+                        case acc of
+                            ( m, k ) :: rest ->
+                                if m == len then
+                                    ( m, k + 1 ) :: rest
+
+                                else
+                                    ( len, 1 ) :: acc
+
+                            [] ->
+                                [ ( len, 1 ) ]
+                    )
+                    []
+
+        -- k! * m^k for each group
+        contribution ( m, k ) =
+            factorial k * (m ^ k)
+    in
+    List.foldl (\group acc -> acc * contribution group) 1 groupedCycles
+
+
+{-| Factorial of a non-negative integer.
+-}
+factorial : Int -> Int
+factorial n =
+    factorialHelp n 1
+
+
+factorialHelp : Int -> Int -> Int
+factorialHelp n acc =
+    if n <= 1 then
+        acc
+
+    else
+        factorialHelp (n - 1) (n * acc)
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).
