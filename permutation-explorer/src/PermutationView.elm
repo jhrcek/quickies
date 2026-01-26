@@ -103,6 +103,7 @@ viewCharacteristics perm =
         , characteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
         , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
         , characteristic "Order:" orderStr
+        , characteristic "Lehmer code:" (String.fromInt (Permutation.toLehmerCode perm))
         , characteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
         , characteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
         , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))

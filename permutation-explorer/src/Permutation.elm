@@ -8,8 +8,10 @@ module Permutation exposing
     , conjugacyClassSize
     , conjugateBy
     , cycleType
+    , factorial
     , fromArray
     , fromCycles
+    , fromLehmerCode
     , getSize
     , identity
     , inverse
@@ -27,6 +29,7 @@ module Permutation exposing
     , toCycleGraph
     , toCyclesString
     , toExpandedCompositionGraph
+    , toLehmerCode
     )
 
 import Array exposing (Array)
@@ -281,6 +284,130 @@ fromArray arr =
 
                 Nothing ->
                     Ok (Permutation arr)
+
+
+{-| Convert a permutation to its Lehmer code (position in lexicographic order).
+
+The Lehmer code is ordinal = Σ(dᵢ × (n-1-i)!) where dᵢ is the count of
+elements smaller than aᵢ appearing after position i.
+
+For example, in S₃:
+
+  - [0,1,2] → 0
+  - [0,2,1] → 1
+  - [1,0,2] → 2
+  - [1,2,0] → 3
+  - [2,0,1] → 4
+  - [2,1,0] → 5
+
+-}
+toLehmerCode : Permutation -> Int
+toLehmerCode (Permutation arr) =
+    let
+        n =
+            Array.length arr
+
+        -- Count elements less than val in the remaining list
+        countLessThan : Int -> List Int -> Int
+        countLessThan val remaining =
+            List.filter (\x -> x < val) remaining |> List.length
+
+        -- Build Lehmer code and compute ordinal
+        -- factorialBase tracks (remaining_length - 1)! at each step
+        computeOrdinal : List Int -> Int -> Int -> Int
+        computeOrdinal remaining factorialBase acc =
+            case remaining of
+                [] ->
+                    acc
+
+                v :: rest ->
+                    let
+                        digit =
+                            countLessThan v rest
+
+                        -- Go from (k-1)! to (k-2)! by dividing by (k-1)
+                        -- where k = List.length remaining
+                        newFactorial =
+                            if List.length remaining > 1 then
+                                factorialBase // (List.length remaining - 1)
+
+                            else
+                                1
+                    in
+                    computeOrdinal rest newFactorial (acc + digit * factorialBase)
+    in
+    if n <= 1 then
+        0
+
+    else
+        let
+            values =
+                Array.toList arr
+        in
+        computeOrdinal values (factorial (n - 1)) 0
+
+
+{-| Create a permutation from its Lehmer code in Sₙ.
+
+Returns Nothing if the code is out of range [0, n!-1].
+First argument is n (the size), second is the Lehmer code.
+
+For example, in S₃:
+
+  - fromLehmerCode 3 0 → Just [0,1,2]
+  - fromLehmerCode 3 5 → Just [2,1,0]
+  - fromLehmerCode 3 6 → Nothing (out of range)
+
+-}
+fromLehmerCode : Int -> Int -> Maybe Permutation
+fromLehmerCode n code =
+    if n < 0 || code < 0 || code >= factorial n then
+        Nothing
+
+    else
+        let
+            -- Available elements [0..n-1]
+            available =
+                List.range 0 (n - 1)
+
+            -- Remove element at given index from list, return (element, remaining)
+            removeAt : Int -> List Int -> ( Int, List Int )
+            removeAt idx lst =
+                let
+                    before =
+                        List.take idx lst
+
+                    after =
+                        List.drop (idx + 1) lst
+
+                    element =
+                        List.drop idx lst |> List.head |> Maybe.withDefault 0
+                in
+                ( element, before ++ after )
+
+            -- Extract Lehmer digits and build permutation
+            buildPerm : Int -> Int -> List Int -> List Int -> List Int
+            buildPerm remaining c avail acc =
+                if remaining <= 0 then
+                    List.reverse acc
+
+                else
+                    let
+                        fact =
+                            factorial (remaining - 1)
+
+                        digit =
+                            c // fact
+
+                        newCode =
+                            modBy fact c
+
+                        ( chosen, newAvail ) =
+                            removeAt digit avail
+                    in
+                    buildPerm (remaining - 1) newCode newAvail (chosen :: acc)
+        in
+        Just (Permutation (Array.fromList (buildPerm n code available [])))
 
 
 {-| Parse a permutation from cycle notation string.
