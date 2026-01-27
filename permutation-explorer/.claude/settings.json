@@ -4,5 +4,18 @@
       "Bash(make check:*)",
       "Bash(make test:*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_FILE_PATHS\" in *.elm) make check ;; esac"
+          }
+        ]
+      }
+    ]
   }
 }

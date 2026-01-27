@@ -1,6 +1,7 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Navigation as Navigation
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style, type_, value)
@@ -8,14 +9,34 @@ import Html.Events exposing (onClick, onInput)
 import Permutation
 import PermutationEditor
 import PermutationView
+import Route
+import Url exposing (Url)
 
 
-type Msg
-    = ChangeN String
-    | EditorPMsg PermutationEditor.Msg
-    | EditorQMsg PermutationEditor.Msg
-    | SetCompositionViewMode CompositionViewMode
-    | SetResultTab ResultTab
+
+-- MODEL
+
+
+type alias Model =
+    { key : Navigation.Key
+    , route : Maybe Route.Route
+    , page : Page
+    }
+
+
+type Page
+    = NotFoundPage
+    | GroupSummaryPage
+    | PermutationSummaryPage Int
+    | CompositionPage CompositionModel
+
+
+type alias CompositionModel =
+    { editorP : PermutationEditor.Model
+    , editorQ : PermutationEditor.Model
+    , compositionViewMode : CompositionViewMode
+    , resultTab : ResultTab
+    }
 
 
 type CompositionViewMode
@@ -30,43 +51,115 @@ type ResultTab
     | ConjugateQByPTab
 
 
-type alias Model =
-    { n : Int
-    , editorP : PermutationEditor.Model
-    , editorQ : PermutationEditor.Model
-    , compositionViewMode : CompositionViewMode
-    , resultTab : ResultTab
-    }
+
+-- MSG
 
 
-init : Model
-init =
+type Msg
+    = UrlRequested Browser.UrlRequest
+    | UrlChanged Url
+    | ChangeN String
+    | EditorPMsg PermutationEditor.Msg
+    | EditorQMsg PermutationEditor.Msg
+    | SetCompositionViewMode CompositionViewMode
+    | SetResultTab ResultTab
+
+
+
+-- INIT
+
+
+init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init _ url key =
     let
-        n =
-            5
+        route =
+            Route.fromUrl url
+
+        page =
+            initPageFromRoute route
     in
-    { n = n
-    , editorP = PermutationEditor.init n "P"
-    , editorQ = PermutationEditor.init n "Q"
+    ( { key = key, route = route, page = page }, Cmd.none )
+
+
+initPageFromRoute : Maybe Route.Route -> Page
+initPageFromRoute maybeRoute =
+    case maybeRoute of
+        Nothing ->
+            NotFoundPage
+
+        Just (Route.Group n groupPage) ->
+            case groupPage of
+                Route.GroupSummary ->
+                    GroupSummaryPage
+
+                Route.PermutationSummary (Ok lehmer) ->
+                    PermutationSummaryPage lehmer
+
+                Route.PermutationSummary (Err _) ->
+                    NotFoundPage
+
+                Route.Composition (Ok ( lehmer1, lehmer2 )) ->
+                    CompositionPage (initComposition n lehmer1 lehmer2)
+
+                Route.Composition (Err _) ->
+                    NotFoundPage
+
+
+initComposition : Int -> Int -> Int -> CompositionModel
+initComposition n lehmer1 lehmer2 =
+    let
+        permP =
+            Permutation.fromLehmerCode n lehmer1
+                |> Maybe.withDefault (Permutation.identity n)
+
+        permQ =
+            Permutation.fromLehmerCode n lehmer2
+                |> Maybe.withDefault (Permutation.identity n)
+    in
+    { editorP = PermutationEditor.initFromPermutation "P" permP
+    , editorQ = PermutationEditor.initFromPermutation "Q" permQ
     , compositionViewMode = CollapsedView
     , resultTab = CompositionPQTab
     }
 
 
+
+-- UPDATE
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        UrlRequested request ->
+            case request of
+                Browser.Internal url ->
+                    ( model, Navigation.pushUrl model.key (Url.toString url) )
+
+                Browser.External href ->
+                    ( model, Navigation.load href )
+
+        UrlChanged url ->
+            let
+                route =
+                    Route.fromUrl url
+
+                page =
+                    initPageFromRoute route
+            in
+            ( { model | route = route, page = page }, Cmd.none )
+
         ChangeN nStr ->
             case String.toInt nStr of
                 Just newN ->
                     if newN >= 1 && newN <= 10 then
-                        ( { model
-                            | n = newN
-                            , editorP = PermutationEditor.resize newN model.editorP
-                            , editorQ = PermutationEditor.resize newN model.editorQ
-                          }
-                        , Cmd.none
-                        )
+                        let
+                            newRoute =
+                                Route.Group newN (Route.Composition (Ok ( 0, 0 )))
+
+                            newUrl =
+                                Route.toString newRoute
+                        in
+                        ( model, Navigation.pushUrl model.key newUrl )
 
                     else
                         ( model, Cmd.none )
@@ -75,35 +168,160 @@ update msg model =
                     ( model, Cmd.none )
 
         EditorPMsg subMsg ->
-            let
-                ( newEditorP, cmd ) =
-                    PermutationEditor.update subMsg model.editorP
-            in
-            ( { model | editorP = newEditorP }
-            , Cmd.map EditorPMsg cmd
-            )
+            case model.page of
+                CompositionPage comp ->
+                    let
+                        ( newEditorP, cmd ) =
+                            PermutationEditor.update subMsg comp.editorP
+
+                        newComp =
+                            { comp | editorP = newEditorP }
+                    in
+                    ( { model | page = CompositionPage newComp }
+                    , Cmd.map EditorPMsg cmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
         EditorQMsg subMsg ->
-            let
-                ( newEditorQ, cmd ) =
-                    PermutationEditor.update subMsg model.editorQ
-            in
-            ( { model | editorQ = newEditorQ }
-            , Cmd.map EditorQMsg cmd
-            )
+            case model.page of
+                CompositionPage comp ->
+                    let
+                        ( newEditorQ, cmd ) =
+                            PermutationEditor.update subMsg comp.editorQ
+
+                        newComp =
+                            { comp | editorQ = newEditorQ }
+                    in
+                    ( { model | page = CompositionPage newComp }
+                    , Cmd.map EditorQMsg cmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
         SetCompositionViewMode mode ->
-            ( { model | compositionViewMode = mode }, Cmd.none )
+            case model.page of
+                CompositionPage comp ->
+                    ( { model | page = CompositionPage { comp | compositionViewMode = mode } }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
         SetResultTab tab ->
-            ( { model | resultTab = tab }, Cmd.none )
+            case model.page of
+                CompositionPage comp ->
+                    ( { model | page = CompositionPage { comp | resultTab = tab } }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
-view : Model -> Html Msg
+
+-- VIEW
+
+
+view : Model -> Browser.Document Msg
 view model =
     let
+        n =
+            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+    in
+    { title = "Permutation Groups - S" ++ String.fromInt n
+    , body = [ viewBody model ]
+    }
+
+
+viewBody : Model -> Html Msg
+viewBody model =
+    case model.page of
+        NotFoundPage ->
+            viewNotFound
+
+        GroupSummaryPage ->
+            viewGroupSummary model
+
+        PermutationSummaryPage lehmer ->
+            viewPermutationSummary model lehmer
+
+        CompositionPage comp ->
+            viewComposition model comp
+
+
+viewNotFound : Html Msg
+viewNotFound =
+    Html.div
+        [ style "font-family" "sans-serif"
+        , style "padding" "20px"
+        , style "max-width" "1200px"
+        , style "margin" "0 auto"
+        , style "text-align" "center"
+        ]
+        [ Html.h1 [] [ Html.text "404 - Page Not Found" ]
+        , Html.p [] [ Html.text "The requested page does not exist." ]
+        , Html.a [ Attr.href (Route.toString (Route.Group 5 (Route.Composition (Ok ( 0, 0 ))))) ] [ Html.text "Go to Composition Editor" ]
+        ]
+
+
+viewGroupSummary : Model -> Html Msg
+viewGroupSummary model =
+    let
+        n =
+            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+    in
+    Html.div
+        [ style "font-family" "sans-serif"
+        , style "padding" "20px"
+        , style "max-width" "1200px"
+        , style "margin" "0 auto"
+        ]
+        [ Html.h1 [] [ Html.text ("Group Summary - S" ++ String.fromInt n) ]
+        , Html.p [] [ Html.text "This page will show a summary of the symmetric group." ]
+        , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( 0, 0 ))))) ]
+                [ Html.text "Go to Composition Editor" ]
+            ]
+        ]
+
+
+viewPermutationSummary : Model -> Int -> Html Msg
+viewPermutationSummary model lehmer =
+    let
+        n =
+            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+    in
+    Html.div
+        [ style "font-family" "sans-serif"
+        , style "padding" "20px"
+        , style "max-width" "1200px"
+        , style "margin" "0 auto"
+        ]
+        [ Html.h1 [] [ Html.text ("Permutation Summary - S" ++ String.fromInt n) ]
+        , Html.p [] [ Html.text ("Lehmer code: " ++ String.fromInt lehmer) ]
+        , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n Route.GroupSummary)) ]
+                [ Html.text "Back to Group Summary" ]
+            ]
+        , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( lehmer, 0 ))))) ]
+                [ Html.text "Use in Composition Editor" ]
+            ]
+        ]
+
+
+viewComposition : Model -> CompositionModel -> Html Msg
+viewComposition model comp =
+    let
+        n =
+            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+
         ( edgeColorP, edgeColorQ ) =
-            case model.compositionViewMode of
+            case comp.compositionViewMode of
                 CollapsedView ->
                     ( Nothing, Nothing )
 
@@ -116,7 +334,7 @@ view model =
         , style "max-width" "1200px"
         , style "margin" "0 auto"
         ]
-        [ Html.h1 [] [ Html.text ("Permutation Composition in S" ++ String.fromInt model.n) ]
+        [ Html.h1 [] [ Html.text ("Permutation Composition in S" ++ String.fromInt n) ]
         , Html.div
             [ style "margin-bottom" "20px"
             , style "display" "flex"
@@ -132,7 +350,7 @@ view model =
                 [ Html.label [ style "font-weight" "bold" ] [ Html.text "n:" ]
                 , Html.input
                     [ type_ "number"
-                    , value (String.fromInt model.n)
+                    , value (String.fromInt n)
                     , onInput ChangeN
                     , Attr.min "1"
                     , Attr.max "10"
@@ -154,7 +372,7 @@ view model =
                 , style "background" "#f9f9f9"
                 ]
                 [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
-                , viewModeRadio model.compositionViewMode
+                , viewModeRadio comp.compositionViewMode
                 ]
             ]
         , Html.div
@@ -163,9 +381,9 @@ view model =
             , style "flex-wrap" "wrap"
             , style "align-items" "flex-start"
             ]
-            [ Html.map EditorPMsg (PermutationEditor.view edgeColorP model.editorP)
-            , Html.map EditorQMsg (PermutationEditor.view edgeColorQ model.editorQ)
-            , viewResultCard model.resultTab model.compositionViewMode model.editorP model.editorQ
+            [ Html.map EditorPMsg (PermutationEditor.view edgeColorP comp.editorP)
+            , Html.map EditorQMsg (PermutationEditor.view edgeColorQ comp.editorQ)
+            , viewResultCard comp.resultTab comp.compositionViewMode comp.editorP comp.editorQ
             ]
         ]
 
@@ -311,11 +529,17 @@ viewModeRadio currentMode =
         ]
 
 
+
+-- MAIN
+
+
 main : Program () Model Msg
 main =
-    Browser.element
-        { init = always ( init, Cmd.none )
-        , update = update
+    Browser.application
+        { init = init
         , view = view
+        , update = update
         , subscriptions = always Sub.none
+        , onUrlRequest = UrlRequested
+        , onUrlChange = UrlChanged
         }

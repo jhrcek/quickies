@@ -8,11 +8,13 @@ An Elm application demonstrating permutation group concepts (symmetric groups Sâ
 
 ## Commands
 
-- `make check` - Verify all Elm files compile
+- `make check` - Verify all Elm files compile (runs automatically via hook after editing any `.elm` file)
 - `make test` - Run Elm test suite (run after each refactoring)
 - `make format` - Format all Elm files with elm-format
 - `make review` - Run elm-review linter
 - `make live` - Start development server with hot reload (opens browser)
+
+**Note:** A Claude Code hook automatically runs `make check` after any `.elm` file is edited. You do not need to run it manually.
 
 ## Architecture
 

@@ -2,7 +2,7 @@ module PermutationEditor exposing
     ( Model
     , Msg
     , getLabel
-    , init
+    , initFromPermutation
     , permutation
     , resize
     , update
@@ -45,9 +45,11 @@ type alias Model =
     }
 
 
-init : Int -> String -> Model
-init n label =
-    { permutation = Permutation.identity n
+{-| Initialize an editor with a specific permutation.
+-}
+initFromPermutation : String -> Permutation.Permutation -> Model
+initFromPermutation label perm =
+    { permutation = perm
     , editState = NotEditing
     , label = label
     }
