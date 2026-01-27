@@ -10,6 +10,7 @@ import Html.Events exposing (onClick)
 import Permutation
 import PermutationEditor
 import PermutationView
+import Random
 import Route
 import Url exposing (Url)
 
@@ -28,7 +29,7 @@ type alias Model =
 type Page
     = NotFoundPage
     | GroupSummaryPage
-    | PermutationSummaryPage Int
+    | PermutationSummaryPage PermutationEditor.Model
     | CompositionPage CompositionModel
 
 
@@ -64,6 +65,9 @@ type Msg
     | EditorQMsg PermutationEditor.Msg
     | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
+    | NavigateToRandomPermutation Int
+    | GotRandomLehmer Int Int
+    | PermutationEditorMsg PermutationEditor.Msg
 
 
 
@@ -93,17 +97,16 @@ initPageFromRoute maybeRoute =
                 Route.GroupSummary ->
                     GroupSummaryPage
 
-                Route.PermutationSummary (Ok lehmer) ->
-                    PermutationSummaryPage lehmer
+                Route.PermutationSummary lehmer ->
+                    let
+                        perm =
+                            Permutation.fromLehmerCode n lehmer
+                                |> Maybe.withDefault (Permutation.identity n)
+                    in
+                    PermutationSummaryPage (PermutationEditor.initFromPermutation "" perm)
 
-                Route.PermutationSummary (Err _) ->
-                    NotFoundPage
-
-                Route.Composition (Ok ( lehmer1, lehmer2 )) ->
+                Route.Composition lehmer1 lehmer2 ->
                     CompositionPage (initComposition n lehmer1 lehmer2)
-
-                Route.Composition (Err _) ->
-                    NotFoundPage
 
 
 initComposition : Int -> Int -> Int -> CompositionModel
@@ -206,6 +209,30 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        NavigateToRandomPermutation n ->
+            ( model
+            , Random.generate (GotRandomLehmer n) (Random.int 0 (Permutation.factorial n - 1))
+            )
+
+        GotRandomLehmer n lehmer ->
+            ( model
+            , Navigation.pushUrl model.key (Route.toString (Route.Group n (Route.PermutationSummary lehmer)))
+            )
+
+        PermutationEditorMsg subMsg ->
+            case model.page of
+                PermutationSummaryPage editor ->
+                    let
+                        ( newEditor, cmd ) =
+                            PermutationEditor.update subMsg editor
+                    in
+                    ( { model | page = PermutationSummaryPage newEditor }
+                    , Cmd.map PermutationEditorMsg cmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
 
 
 -- VIEW
@@ -243,11 +270,11 @@ viewBody model =
             GroupSummaryPage ->
                 viewGroupSummary model
 
-            PermutationSummaryPage lehmer ->
-                viewPermutationSummary model lehmer
+            PermutationSummaryPage editor ->
+                viewPermutationSummary editor
 
             CompositionPage comp ->
-                viewComposition  comp
+                viewComposition comp
         ]
 
 
@@ -257,7 +284,7 @@ viewNotFound =
         [ style "text-align" "center" ]
         [ Html.h1 [] [ Html.text "404 - Page Not Found" ]
         , Html.p [] [ Html.text "The requested page does not exist." ]
-        , Html.a [ Attr.href (Route.toString (Route.Group 5 (Route.Composition (Ok ( 0, 0 ))))) ] [ Html.text "Go to Composition Editor" ]
+        , Html.a [ Attr.href (Route.toString (Route.Group 5 (Route.Composition 0 0))) ] [ Html.text "Go to Composition Editor" ]
         ]
 
 
@@ -266,32 +293,26 @@ viewGroupSummary model =
     let
         n =
             model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+
+        order =
+            Permutation.factorial n
     in
     Html.div []
-        [ Html.p [] [ Html.text "This page will show a summary of the symmetric group." ]
+        [ Html.p [] [ Html.text ("Order: " ++ String.fromInt order) ]
         , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( 0, 0 ))))) ]
+            [ Html.button [ onClick (NavigateToRandomPermutation n) ] [ Html.text "Random Permutation" ]
+            ]
+        , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition 0 0))) ]
                 [ Html.text "Go to Composition Editor" ]
             ]
         ]
 
 
-viewPermutationSummary : Model -> Int -> Html Msg
-viewPermutationSummary model lehmer =
-    let
-        n =
-            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
-
-        perm =
-            Permutation.fromLehmerCode n lehmer
-                |> Maybe.withDefault (Permutation.identity n)
-    in
+viewPermutationSummary : PermutationEditor.Model -> Html Msg
+viewPermutationSummary editor =
     Html.div []
-        [ Html.p [] [ Html.text ("Cycle notation: " ++ Permutation.toCyclesString perm) ]
-        , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( lehmer, 0 ))))) ]
-                [ Html.text "Use in Composition Editor" ]
-            ]
+        [ Html.map PermutationEditorMsg (PermutationEditor.view Nothing editor)
         ]
 
 

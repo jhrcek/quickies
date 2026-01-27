@@ -10,8 +10,8 @@ type Route
 
 type GroupPage
     = GroupSummary
-    | PermutationSummary (Result String Int)
-    | Composition (Result String ( Int, Int ))
+    | PermutationSummary Int
+    | Composition Int Int
 
 
 
@@ -47,9 +47,8 @@ groupPageParser : Parser (GroupPage -> a) a
 groupPageParser =
     Parser.oneOf
         [ Parser.map GroupSummary Parser.top
-        , Parser.map (PermutationSummary << Ok) (Parser.s "permutation" </> Parser.int)
-        , Parser.map (\a b -> Composition (Ok ( a, b )))
-            (Parser.s "composition" </> Parser.int </> Parser.int)
+        , Parser.map PermutationSummary (Parser.s "permutation" </> Parser.int)
+        , Parser.map Composition (Parser.s "composition" </> Parser.int </> Parser.int)
         ]
 
 
@@ -68,14 +67,8 @@ groupPageToString groupPage =
         GroupSummary ->
             ""
 
-        PermutationSummary (Ok lehmer) ->
+        PermutationSummary lehmer ->
             "/permutation/" ++ String.fromInt lehmer
 
-        PermutationSummary (Err err) ->
-            "/permutation/" ++ err
-
-        Composition (Ok ( lehmer1, lehmer2 )) ->
+        Composition lehmer1 lehmer2 ->
             "/composition/" ++ String.fromInt lehmer1 ++ "/" ++ String.fromInt lehmer2
-
-        Composition (Err err) ->
-            "/composition/" ++ err

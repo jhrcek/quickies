@@ -33,20 +33,17 @@ viewSegments config (Group n groupPage) =
         GroupSummary ->
             [ viewNSegment config n groupPage ]
 
-        PermutationSummary (Ok lehmer) ->
+        PermutationSummary lehmer ->
             [ viewNSegment config n groupPage
             , viewSeparator
             , viewLehmerInput config
                 "Permutation"
                 lehmer
                 n
-                (\newLehmer -> Group n (PermutationSummary (Ok newLehmer)))
+                (\newLehmer -> Group n (PermutationSummary newLehmer))
             ]
 
-        PermutationSummary (Err _) ->
-            [ viewNSegment config n groupPage ]
-
-        Composition (Ok ( lehmer1, lehmer2 )) ->
+        Composition lehmer1 lehmer2 ->
             [ viewNSegment config n groupPage
             , viewSeparator
             , Html.span [ style "font-weight" "bold" ] [ Html.text "Composition" ]
@@ -54,17 +51,14 @@ viewSegments config (Group n groupPage) =
                 ""
                 lehmer1
                 n
-                (\newLehmer1 -> Group n (Composition (Ok ( newLehmer1, lehmer2 ))))
+                (\newLehmer1 -> Group n (Composition newLehmer1 lehmer2))
             , Html.span [] [ Html.text ";" ]
             , viewLehmerInput config
                 ""
                 lehmer2
                 n
-                (\newLehmer2 -> Group n (Composition (Ok ( lehmer1, newLehmer2 ))))
+                (\newLehmer2 -> Group n (Composition lehmer1 newLehmer2))
             ]
-
-        Composition (Err _) ->
-            [ viewNSegment config n groupPage ]
 
 
 viewNSegment : Config msg -> Int -> GroupPage -> Html msg
@@ -115,15 +109,11 @@ buildRouteForNewN currentPage newN =
                 GroupSummary ->
                     GroupSummary
 
-                PermutationSummary (Ok lehmerCode) ->
+                PermutationSummary lehmerCode ->
+                    PermutationSummary (clampLehmer newN (String.fromInt lehmerCode))
 
-                    PermutationSummary (Ok (clampLehmer newN (String.fromInt lehmerCode)))
-
-                PermutationSummary (Err _) ->
-                    GroupSummary
-
-                Composition _ ->
-                    Composition (Ok ( 0, 0 ))
+                Composition _ _ ->
+                    Composition 0 0
     in
     Group newN newGroupPage
 
@@ -139,6 +129,36 @@ viewSeparator =
 
 viewLehmerInput : Config msg -> String -> Int -> Int -> (Int -> Route) -> Html msg
 viewLehmerInput config label currentLehmer n buildRoute =
+    let
+        maxLehmer =
+            Permutation.factorial n - 1
+
+        prevLehmer =
+            if currentLehmer == 0 then
+                maxLehmer
+
+            else
+                currentLehmer - 1
+
+        nextLehmer =
+            if currentLehmer == maxLehmer then
+                0
+
+            else
+                currentLehmer + 1
+
+        navButton text lehmer =
+            Html.button
+                [ style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , style "cursor" "pointer"
+                , style "background" "#f5f5f5"
+                , Html.Events.onClick (config.onNavigate (buildRoute lehmer))
+                ]
+                [ Html.text text ]
+    in
     Html.span
         [ style "display" "flex"
         , style "align-items" "center"
@@ -150,6 +170,7 @@ viewLehmerInput config label currentLehmer n buildRoute =
 
               else
                 Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
+            , Just (navButton "<" prevLehmer)
             , Just
                 (Html.input
                     [ Attr.type_ "text"
@@ -164,6 +185,7 @@ viewLehmerInput config label currentLehmer n buildRoute =
                     ]
                     []
                 )
+            , Just (navButton ">" nextLehmer)
             ]
         )
 
