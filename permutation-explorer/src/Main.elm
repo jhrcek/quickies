@@ -1,11 +1,12 @@
 module Main exposing (main)
 
+import Breadcrumb
 import Browser
 import Browser.Navigation as Navigation
 import GraphViz as GV
 import Html exposing (Html)
-import Html.Attributes as Attr exposing (style, type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html.Attributes as Attr exposing (style)
+import Html.Events exposing (onClick)
 import Permutation
 import PermutationEditor
 import PermutationView
@@ -58,7 +59,7 @@ type ResultTab
 type Msg
     = UrlRequested Browser.UrlRequest
     | UrlChanged Url
-    | ChangeN String
+    | BreadcrumbNavigate Route.Route
     | EditorPMsg PermutationEditor.Msg
     | EditorQMsg PermutationEditor.Msg
     | SetCompositionViewMode CompositionViewMode
@@ -148,24 +149,8 @@ update msg model =
             in
             ( { model | route = route, page = page }, Cmd.none )
 
-        ChangeN nStr ->
-            case String.toInt nStr of
-                Just newN ->
-                    if newN >= 1 && newN <= 10 then
-                        let
-                            newRoute =
-                                Route.Group newN (Route.Composition (Ok ( 0, 0 )))
-
-                            newUrl =
-                                Route.toString newRoute
-                        in
-                        ( model, Navigation.pushUrl model.key newUrl )
-
-                    else
-                        ( model, Cmd.none )
-
-                Nothing ->
-                    ( model, Cmd.none )
+        BreadcrumbNavigate route ->
+            ( model, Navigation.pushUrl model.key (Route.toString route) )
 
         EditorPMsg subMsg ->
             case model.page of
@@ -239,29 +224,37 @@ view model =
 
 viewBody : Model -> Html Msg
 viewBody model =
-    case model.page of
-        NotFoundPage ->
-            viewNotFound
-
-        GroupSummaryPage ->
-            viewGroupSummary model
-
-        PermutationSummaryPage lehmer ->
-            viewPermutationSummary model lehmer
-
-        CompositionPage comp ->
-            viewComposition model comp
-
-
-viewNotFound : Html Msg
-viewNotFound =
     Html.div
         [ style "font-family" "sans-serif"
         , style "padding" "20px"
         , style "max-width" "1200px"
         , style "margin" "0 auto"
-        , style "text-align" "center"
         ]
+        [ case model.route of
+            Just route ->
+                Breadcrumb.view { onNavigate = BreadcrumbNavigate } route
+
+            Nothing ->
+                Html.text ""
+        , case model.page of
+            NotFoundPage ->
+                viewNotFound
+
+            GroupSummaryPage ->
+                viewGroupSummary model
+
+            PermutationSummaryPage lehmer ->
+                viewPermutationSummary model lehmer
+
+            CompositionPage comp ->
+                viewComposition  comp
+        ]
+
+
+viewNotFound : Html Msg
+viewNotFound =
+    Html.div
+        [ style "text-align" "center" ]
         [ Html.h1 [] [ Html.text "404 - Page Not Found" ]
         , Html.p [] [ Html.text "The requested page does not exist." ]
         , Html.a [ Attr.href (Route.toString (Route.Group 5 (Route.Composition (Ok ( 0, 0 ))))) ] [ Html.text "Go to Composition Editor" ]
@@ -274,14 +267,8 @@ viewGroupSummary model =
         n =
             model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
     in
-    Html.div
-        [ style "font-family" "sans-serif"
-        , style "padding" "20px"
-        , style "max-width" "1200px"
-        , style "margin" "0 auto"
-        ]
-        [ Html.h1 [] [ Html.text ("Group Summary - S" ++ String.fromInt n) ]
-        , Html.p [] [ Html.text "This page will show a summary of the symmetric group." ]
+    Html.div []
+        [ Html.p [] [ Html.text "This page will show a summary of the symmetric group." ]
         , Html.p []
             [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( 0, 0 ))))) ]
                 [ Html.text "Go to Composition Editor" ]
@@ -294,19 +281,13 @@ viewPermutationSummary model lehmer =
     let
         n =
             model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
+
+        perm =
+            Permutation.fromLehmerCode n lehmer
+                |> Maybe.withDefault (Permutation.identity n)
     in
-    Html.div
-        [ style "font-family" "sans-serif"
-        , style "padding" "20px"
-        , style "max-width" "1200px"
-        , style "margin" "0 auto"
-        ]
-        [ Html.h1 [] [ Html.text ("Permutation Summary - S" ++ String.fromInt n) ]
-        , Html.p [] [ Html.text ("Lehmer code: " ++ String.fromInt lehmer) ]
-        , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n Route.GroupSummary)) ]
-                [ Html.text "Back to Group Summary" ]
-            ]
+    Html.div []
+        [ Html.p [] [ Html.text ("Cycle notation: " ++ Permutation.toCyclesString perm) ]
         , Html.p []
             [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Composition (Ok ( lehmer, 0 ))))) ]
                 [ Html.text "Use in Composition Editor" ]
@@ -314,12 +295,9 @@ viewPermutationSummary model lehmer =
         ]
 
 
-viewComposition : Model -> CompositionModel -> Html Msg
-viewComposition model comp =
+viewComposition : CompositionModel -> Html Msg
+viewComposition comp =
     let
-        n =
-            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
-
         ( edgeColorP, edgeColorQ ) =
             case comp.compositionViewMode of
                 CollapsedView ->
@@ -328,52 +306,20 @@ viewComposition model comp =
                 ExpandedView ->
                     ( Just "blue", Just "red" )
     in
-    Html.div
-        [ style "font-family" "sans-serif"
-        , style "padding" "20px"
-        , style "max-width" "1200px"
-        , style "margin" "0 auto"
-        ]
-        [ Html.h1 [] [ Html.text ("Permutation Composition in S" ++ String.fromInt n) ]
-        , Html.div
+    Html.div []
+        [ Html.div
             [ style "margin-bottom" "20px"
             , style "display" "flex"
             , style "align-items" "center"
-            , style "gap" "20px"
-            , style "flex-wrap" "wrap"
+            , style "gap" "10px"
+            , style "border" "1px solid #ddd"
+            , style "border-radius" "4px"
+            , style "padding" "8px 12px"
+            , style "background" "#f9f9f9"
+            , style "width" "fit-content"
             ]
-            [ Html.div
-                [ style "display" "flex"
-                , style "align-items" "center"
-                , style "gap" "10px"
-                ]
-                [ Html.label [ style "font-weight" "bold" ] [ Html.text "n:" ]
-                , Html.input
-                    [ type_ "number"
-                    , value (String.fromInt n)
-                    , onInput ChangeN
-                    , Attr.min "1"
-                    , Attr.max "10"
-                    , style "padding" "8px"
-                    , style "font-size" "16px"
-                    , style "width" "60px"
-                    , style "border" "1px solid #ccc"
-                    , style "border-radius" "4px"
-                    ]
-                    []
-                ]
-            , Html.div
-                [ style "display" "flex"
-                , style "align-items" "center"
-                , style "gap" "10px"
-                , style "border" "1px solid #ddd"
-                , style "border-radius" "4px"
-                , style "padding" "8px 12px"
-                , style "background" "#f9f9f9"
-                ]
-                [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
-                , viewModeRadio comp.compositionViewMode
-                ]
+            [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
+            , viewModeRadio comp.compositionViewMode
             ]
         , Html.div
             [ style "display" "flex"
@@ -511,7 +457,7 @@ viewModeRadio currentMode =
                 , style "cursor" "pointer"
                 ]
                 [ Html.input
-                    [ type_ "radio"
+                    [ Attr.type_ "radio"
                     , Attr.name "compositionViewMode"
                     , Attr.checked (currentMode == viewMode)
                     , onClick (SetCompositionViewMode viewMode)
