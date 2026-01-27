@@ -4,7 +4,6 @@ module PermutationEditor exposing
     , getLabel
     , initFromPermutation
     , permutation
-    , resize
     , update
     , view
     )
@@ -65,16 +64,6 @@ getLabel model =
 permutation : Model -> Permutation.Permutation
 permutation model =
     model.permutation
-
-
-{-| Resize the permutation to a new n value.
--}
-resize : Int -> Model -> Model
-resize newN model =
-    { model
-        | permutation = Permutation.resize newN model.permutation
-        , editState = NotEditing
-    }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )

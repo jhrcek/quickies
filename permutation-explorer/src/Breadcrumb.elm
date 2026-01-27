@@ -5,7 +5,7 @@ import Html.Attributes as Attr exposing (style)
 import Html.Events exposing (on)
 import Json.Decode as Decode
 import Permutation
-import Route exposing (GroupPage(..), Route(..))
+import Route exposing (GroupPage(..), PermutationPage(..), Route(..))
 
 
 type alias Config msg =
@@ -33,32 +33,40 @@ viewSegments config (Group n groupPage) =
         GroupSummary ->
             [ viewNSegment config n groupPage ]
 
-        PermutationSummary lehmer ->
-            [ viewNSegment config n groupPage
-            , viewSeparator
-            , viewLehmerInput config
-                "Permutation"
-                lehmer
-                n
-                (\newLehmer -> Group n (PermutationSummary newLehmer))
-            ]
+        Permutation lehmer permPage ->
+            case permPage of
+                PermutationSummary ->
+                    [ viewNSegment config n groupPage
+                    , viewSeparator
+                    , viewLehmerInput config
+                        "Permutation"
+                        lehmer
+                        n
+                        (\newLehmer -> Group n (Permutation newLehmer PermutationSummary))
+                    ]
 
-        Composition lehmer1 lehmer2 ->
-            [ viewNSegment config n groupPage
-            , viewSeparator
-            , Html.span [ style "font-weight" "bold" ] [ Html.text "Composition" ]
-            , viewLehmerInput config
-                ""
-                lehmer1
-                n
-                (\newLehmer1 -> Group n (Composition newLehmer1 lehmer2))
-            , Html.span [] [ Html.text ";" ]
-            , viewLehmerInput config
-                ""
-                lehmer2
-                n
-                (\newLehmer2 -> Group n (Composition lehmer1 newLehmer2))
-            ]
+                PermutationComposition lehmer2 ->
+                    [ viewNSegment config n groupPage
+                    , viewSeparator
+                    , Html.a
+                        [ Attr.href (Route.toString (Group n (Permutation lehmer PermutationSummary)))
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        , style "font-weight" "bold"
+                        ]
+                        [ Html.text "Permutation" ]
+                    , viewLehmerInput config
+                        ""
+                        lehmer
+                        n
+                        (\newLehmer -> Group n (Permutation newLehmer (PermutationComposition lehmer2)))
+                    , viewSeparator
+                    , viewLehmerInput config
+                        "Composition"
+                        lehmer2
+                        n
+                        (\newLehmer2 -> Group n (Permutation lehmer (PermutationComposition newLehmer2)))
+                    ]
 
 
 viewNSegment : Config msg -> Int -> GroupPage -> Html msg
@@ -87,7 +95,7 @@ viewNDropdown config currentN groupPage =
         , style "border" "1px solid #ccc"
         , style "border-radius" "4px"
         , style "cursor" "pointer"
-        , on "change" (Decode.map config.onNavigate (Decode.map (buildRouteForNewN groupPage) targetValueInt))
+        , on "change" (Decode.map config.onNavigate (Decode.map (buildRouteForNewN currentN groupPage) targetValueInt))
         ]
         (List.map (viewNOption currentN) (List.range 1 10))
 
@@ -101,19 +109,30 @@ viewNOption currentN optionN =
         [ Html.text (String.fromInt optionN) ]
 
 
-buildRouteForNewN : GroupPage -> Int -> Route
-buildRouteForNewN currentPage newN =
+buildRouteForNewN : Int -> GroupPage -> Int -> Route
+buildRouteForNewN currentN currentPage newN =
     let
+        resizeLehmer lehmer =
+            Permutation.fromLehmerCode currentN lehmer
+                |> Maybe.map (Permutation.resize newN)
+                |> Maybe.map Permutation.toLehmerCode
+                |> Maybe.withDefault 0
+
         newGroupPage =
             case currentPage of
                 GroupSummary ->
                     GroupSummary
 
-                PermutationSummary lehmerCode ->
-                    PermutationSummary (clampLehmer newN (String.fromInt lehmerCode))
+                Permutation lehmerCode permPage ->
+                    Permutation (resizeLehmer lehmerCode) (resizePermPage permPage)
 
-                Composition _ _ ->
-                    Composition 0 0
+        resizePermPage permPage =
+            case permPage of
+                PermutationSummary ->
+                    PermutationSummary
+
+                PermutationComposition lehmer2 ->
+                    PermutationComposition (resizeLehmer lehmer2)
     in
     Group newN newGroupPage
 

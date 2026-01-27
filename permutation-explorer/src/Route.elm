@@ -1,4 +1,4 @@
-module Route exposing (GroupPage(..), Route(..), fromUrl, getN, toString)
+module Route exposing (GroupPage(..), PermutationPage(..), Route(..), fromUrl, getN, toString)
 
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser)
@@ -10,8 +10,12 @@ type Route
 
 type GroupPage
     = GroupSummary
-    | PermutationSummary Int
-    | Composition Int Int
+    | Permutation Int PermutationPage
+
+
+type PermutationPage
+    = PermutationSummary
+    | PermutationComposition Int
 
 
 
@@ -47,8 +51,15 @@ groupPageParser : Parser (GroupPage -> a) a
 groupPageParser =
     Parser.oneOf
         [ Parser.map GroupSummary Parser.top
-        , Parser.map PermutationSummary (Parser.s "permutation" </> Parser.int)
-        , Parser.map Composition (Parser.s "composition" </> Parser.int </> Parser.int)
+        , Parser.map Permutation (Parser.s "permutation" </> Parser.int </> permutationPageParser)
+        ]
+
+
+permutationPageParser : Parser (PermutationPage -> a) a
+permutationPageParser =
+    Parser.oneOf
+        [ Parser.map PermutationSummary Parser.top
+        , Parser.map PermutationComposition (Parser.s "composition" </> Parser.int)
         ]
 
 
@@ -67,8 +78,15 @@ groupPageToString groupPage =
         GroupSummary ->
             ""
 
-        PermutationSummary lehmer ->
-            "/permutation/" ++ String.fromInt lehmer
+        Permutation lehmer permPage ->
+            "/permutation/" ++ String.fromInt lehmer ++ permutationPageToString permPage
 
-        Composition lehmer1 lehmer2 ->
-            "/composition/" ++ String.fromInt lehmer1 ++ "/" ++ String.fromInt lehmer2
+
+permutationPageToString : PermutationPage -> String
+permutationPageToString permPage =
+    case permPage of
+        PermutationSummary ->
+            ""
+
+        PermutationComposition lehmer2 ->
+            "/composition/" ++ String.fromInt lehmer2
