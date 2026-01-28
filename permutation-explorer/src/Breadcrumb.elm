@@ -3,7 +3,7 @@ module Breadcrumb exposing (Config, CycleEditState(..), InputMode(..), view)
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
-import Html.Events exposing (on, onInput)
+import Html.Events as Events
 import Json.Decode as Decode
 import Permutation
 import Route exposing (GroupPage(..), PermutationPage(..), Route(..))
@@ -131,7 +131,7 @@ viewNDropdown config currentN groupPage =
         , style "border" "1px solid #ccc"
         , style "border-radius" "4px"
         , style "cursor" "pointer"
-        , on "change" (Decode.map config.onNavigate (Decode.map (buildRouteForNewN currentN groupPage) targetValueInt))
+        , Events.on "change" (Decode.map config.onNavigate (Decode.map (buildRouteForNewN currentN groupPage) targetValueInt))
         ]
         (List.map (viewNOption currentN) (List.range 1 10))
 
@@ -182,6 +182,22 @@ viewSeparator =
         [ Html.text ">" ]
 
 
+{-| Base styles shared by all breadcrumb buttons.
+-}
+baseButtonStyles : List (Html.Attribute msg)
+baseButtonStyles =
+    [ style "padding" "4px 8px"
+    , style "font-size" "14px"
+    , style "border" "1px solid #ccc"
+    , style "border-radius" "4px"
+    , style "cursor" "pointer"
+    , style "background" "#f5f5f5"
+    , style "min-width" "28px"
+    , style "height" "28px"
+    , style "box-sizing" "border-box"
+    ]
+
+
 viewInputModeToggle : Config msg -> Html msg
 viewInputModeToggle config =
     let
@@ -194,15 +210,10 @@ viewInputModeToggle config =
                     ( "#", "Switch to Lehmer code" )
     in
     Html.button
-        [ style "padding" "4px 8px"
-        , style "font-size" "14px"
-        , style "border" "1px solid #ccc"
-        , style "border-radius" "4px"
-        , style "cursor" "pointer"
-        , style "background" "#f5f5f5"
-        , Attr.title title
-        , Html.Events.onClick config.onToggleInputMode
-        ]
+        (Attr.title title
+            :: Events.onClick config.onToggleInputMode
+            :: baseButtonStyles
+        )
         [ Html.text icon ]
 
 
@@ -251,17 +262,13 @@ calcNavContext config currentLehmer n buildRoute =
 
 {-| View a navigation button (prev/next).
 -}
-viewNavButton : NavContext msg -> String -> Int -> Html msg
-viewNavButton nav text lehmer =
+viewNavButton : NavContext msg -> String -> String -> Int -> Html msg
+viewNavButton nav text title lehmer =
     Html.button
-        [ style "padding" "4px 8px"
-        , style "font-size" "14px"
-        , style "border" "1px solid #ccc"
-        , style "border-radius" "4px"
-        , style "cursor" "pointer"
-        , style "background" "#f5f5f5"
-        , Html.Events.onClick (nav.onNav lehmer)
-        ]
+        (Attr.title title
+            :: Events.onClick (nav.onNav lehmer)
+            :: baseButtonStyles
+        )
         [ Html.text text ]
 
 
@@ -280,9 +287,9 @@ viewInputRow label nav centerContent trailingContent =
 
               else
                 Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
-            , Just (viewNavButton nav "◀" nav.prevLehmer)
+            , Just (viewNavButton nav "◀" "Previous Lehmer" nav.prevLehmer)
             , Just centerContent
-            , Just (viewNavButton nav "▶" nav.nextLehmer)
+            , Just (viewNavButton nav "▶" "Next Lehmer" nav.nextLehmer)
             ]
             ++ trailingContent
         )
@@ -351,15 +358,10 @@ viewCycleNotEditing config label currentLehmer n permIdx buildRoute =
 
         editButton =
             Html.button
-                [ style "padding" "4px 8px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ccc"
-                , style "border-radius" "4px"
-                , style "cursor" "pointer"
-                , style "background" "#f5f5f5"
-                , Attr.title "Edit"
-                , Html.Events.onClick (config.onEnterCycleEdit permIdx)
-                ]
+                (Attr.title "Edit"
+                    :: Events.onClick (config.onEnterCycleEdit permIdx)
+                    :: baseButtonStyles
+                )
                 [ Html.text "🖉" ]
     in
     viewInputRow label
@@ -408,48 +410,42 @@ viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
                 , style "font-size" "14px"
                 , style "border" ("2px solid " ++ borderColor)
                 , style "border-radius" "4px"
-                , onInput (config.onCycleInputChange permIdx)
+                , Events.onInput (config.onCycleInputChange permIdx)
                 , onEnterNoValue handleEnter
                 ]
                 []
 
         saveButton =
             Html.button
-                [ style "padding" "4px 8px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ccc"
-                , style "border-radius" "4px"
-                , style "cursor"
-                    (if isValid then
-                        "pointer"
+                (baseButtonStyles
+                    ++ [ Attr.title "Save"
+                       , Events.onClick (config.onSaveCycleEdit permIdx)
+                       , Attr.disabled (not isValid)
+                       , style "cursor"
+                            (if isValid then
+                                "pointer"
 
-                     else
-                        "not-allowed"
-                    )
-                , style "background"
-                    (if isValid then
-                        "#d4edda"
+                             else
+                                "not-allowed"
+                            )
+                       , style "background"
+                            (if isValid then
+                                "#d4edda"
 
-                     else
-                        "#e9ecef"
-                    )
-                , Attr.title "Save"
-                , Attr.disabled (not isValid)
-                , Html.Events.onClick (config.onSaveCycleEdit permIdx)
-                ]
+                             else
+                                "#e9ecef"
+                            )
+                       ]
+                )
                 [ Html.text "✓" ]
 
         cancelButton =
             Html.button
-                [ style "padding" "4px 8px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ccc"
-                , style "border-radius" "4px"
-                , style "cursor" "pointer"
-                , style "background" "#f8d7da"
-                , Attr.title "Cancel"
-                , Html.Events.onClick (config.onExitCycleEdit permIdx)
-                ]
+                (Attr.title "Cancel"
+                    :: Events.onClick (config.onExitCycleEdit permIdx)
+                    :: style "background" "#f8d7da"
+                    :: baseButtonStyles
+                )
                 [ Html.text "✗" ]
 
         row =
@@ -494,30 +490,20 @@ badPermutationToString err =
 viewInvertButton : Config msg -> Int -> Int -> Int -> Html msg
 viewInvertButton config n currentLehmer permIdx =
     Html.button
-        [ style "padding" "4px 8px"
-        , style "font-size" "14px"
-        , style "border" "1px solid #ccc"
-        , style "border-radius" "4px"
-        , style "cursor" "pointer"
-        , style "background" "#f5f5f5"
-        , Attr.title "Invert"
-        , Html.Events.onClick (config.onInvertPermutation n currentLehmer permIdx)
-        ]
+        (Attr.title "Invert"
+            :: Events.onClick (config.onInvertPermutation n currentLehmer permIdx)
+            :: baseButtonStyles
+        )
         [ Html.text "↺" ]
 
 
 viewRandomButton : Config msg -> Int -> Int -> Html msg
 viewRandomButton config n permIdx =
     Html.button
-        [ style "padding" "4px 8px"
-        , style "font-size" "14px"
-        , style "border" "1px solid #ccc"
-        , style "border-radius" "4px"
-        , style "cursor" "pointer"
-        , style "background" "#f5f5f5"
-        , Attr.title "Random"
-        , Html.Events.onClick (config.onRandomPermutation n permIdx)
-        ]
+        (Attr.title "Random"
+            :: Events.onClick (config.onRandomPermutation n permIdx)
+            :: baseButtonStyles
+        )
         [ Html.text "⚄" ]
 
 
@@ -525,14 +511,14 @@ viewRandomButton config n permIdx =
 -}
 onBlurWithValue : (String -> msg) -> Html.Attribute msg
 onBlurWithValue toMsg =
-    on "blur" (Decode.map toMsg targetValue)
+    Events.on "blur" (Decode.map toMsg targetValue)
 
 
 {-| Trigger message with input value when Enter is pressed.
 -}
 onEnterWithValue : (String -> msg) -> Html.Attribute msg
 onEnterWithValue toMsg =
-    on "keydown"
+    Events.on "keydown"
         (Decode.field "key" Decode.string
             |> Decode.andThen
                 (\key ->
@@ -549,7 +535,7 @@ onEnterWithValue toMsg =
 -}
 onEnterNoValue : msg -> Html.Attribute msg
 onEnterNoValue msg =
-    on "keydown"
+    Events.on "keydown"
         (Decode.field "key" Decode.string
             |> Decode.andThen
                 (\key ->
