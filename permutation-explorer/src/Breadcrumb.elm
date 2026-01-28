@@ -1,15 +1,33 @@
-module Breadcrumb exposing (Config, view)
+module Breadcrumb exposing (Config, CycleInputState, InputMode(..), view)
 
+import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
-import Html.Events exposing (on)
+import Html.Events exposing (on, onInput)
 import Json.Decode as Decode
 import Permutation
 import Route exposing (GroupPage(..), PermutationPage(..), Route(..))
 
 
+type InputMode
+    = LehmerMode
+    | CycleMode
+
+
+type alias CycleInputState =
+    { input : String
+    , validationResult : Result Permutation.BadPermutation Permutation.Permutation
+    }
+
+
 type alias Config msg =
     { onNavigate : Route -> msg
+    , inputMode : InputMode
+    , onToggleInputMode : msg
+    , onRandomPermutation : Int -> Int -> msg -- (n, permutationIndex)
+    , onInvertPermutation : Int -> Int -> Int -> msg -- (n, currentLehmer, permutationIndex)
+    , cycleInputs : Dict Int CycleInputState -- keyed by permutation index (1 or 2)
+    , onCycleInputChange : Int -> String -> msg -- (permutationIndex, newInput)
     }
 
 
@@ -31,18 +49,22 @@ viewSegments : Config msg -> Route -> List (Html msg)
 viewSegments config (Group n groupPage) =
     case groupPage of
         GroupSummary ->
-            [ viewNSegment config n groupPage ]
+            [ viewNSegment config n groupPage
+            , viewModeToggle config
+            ]
 
         Permutation lehmer permPage ->
             case permPage of
                 PermutationSummary ->
                     [ viewNSegment config n groupPage
                     , viewSeparator
-                    , viewLehmerInput config
+                    , viewPermutationInput config
                         "Permutation"
                         lehmer
                         n
+                        1
                         (\newLehmer -> Group n (Permutation newLehmer PermutationSummary))
+                    , viewModeToggle config
                     ]
 
                 PermutationComposition lehmer2 ->
@@ -55,17 +77,20 @@ viewSegments config (Group n groupPage) =
                         , style "font-weight" "bold"
                         ]
                         [ Html.text "Permutation" ]
-                    , viewLehmerInput config
+                    , viewPermutationInput config
                         ""
                         lehmer
                         n
+                        1
                         (\newLehmer -> Group n (Permutation newLehmer (PermutationComposition lehmer2)))
                     , viewSeparator
-                    , viewLehmerInput config
+                    , viewPermutationInput config
                         "Composition"
                         lehmer2
                         n
+                        2
                         (\newLehmer2 -> Group n (Permutation lehmer (PermutationComposition newLehmer2)))
+                    , viewModeToggle config
                     ]
 
 
@@ -146,8 +171,42 @@ viewSeparator =
         [ Html.text ">" ]
 
 
-viewLehmerInput : Config msg -> String -> Int -> Int -> (Int -> Route) -> Html msg
-viewLehmerInput config label currentLehmer n buildRoute =
+viewModeToggle : Config msg -> Html msg
+viewModeToggle config =
+    let
+        ( icon, title ) =
+            case config.inputMode of
+                LehmerMode ->
+                    ( "σ", "Switch to cycle notation" )
+
+                CycleMode ->
+                    ( "#", "Switch to Lehmer code" )
+    in
+    Html.button
+        [ style "padding" "4px 8px"
+        , style "font-size" "14px"
+        , style "border" "1px solid #ccc"
+        , style "border-radius" "4px"
+        , style "cursor" "pointer"
+        , style "background" "#f5f5f5"
+        , Attr.title title
+        , Html.Events.onClick config.onToggleInputMode
+        ]
+        [ Html.text icon ]
+
+
+viewPermutationInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
+viewPermutationInput config label currentLehmer n permIdx buildRoute =
+    case config.inputMode of
+        LehmerMode ->
+            viewLehmerInput config label currentLehmer n permIdx buildRoute
+
+        CycleMode ->
+            viewCycleInput config label currentLehmer n permIdx buildRoute
+
+
+viewLehmerInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
+viewLehmerInput config label currentLehmer n permIdx buildRoute =
     let
         maxLehmer =
             Permutation.factorial n - 1
@@ -189,7 +248,7 @@ viewLehmerInput config label currentLehmer n buildRoute =
 
               else
                 Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
-            , Just (navButton "<" prevLehmer)
+            , Just (navButton "◀" prevLehmer)
             , Just
                 (Html.input
                     [ Attr.type_ "text"
@@ -204,9 +263,153 @@ viewLehmerInput config label currentLehmer n buildRoute =
                     ]
                     []
                 )
-            , Just (navButton ">" nextLehmer)
+            , Just (navButton "▶" nextLehmer)
+            , Just (viewInvertButton config n currentLehmer permIdx)
+            , Just (viewRandomButton config n permIdx)
             ]
         )
+
+
+viewCycleInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
+viewCycleInput config label currentLehmer n permIdx buildRoute =
+    let
+        maxLehmer =
+            Permutation.factorial n - 1
+
+        prevLehmer =
+            if currentLehmer == 0 then
+                maxLehmer
+
+            else
+                currentLehmer - 1
+
+        nextLehmer =
+            if currentLehmer == maxLehmer then
+                0
+
+            else
+                currentLehmer + 1
+
+        navButton text lehmer =
+            Html.button
+                [ style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , style "cursor" "pointer"
+                , style "background" "#f5f5f5"
+                , Html.Events.onClick (config.onNavigate (buildRoute lehmer))
+                ]
+                [ Html.text text ]
+
+        cycleState =
+            Dict.get permIdx config.cycleInputs
+
+        inputValue =
+            case cycleState of
+                Just state ->
+                    state.input
+
+                Nothing ->
+                    Permutation.fromLehmerCode n currentLehmer
+                        |> Maybe.map Permutation.toCyclesString
+                        |> Maybe.withDefault "()"
+
+        isValid =
+            case cycleState of
+                Just state ->
+                    case state.validationResult of
+                        Ok _ ->
+                            True
+
+                        Err _ ->
+                            False
+
+                Nothing ->
+                    True
+
+        borderColor =
+            if isValid then
+                "#ccc"
+
+            else
+                "#cc0000"
+
+        handleEnter =
+            case cycleState of
+                Just state ->
+                    case state.validationResult of
+                        Ok perm ->
+                            config.onNavigate (buildRoute (Permutation.toLehmerCode perm))
+
+                        Err _ ->
+                            -- Do nothing on invalid input
+                            config.onCycleInputChange permIdx inputValue
+
+                Nothing ->
+                    config.onNavigate (buildRoute currentLehmer)
+    in
+    Html.span
+        [ style "display" "flex"
+        , style "align-items" "center"
+        , style "gap" "4px"
+        ]
+        (List.filterMap identity
+            [ if String.isEmpty label then
+                Nothing
+
+              else
+                Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
+            , Just (navButton "◀" prevLehmer)
+            , Just
+                (Html.input
+                    [ Attr.type_ "text"
+                    , Attr.value inputValue
+                    , style "width" "120px"
+                    , style "padding" "4px 8px"
+                    , style "font-size" "14px"
+                    , style "border" ("2px solid " ++ borderColor)
+                    , style "border-radius" "4px"
+                    , onInput (config.onCycleInputChange permIdx)
+                    , onEnterNoValue handleEnter
+                    ]
+                    []
+                )
+            , Just (navButton "▶" nextLehmer)
+            , Just (viewInvertButton config n currentLehmer permIdx)
+            , Just (viewRandomButton config n permIdx)
+            ]
+        )
+
+
+viewInvertButton : Config msg -> Int -> Int -> Int -> Html msg
+viewInvertButton config n currentLehmer permIdx =
+    Html.button
+        [ style "padding" "4px 8px"
+        , style "font-size" "14px"
+        , style "border" "1px solid #ccc"
+        , style "border-radius" "4px"
+        , style "cursor" "pointer"
+        , style "background" "#f5f5f5"
+        , Attr.title "Invert"
+        , Html.Events.onClick (config.onInvertPermutation n currentLehmer permIdx)
+        ]
+        [ Html.text "↺" ]
+
+
+viewRandomButton : Config msg -> Int -> Int -> Html msg
+viewRandomButton config n permIdx =
+    Html.button
+        [ style "padding" "4px 8px"
+        , style "font-size" "14px"
+        , style "border" "1px solid #ccc"
+        , style "border-radius" "4px"
+        , style "cursor" "pointer"
+        , style "background" "#f5f5f5"
+        , Attr.title "Random"
+        , Html.Events.onClick (config.onRandomPermutation n permIdx)
+        ]
+        [ Html.text "⚄" ]
 
 
 {-| Trigger message with input value on blur.
@@ -226,6 +429,23 @@ onEnterWithValue toMsg =
                 (\key ->
                     if key == "Enter" then
                         Decode.map toMsg targetValue
+
+                    else
+                        Decode.fail "Not Enter"
+                )
+        )
+
+
+{-| Trigger a message when Enter is pressed.
+-}
+onEnterNoValue : msg -> Html.Attribute msg
+onEnterNoValue msg =
+    on "keydown"
+        (Decode.field "key" Decode.string
+            |> Decode.andThen
+                (\key ->
+                    if key == "Enter" then
+                        Decode.succeed msg
 
                     else
                         Decode.fail "Not Enter"

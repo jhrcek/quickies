@@ -3,6 +3,7 @@ module Main exposing (main)
 import Breadcrumb
 import Browser
 import Browser.Navigation as Navigation
+import Dict exposing (Dict)
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
@@ -23,6 +24,8 @@ type alias Model =
     { key : Navigation.Key
     , route : Maybe Route.Route
     , page : Page
+    , breadcrumbInputMode : Breadcrumb.InputMode
+    , cycleInputs : Dict Int Breadcrumb.CycleInputState
     }
 
 
@@ -68,6 +71,11 @@ type Msg
     | NavigateToRandomPermutation Int
     | GotRandomLehmer Int Int
     | PermutationEditorMsg PermutationEditor.Msg
+    | ToggleBreadcrumbInputMode
+    | BreadcrumbRandomPermutation Int Int -- (n, permutationIndex)
+    | GotBreadcrumbRandomLehmer Int Int -- (permutationIndex, lehmer)
+    | BreadcrumbCycleInputChange Int String -- (permutationIndex, newInput)
+    | BreadcrumbInvertPermutation Int Int Int -- (n, currentLehmer, permutationIndex)
 
 
 
@@ -83,7 +91,14 @@ init _ url key =
         page =
             initPageFromRoute route
     in
-    ( { key = key, route = route, page = page }, Cmd.none )
+    ( { key = key
+      , route = route
+      , page = page
+      , breadcrumbInputMode = Breadcrumb.LehmerMode
+      , cycleInputs = Dict.empty
+      }
+    , Cmd.none
+    )
 
 
 initPageFromRoute : Maybe Route.Route -> Page
@@ -151,8 +166,15 @@ update msg model =
 
                 page =
                     initPageFromRoute route
+
+                newCycleInputs =
+                    if model.breadcrumbInputMode == Breadcrumb.CycleMode then
+                        initCycleInputsFromRoute route
+
+                    else
+                        Dict.empty
             in
-            ( { model | route = route, page = page }, Cmd.none )
+            ( { model | route = route, page = page, cycleInputs = newCycleInputs }, Cmd.none )
 
         BreadcrumbNavigate route ->
             ( model, Navigation.pushUrl model.key (Route.toString route) )
@@ -235,6 +257,144 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        ToggleBreadcrumbInputMode ->
+            let
+                newMode =
+                    case model.breadcrumbInputMode of
+                        Breadcrumb.LehmerMode ->
+                            Breadcrumb.CycleMode
+
+                        Breadcrumb.CycleMode ->
+                            Breadcrumb.LehmerMode
+
+                newCycleInputs =
+                    if newMode == Breadcrumb.CycleMode then
+                        initCycleInputsFromRoute model.route
+
+                    else
+                        Dict.empty
+            in
+            ( { model
+                | breadcrumbInputMode = newMode
+                , cycleInputs = newCycleInputs
+              }
+            , Cmd.none
+            )
+
+        BreadcrumbRandomPermutation n permIdx ->
+            ( model
+            , Random.generate (GotBreadcrumbRandomLehmer permIdx) (Random.int 0 (Permutation.factorial n - 1))
+            )
+
+        GotBreadcrumbRandomLehmer permIdx lehmer ->
+            let
+                newRoute =
+                    buildRouteWithLehmer model.route permIdx lehmer
+            in
+            ( model
+            , Navigation.pushUrl model.key (Route.toString newRoute)
+            )
+
+        BreadcrumbCycleInputChange permIdx input ->
+            case model.route of
+                Just (Route.Group n _) ->
+                    let
+                        validationResult =
+                            Permutation.parseCycles n input
+
+                        newState =
+                            { input = input
+                            , validationResult = validationResult
+                            }
+                    in
+                    ( { model | cycleInputs = Dict.insert permIdx newState model.cycleInputs }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        BreadcrumbInvertPermutation n currentLehmer permIdx ->
+            let
+                inverseLehmer =
+                    Permutation.fromLehmerCode n currentLehmer
+                        |> Maybe.map Permutation.inverse
+                        |> Maybe.map Permutation.toLehmerCode
+                        |> Maybe.withDefault 0
+
+                newRoute =
+                    buildRouteWithLehmer model.route permIdx inverseLehmer
+            in
+            ( model
+            , Navigation.pushUrl model.key (Route.toString newRoute)
+            )
+
+
+{-| Initialize cycle inputs from the current route.
+-}
+initCycleInputsFromRoute : Maybe Route.Route -> Dict Int Breadcrumb.CycleInputState
+initCycleInputsFromRoute maybeRoute =
+    case maybeRoute of
+        Nothing ->
+            Dict.empty
+
+        Just (Route.Group n groupPage) ->
+            case groupPage of
+                Route.GroupSummary ->
+                    Dict.empty
+
+                Route.Permutation lehmer permPage ->
+                    let
+                        makeCycleInput lehmerCode =
+                            let
+                                perm =
+                                    Permutation.fromLehmerCode n lehmerCode
+                                        |> Maybe.withDefault (Permutation.identity n)
+                            in
+                            { input = Permutation.toCyclesString perm
+                            , validationResult = Ok perm
+                            }
+                    in
+                    case permPage of
+                        Route.PermutationSummary ->
+                            Dict.singleton 1 (makeCycleInput lehmer)
+
+                        Route.PermutationComposition lehmer2 ->
+                            Dict.fromList
+                                [ ( 1, makeCycleInput lehmer )
+                                , ( 2, makeCycleInput lehmer2 )
+                                ]
+
+
+{-| Build a new route with a given lehmer code at the specified permutation index.
+-}
+buildRouteWithLehmer : Maybe Route.Route -> Int -> Int -> Route.Route
+buildRouteWithLehmer maybeRoute permIdx newLehmer =
+    case maybeRoute of
+        Nothing ->
+            Route.Group 5 (Route.Permutation newLehmer Route.PermutationSummary)
+
+        Just (Route.Group n groupPage) ->
+            case groupPage of
+                Route.GroupSummary ->
+                    Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
+
+                Route.Permutation lehmer permPage ->
+                    case permPage of
+                        Route.PermutationSummary ->
+                            if permIdx == 1 then
+                                Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
+
+                            else
+                                Route.Group n (Route.Permutation lehmer Route.PermutationSummary)
+
+                        Route.PermutationComposition lehmer2 ->
+                            if permIdx == 1 then
+                                Route.Group n (Route.Permutation newLehmer (Route.PermutationComposition lehmer2))
+
+                            else
+                                Route.Group n (Route.Permutation lehmer (Route.PermutationComposition newLehmer))
+
 
 
 -- VIEW
@@ -261,7 +421,16 @@ viewBody model =
         ]
         [ case model.route of
             Just route ->
-                Breadcrumb.view { onNavigate = BreadcrumbNavigate } route
+                Breadcrumb.view
+                    { onNavigate = BreadcrumbNavigate
+                    , inputMode = model.breadcrumbInputMode
+                    , onToggleInputMode = ToggleBreadcrumbInputMode
+                    , onRandomPermutation = BreadcrumbRandomPermutation
+                    , onInvertPermutation = BreadcrumbInvertPermutation
+                    , cycleInputs = model.cycleInputs
+                    , onCycleInputChange = BreadcrumbCycleInputChange
+                    }
+                    route
 
             Nothing ->
                 Html.text ""
