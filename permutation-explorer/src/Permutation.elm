@@ -26,6 +26,7 @@ module Permutation exposing
     , numCycles
     , numFixedPoints
     , order
+    , orderFromCycleType
     , parseCycles
     , resize
     , sign
@@ -670,8 +671,17 @@ This equals the LCM of all cycle lengths.
 -}
 order : Permutation -> Int
 order perm =
-    cycleType perm
-        |> List.foldl lcm 1
+    orderFromCycleType (cycleType perm)
+
+
+{-| Compute the order of permutations with a given cycle type.
+
+The order is the LCM of all cycle lengths in the partition.
+
+-}
+orderFromCycleType : List Int -> Int
+orderFromCycleType partition =
+    List.foldl lcm 1 partition
 
 
 {-| Least common multiple of two positive integers.

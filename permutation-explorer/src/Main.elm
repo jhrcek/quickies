@@ -485,6 +485,7 @@ viewConjugacyClassesTable n =
                 ]
                 [ Html.div [ style "flex" "1" ] [ Html.text "Cycle Type" ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Class Size" ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Order of elements" ]
                 ]
 
         dataRow partition =
@@ -515,6 +516,8 @@ viewConjugacyClassesTable n =
                     ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
                     [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromPartition n partition)) ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ]
+                    [ Html.text (String.fromInt (Permutation.orderFromCycleType partition)) ]
                 ]
     in
     Html.div
