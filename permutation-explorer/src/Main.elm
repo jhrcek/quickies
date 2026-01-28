@@ -9,7 +9,6 @@ import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
 import Html.Events exposing (onClick)
 import Permutation
-import PermutationEditor
 import PermutationView
 import Random
 import Route
@@ -32,13 +31,13 @@ type alias Model =
 type Page
     = NotFoundPage
     | GroupSummaryPage
-    | PermutationSummaryPage PermutationEditor.Model
+    | PermutationSummaryPage Permutation.Permutation
     | CompositionPage CompositionModel
 
 
 type alias CompositionModel =
-    { editorP : PermutationEditor.Model
-    , editorQ : PermutationEditor.Model
+    { permP : Permutation.Permutation
+    , permQ : Permutation.Permutation
     , compositionViewMode : CompositionViewMode
     , resultTab : ResultTab
     }
@@ -64,13 +63,10 @@ type Msg
     = UrlRequested Browser.UrlRequest
     | UrlChanged Url
     | BreadcrumbNavigate Route.Route
-    | EditorPMsg PermutationEditor.Msg
-    | EditorQMsg PermutationEditor.Msg
     | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
     | NavigateToRandomPermutation Int
     | GotRandomLehmer Int Int
-    | PermutationEditorMsg PermutationEditor.Msg
     | ToggleBreadcrumbInputMode
     | BreadcrumbRandomPermutation Int Int -- (n, permutationIndex)
     | GotBreadcrumbRandomLehmer Int Int -- (permutationIndex, lehmer)
@@ -123,7 +119,7 @@ initPageFromRoute maybeRoute =
                                     Permutation.fromLehmerCode n lehmer
                                         |> Maybe.withDefault (Permutation.identity n)
                             in
-                            PermutationSummaryPage (PermutationEditor.initFromPermutation "" perm)
+                            PermutationSummaryPage perm
 
                         Route.PermutationComposition lehmer2 ->
                             CompositionPage (initComposition n lehmer lehmer2)
@@ -131,17 +127,12 @@ initPageFromRoute maybeRoute =
 
 initComposition : Int -> Int -> Int -> CompositionModel
 initComposition n lehmer1 lehmer2 =
-    let
-        permP =
-            Permutation.fromLehmerCode n lehmer1
-                |> Maybe.withDefault (Permutation.identity n)
-
-        permQ =
-            Permutation.fromLehmerCode n lehmer2
-                |> Maybe.withDefault (Permutation.identity n)
-    in
-    { editorP = PermutationEditor.initFromPermutation "P" permP
-    , editorQ = PermutationEditor.initFromPermutation "Q" permQ
+    { permP =
+        Permutation.fromLehmerCode n lehmer1
+            |> Maybe.withDefault (Permutation.identity n)
+    , permQ =
+        Permutation.fromLehmerCode n lehmer2
+            |> Maybe.withDefault (Permutation.identity n)
     , compositionViewMode = CollapsedView
     , resultTab = CompositionPQTab
     }
@@ -182,40 +173,6 @@ update msg model =
         BreadcrumbNavigate route ->
             ( model, Navigation.pushUrl model.key (Route.toString route) )
 
-        EditorPMsg subMsg ->
-            case model.page of
-                CompositionPage comp ->
-                    let
-                        ( newEditorP, cmd ) =
-                            PermutationEditor.update subMsg comp.editorP
-
-                        newComp =
-                            { comp | editorP = newEditorP }
-                    in
-                    ( { model | page = CompositionPage newComp }
-                    , Cmd.map EditorPMsg cmd
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        EditorQMsg subMsg ->
-            case model.page of
-                CompositionPage comp ->
-                    let
-                        ( newEditorQ, cmd ) =
-                            PermutationEditor.update subMsg comp.editorQ
-
-                        newComp =
-                            { comp | editorQ = newEditorQ }
-                    in
-                    ( { model | page = CompositionPage newComp }
-                    , Cmd.map EditorQMsg cmd
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
-
         SetCompositionViewMode mode ->
             case model.page of
                 CompositionPage comp ->
@@ -245,20 +202,6 @@ update msg model =
             ( model
             , Navigation.pushUrl model.key (Route.toString (Route.Group n (Route.Permutation lehmer Route.PermutationSummary)))
             )
-
-        PermutationEditorMsg subMsg ->
-            case model.page of
-                PermutationSummaryPage editor ->
-                    let
-                        ( newEditor, cmd ) =
-                            PermutationEditor.update subMsg editor
-                    in
-                    ( { model | page = PermutationSummaryPage newEditor }
-                    , Cmd.map PermutationEditorMsg cmd
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
 
         ToggleBreadcrumbInputMode ->
             let
@@ -502,8 +445,8 @@ viewBody model =
             GroupSummaryPage ->
                 viewGroupSummary model
 
-            PermutationSummaryPage editor ->
-                viewPermutationSummary editor
+            PermutationSummaryPage perm ->
+                viewPermutationSummary perm
 
             CompositionPage comp ->
                 viewComposition comp
@@ -541,10 +484,10 @@ viewGroupSummary model =
         ]
 
 
-viewPermutationSummary : PermutationEditor.Model -> Html Msg
-viewPermutationSummary editor =
+viewPermutationSummary : Permutation.Permutation -> Html Msg
+viewPermutationSummary perm =
     Html.div []
-        [ Html.map PermutationEditorMsg (PermutationEditor.view Nothing editor)
+        [ PermutationView.viewPermutation "" Nothing perm
         ]
 
 
@@ -580,27 +523,21 @@ viewComposition comp =
             , style "flex-wrap" "wrap"
             , style "align-items" "flex-start"
             ]
-            [ Html.map EditorPMsg (PermutationEditor.view edgeColorP comp.editorP)
-            , Html.map EditorQMsg (PermutationEditor.view edgeColorQ comp.editorQ)
-            , viewResultCard comp.resultTab comp.compositionViewMode comp.editorP comp.editorQ
+            [ PermutationView.viewPermutation "P" edgeColorP comp.permP
+            , PermutationView.viewPermutation "Q" edgeColorQ comp.permQ
+            , viewResultCard comp.resultTab comp.compositionViewMode comp.permP comp.permQ
             ]
         ]
 
 
-viewResultCard : ResultTab -> CompositionViewMode -> PermutationEditor.Model -> PermutationEditor.Model -> Html Msg
-viewResultCard activeTab compositionMode editorP editorQ =
+viewResultCard : ResultTab -> CompositionViewMode -> Permutation.Permutation -> Permutation.Permutation -> Html Msg
+viewResultCard activeTab compositionMode permP permQ =
     let
-        permP =
-            PermutationEditor.permutation editorP
-
-        permQ =
-            PermutationEditor.permutation editorQ
-
         labelP =
-            PermutationEditor.getLabel editorP
+            "P"
 
         labelQ =
-            PermutationEditor.getLabel editorQ
+            "Q"
 
         -- Tab definitions: (tab, label)
         tabs =

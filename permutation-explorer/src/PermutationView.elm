@@ -2,6 +2,7 @@ module PermutationView exposing
     ( viewCard
     , viewCharacteristics
     , viewGraph
+    , viewPermutation
     )
 
 {-| Shared view helpers for displaying permutations.
@@ -106,3 +107,14 @@ viewGraph edgeColor perm =
         , style "text-align" "center"
         ]
         [ GV.graphviz GV.Circo (Permutation.toCycleGraph edgeColor perm) ]
+
+
+{-| Display a complete permutation card with label, characteristics, and graph.
+-}
+viewPermutation : String -> Maybe String -> Permutation.Permutation -> Html msg
+viewPermutation label edgeColor perm =
+    viewCard
+        [ Html.h2 [ style "margin-top" "0" ] [ Html.text label ]
+        , viewCharacteristics perm
+        , viewGraph edgeColor perm
+        ]
