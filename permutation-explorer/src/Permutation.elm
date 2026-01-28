@@ -3,6 +3,7 @@ module Permutation exposing
     , Permutation
     , Sign(..)
     , ValidationError(..)
+    , canonicalOfCycleType
     , centralizerSize
     , compose
     , conjugacyClassSize
@@ -813,6 +814,29 @@ Formula: n! / centralizerSize where n is the sum of the partition.
 conjugacyClassSizeFromPartition : Int -> List Int -> Int
 conjugacyClassSizeFromPartition n partition =
     factorial n // centralizerSizeFromPartition partition
+
+
+{-| Create the canonical permutation for a given cycle type.
+
+The canonical representative uses consecutive elements for each cycle:
+[3, 2] → (0 1 2)(3 4)
+[4, 1] → (0 1 2 3) with 4 fixed
+[2, 2, 1] → (0 1)(2 3) with 4 fixed
+
+-}
+canonicalOfCycleType : Int -> List Int -> Permutation
+canonicalOfCycleType n partition =
+    let
+        ( cycles, _ ) =
+            List.foldl
+                (\len ( acc, start ) ->
+                    ( List.range start (start + len - 1) :: acc, start + len )
+                )
+                ( [], 0 )
+                partition
+    in
+    fromCycles n (List.reverse cycles)
+        |> Result.withDefault (identity n)
 
 
 {-| List all conjugacy classes of Sₙ as partitions.

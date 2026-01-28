@@ -65,8 +65,6 @@ type Msg
     | BreadcrumbNavigate Route.Route
     | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
-    | NavigateToRandomPermutation Int
-    | GotRandomLehmer Int Int
     | ToggleBreadcrumbInputMode
     | BreadcrumbRandomPermutation Int Int -- (n, permutationIndex)
     | GotBreadcrumbRandomLehmer Int Int -- (permutationIndex, lehmer)
@@ -192,16 +190,6 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
-
-        NavigateToRandomPermutation n ->
-            ( model
-            , Random.generate (GotRandomLehmer n) (Random.int 0 (Permutation.factorial n - 1))
-            )
-
-        GotRandomLehmer n lehmer ->
-            ( model
-            , Navigation.pushUrl model.key (Route.toString (Route.Group n (Route.Permutation lehmer Route.PermutationSummary)))
-            )
 
         ToggleBreadcrumbInputMode ->
             let
@@ -475,9 +463,6 @@ viewGroupSummary model =
     Html.div []
         [ Html.p [] [ Html.text ("Order: " ++ String.fromInt order) ]
         , Html.p []
-            [ Html.button [ onClick (NavigateToRandomPermutation n) ] [ Html.text "Random Permutation" ]
-            ]
-        , Html.p []
             [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutation 0 (Route.PermutationComposition 0)))) ]
                 [ Html.text "Go to Composition Editor" ]
             ]
@@ -503,12 +488,31 @@ viewConjugacyClassesTable n =
                 ]
 
         dataRow partition =
+            let
+                canonicalPerm =
+                    Permutation.canonicalOfCycleType n partition
+
+                lehmer =
+                    Permutation.toLehmerCode canonicalPerm
+
+                route =
+                    Route.Group n (Route.Permutation lehmer Route.PermutationSummary)
+            in
             Html.div
                 [ style "display" "flex"
                 , style "border-bottom" "1px solid #ddd"
                 , style "padding" "8px 0"
                 ]
-                [ Html.div [ style "flex" "1" ] [ Html.text (PermutationView.partitionToString partition) ]
+                [ Html.div [ style "flex" "1" ]
+                    [ Html.text (PermutationView.partitionToString partition)
+                    , Html.a
+                        [ Attr.href (Route.toString route)
+                        , Attr.title "Jump to canonical representative"
+                        , style "margin-left" "6px"
+                        , style "text-decoration" "none"
+                        ]
+                        [ Html.text "↗" ]
+                    ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
                     [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromPartition n partition)) ]
                 ]
