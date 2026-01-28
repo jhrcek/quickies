@@ -1,15 +1,15 @@
 # TODO
 
-- [ ] enumerate permutations by index (to allow "next" / "previous" permutation)
+- [x] enumerate permutations by index (to allow "next" / "previous" permutation)
 - [ ] enumerate conjugacy classes by index (?)
 - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
-- [ ] turn it into application with url parsing with pages like
-    - [ ] Whole S_n group summary page
+- [x] turn it into application with url parsing with pages like
+    - [x] Whole S_n group summary page
         - [ ] number of elems
         - [ ] number (list of) conjugacy classes - with count of elements / order of each
     - [ ] Conjugacy class
-    - [ ] Single permutation (with all its properties)
-    - [ ] Permutation composition
+    - [x] Single permutation (with all its properties)
+    - [x] Permutation composition
 
 - [ ] add concept lattice with all the boolean properties, showing number of permutations belonging to each node for given S_n
     - [ ] maybe use the lattice to structure characteristics view of boolean properties

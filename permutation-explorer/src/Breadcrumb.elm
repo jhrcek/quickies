@@ -26,13 +26,20 @@ type alias Config msg =
     { onNavigate : Route -> msg
     , inputMode : InputMode
     , onToggleInputMode : msg
-    , onRandomPermutation : Int -> Int -> msg -- (n, permutationIndex)
-    , onInvertPermutation : Int -> Int -> Int -> msg -- (n, currentLehmer, permutationIndex)
-    , cycleInputs : Dict Int CycleEditState -- keyed by permutation index (1 or 2)
-    , onCycleInputChange : Int -> String -> msg -- (permutationIndex, newInput)
-    , onEnterCycleEdit : Int -> msg -- enter edit mode for permIdx
-    , onExitCycleEdit : Int -> msg -- cancel edit for permIdx
-    , onSaveCycleEdit : Int -> msg -- save edit for permIdx
+    , -- (n, permutationIndex)
+      onRandomPermutation : Int -> Int -> msg
+    , -- (n, currentLehmer, permutationIndex)
+      onInvertPermutation : Int -> Int -> Int -> msg
+    , -- keyed by permutation index (1 or 2)
+      cycleInputs : Dict Int CycleEditState
+    , -- (permutationIndex, newInput)
+      onCycleInputChange : Int -> String -> msg
+    , -- enter edit mode for permutationIndex
+      onEnterCycleEdit : Int -> msg
+    , -- cancel edit for permutationIndex
+      onExitCycleEdit : Int -> msg
+    , -- save edit for permutationIndex
+      onSaveCycleEdit : Int -> msg
     }
 
 
@@ -55,7 +62,6 @@ viewSegments config (Group n groupPage) =
     case groupPage of
         GroupSummary ->
             [ viewNSegment config n groupPage
-            , viewModeToggle config
             ]
 
         Permutation lehmer permPage ->
@@ -69,7 +75,7 @@ viewSegments config (Group n groupPage) =
                         n
                         1
                         (\newLehmer -> Group n (Permutation newLehmer PermutationSummary))
-                    , viewModeToggle config
+                    , viewInputModeToggle config
                     ]
 
                 PermutationComposition lehmer2 ->
@@ -95,7 +101,7 @@ viewSegments config (Group n groupPage) =
                         n
                         2
                         (\newLehmer2 -> Group n (Permutation lehmer (PermutationComposition newLehmer2)))
-                    , viewModeToggle config
+                    , viewInputModeToggle config
                     ]
 
 
@@ -176,8 +182,8 @@ viewSeparator =
         [ Html.text ">" ]
 
 
-viewModeToggle : Config msg -> Html msg
-viewModeToggle config =
+viewInputModeToggle : Config msg -> Html msg
+viewInputModeToggle config =
     let
         ( icon, title ) =
             case config.inputMode of
@@ -210,38 +216,59 @@ viewPermutationInput config label currentLehmer n permIdx buildRoute =
             viewCycleInput config label currentLehmer n permIdx buildRoute
 
 
-viewLehmerInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
-viewLehmerInput config label currentLehmer n permIdx buildRoute =
+{-| Context for navigation buttons.
+-}
+type alias NavContext msg =
+    { prevLehmer : Int
+    , nextLehmer : Int
+    , onNav : Int -> msg
+    }
+
+
+{-| Calculate navigation context for prev/next buttons.
+-}
+calcNavContext : Config msg -> Int -> Int -> (Int -> Route) -> NavContext msg
+calcNavContext config currentLehmer n buildRoute =
     let
         maxLehmer =
             Permutation.factorial n - 1
-
-        prevLehmer =
-            if currentLehmer == 0 then
-                maxLehmer
-
-            else
-                currentLehmer - 1
-
-        nextLehmer =
-            if currentLehmer == maxLehmer then
-                0
-
-            else
-                currentLehmer + 1
-
-        navButton text lehmer =
-            Html.button
-                [ style "padding" "4px 8px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ccc"
-                , style "border-radius" "4px"
-                , style "cursor" "pointer"
-                , style "background" "#f5f5f5"
-                , Html.Events.onClick (config.onNavigate (buildRoute lehmer))
-                ]
-                [ Html.text text ]
     in
+    { prevLehmer =
+        if currentLehmer == 0 then
+            maxLehmer
+
+        else
+            currentLehmer - 1
+    , nextLehmer =
+        if currentLehmer == maxLehmer then
+            0
+
+        else
+            currentLehmer + 1
+    , onNav = \lehmer -> config.onNavigate (buildRoute lehmer)
+    }
+
+
+{-| View a navigation button (prev/next).
+-}
+viewNavButton : NavContext msg -> String -> Int -> Html msg
+viewNavButton nav text lehmer =
+    Html.button
+        [ style "padding" "4px 8px"
+        , style "font-size" "14px"
+        , style "border" "1px solid #ccc"
+        , style "border-radius" "4px"
+        , style "cursor" "pointer"
+        , style "background" "#f5f5f5"
+        , Html.Events.onClick (nav.onNav lehmer)
+        ]
+        [ Html.text text ]
+
+
+{-| View an input row with optional label, nav buttons, center content, and trailing content.
+-}
+viewInputRow : String -> NavContext msg -> Html msg -> List (Html msg) -> Html msg
+viewInputRow label nav centerContent trailingContent =
     Html.span
         [ style "display" "flex"
         , style "align-items" "center"
@@ -253,26 +280,40 @@ viewLehmerInput config label currentLehmer n permIdx buildRoute =
 
               else
                 Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
-            , Just (navButton "◀" prevLehmer)
-            , Just
-                (Html.input
-                    [ Attr.type_ "text"
-                    , Attr.value (String.fromInt currentLehmer)
-                    , style "width" "60px"
-                    , style "padding" "4px 8px"
-                    , style "font-size" "14px"
-                    , style "border" "1px solid #ccc"
-                    , style "border-radius" "4px"
-                    , onBlurWithValue (\value -> config.onNavigate (buildRoute (clampLehmer n value)))
-                    , onEnterWithValue (\value -> config.onNavigate (buildRoute (clampLehmer n value)))
-                    ]
-                    []
-                )
-            , Just (navButton "▶" nextLehmer)
-            , Just (viewInvertButton config n currentLehmer permIdx)
-            , Just (viewRandomButton config n permIdx)
+            , Just (viewNavButton nav "◀" nav.prevLehmer)
+            , Just centerContent
+            , Just (viewNavButton nav "▶" nav.nextLehmer)
             ]
+            ++ trailingContent
         )
+
+
+viewLehmerInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
+viewLehmerInput config label currentLehmer n permIdx buildRoute =
+    let
+        nav =
+            calcNavContext config currentLehmer n buildRoute
+
+        input =
+            Html.input
+                [ Attr.type_ "text"
+                , Attr.value (String.fromInt currentLehmer)
+                , style "width" "60px"
+                , style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , onBlurWithValue (\value -> config.onNavigate (buildRoute (clampLehmer n value)))
+                , onEnterWithValue (\value -> config.onNavigate (buildRoute (clampLehmer n value)))
+                ]
+                []
+    in
+    viewInputRow label
+        nav
+        input
+        [ viewInvertButton config n currentLehmer permIdx
+        , viewRandomButton config n permIdx
+        ]
 
 
 viewCycleInput : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
@@ -288,105 +329,27 @@ viewCycleInput config label currentLehmer n permIdx buildRoute =
 viewCycleNotEditing : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> Html msg
 viewCycleNotEditing config label currentLehmer n permIdx buildRoute =
     let
-        maxLehmer =
-            Permutation.factorial n - 1
-
-        prevLehmer =
-            if currentLehmer == 0 then
-                maxLehmer
-
-            else
-                currentLehmer - 1
-
-        nextLehmer =
-            if currentLehmer == maxLehmer then
-                0
-
-            else
-                currentLehmer + 1
-
-        navButton text lehmer =
-            Html.button
-                [ style "padding" "4px 8px"
-                , style "font-size" "14px"
-                , style "border" "1px solid #ccc"
-                , style "border-radius" "4px"
-                , style "cursor" "pointer"
-                , style "background" "#f5f5f5"
-                , Html.Events.onClick (config.onNavigate (buildRoute lehmer))
-                ]
-                [ Html.text text ]
+        nav =
+            calcNavContext config currentLehmer n buildRoute
 
         cycleString =
             Permutation.fromLehmerCode n currentLehmer
                 |> Maybe.map Permutation.toCyclesString
                 |> Maybe.withDefault "()"
-    in
-    Html.span
-        [ style "display" "flex"
-        , style "align-items" "center"
-        , style "gap" "4px"
-        ]
-        (List.filterMap identity
-            [ if String.isEmpty label then
-                Nothing
 
-              else
-                Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
-            , Just (navButton "◀" prevLehmer)
-            , Just
-                (Html.span
-                    [ style "padding" "4px 8px"
-                    , style "font-size" "14px"
-                    , style "border" "1px solid #ccc"
-                    , style "border-radius" "4px"
-                    , style "background" "#fff"
-                    , style "min-width" "80px"
-                    , style "display" "inline-block"
-                    ]
-                    [ Html.text cycleString ]
-                )
-            , Just (navButton "▶" nextLehmer)
-            , Just
-                (Html.button
-                    [ style "padding" "4px 8px"
-                    , style "font-size" "14px"
-                    , style "border" "1px solid #ccc"
-                    , style "border-radius" "4px"
-                    , style "cursor" "pointer"
-                    , style "background" "#f5f5f5"
-                    , Attr.title "Edit"
-                    , Html.Events.onClick (config.onEnterCycleEdit permIdx)
-                    ]
-                    [ Html.text "🖉" ]
-                )
-            , Just (viewInvertButton config n currentLehmer permIdx)
-            , Just (viewRandomButton config n permIdx)
-            ]
-        )
+        display =
+            Html.span
+                [ style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , style "background" "#fff"
+                , style "min-width" "80px"
+                , style "display" "inline-block"
+                ]
+                [ Html.text cycleString ]
 
-
-viewCycleEditing : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> { input : String, validationResult : Result Permutation.BadPermutation Permutation.Permutation } -> Html msg
-viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
-    let
-        maxLehmer =
-            Permutation.factorial n - 1
-
-        prevLehmer =
-            if currentLehmer == 0 then
-                maxLehmer
-
-            else
-                currentLehmer - 1
-
-        nextLehmer =
-            if currentLehmer == maxLehmer then
-                0
-
-            else
-                currentLehmer + 1
-
-        navButton text lehmer =
+        editButton =
             Html.button
                 [ style "padding" "4px 8px"
                 , style "font-size" "14px"
@@ -394,9 +357,25 @@ viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
                 , style "border-radius" "4px"
                 , style "cursor" "pointer"
                 , style "background" "#f5f5f5"
-                , Html.Events.onClick (config.onNavigate (buildRoute lehmer))
+                , Attr.title "Edit"
+                , Html.Events.onClick (config.onEnterCycleEdit permIdx)
                 ]
-                [ Html.text text ]
+                [ Html.text "🖉" ]
+    in
+    viewInputRow label
+        nav
+        display
+        [ editButton
+        , viewInvertButton config n currentLehmer permIdx
+        , viewRandomButton config n permIdx
+        ]
+
+
+viewCycleEditing : Config msg -> String -> Int -> Int -> Int -> (Int -> Route) -> { input : String, validationResult : Result Permutation.BadPermutation Permutation.Permutation } -> Html msg
+viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
+    let
+        nav =
+            calcNavContext config currentLehmer n buildRoute
 
         isValid =
             case editData.validationResult of
@@ -419,6 +398,62 @@ viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
 
             else
                 config.onCycleInputChange permIdx editData.input
+
+        input =
+            Html.input
+                [ Attr.type_ "text"
+                , Attr.value editData.input
+                , style "width" "120px"
+                , style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" ("2px solid " ++ borderColor)
+                , style "border-radius" "4px"
+                , onInput (config.onCycleInputChange permIdx)
+                , onEnterNoValue handleEnter
+                ]
+                []
+
+        saveButton =
+            Html.button
+                [ style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , style "cursor"
+                    (if isValid then
+                        "pointer"
+
+                     else
+                        "not-allowed"
+                    )
+                , style "background"
+                    (if isValid then
+                        "#d4edda"
+
+                     else
+                        "#e9ecef"
+                    )
+                , Attr.title "Save"
+                , Attr.disabled (not isValid)
+                , Html.Events.onClick (config.onSaveCycleEdit permIdx)
+                ]
+                [ Html.text "✓" ]
+
+        cancelButton =
+            Html.button
+                [ style "padding" "4px 8px"
+                , style "font-size" "14px"
+                , style "border" "1px solid #ccc"
+                , style "border-radius" "4px"
+                , style "cursor" "pointer"
+                , style "background" "#f8d7da"
+                , Attr.title "Cancel"
+                , Html.Events.onClick (config.onExitCycleEdit permIdx)
+                ]
+                [ Html.text "✗" ]
+
+        row =
+            viewInputRow label nav input [ saveButton, cancelButton ]
     in
     Html.span
         [ style "display" "flex"
@@ -426,74 +461,7 @@ viewCycleEditing config label currentLehmer n permIdx buildRoute editData =
         , style "align-items" "flex-start"
         , style "gap" "4px"
         ]
-        [ Html.span
-            [ style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "4px"
-            ]
-            (List.filterMap identity
-                [ if String.isEmpty label then
-                    Nothing
-
-                  else
-                    Just (Html.span [ style "font-weight" "bold" ] [ Html.text label ])
-                , Just (navButton "◀" prevLehmer)
-                , Just
-                    (Html.input
-                        [ Attr.type_ "text"
-                        , Attr.value editData.input
-                        , style "width" "120px"
-                        , style "padding" "4px 8px"
-                        , style "font-size" "14px"
-                        , style "border" ("2px solid " ++ borderColor)
-                        , style "border-radius" "4px"
-                        , onInput (config.onCycleInputChange permIdx)
-                        , onEnterNoValue handleEnter
-                        ]
-                        []
-                    )
-                , Just (navButton "▶" nextLehmer)
-                , Just
-                    (Html.button
-                        [ style "padding" "4px 8px"
-                        , style "font-size" "14px"
-                        , style "border" "1px solid #ccc"
-                        , style "border-radius" "4px"
-                        , style "cursor"
-                            (if isValid then
-                                "pointer"
-
-                             else
-                                "not-allowed"
-                            )
-                        , style "background"
-                            (if isValid then
-                                "#d4edda"
-
-                             else
-                                "#e9ecef"
-                            )
-                        , Attr.title "Save"
-                        , Attr.disabled (not isValid)
-                        , Html.Events.onClick (config.onSaveCycleEdit permIdx)
-                        ]
-                        [ Html.text "✓" ]
-                    )
-                , Just
-                    (Html.button
-                        [ style "padding" "4px 8px"
-                        , style "font-size" "14px"
-                        , style "border" "1px solid #ccc"
-                        , style "border-radius" "4px"
-                        , style "cursor" "pointer"
-                        , style "background" "#f8d7da"
-                        , Attr.title "Cancel"
-                        , Html.Events.onClick (config.onExitCycleEdit permIdx)
-                        ]
-                        [ Html.text "✗" ]
-                    )
-                ]
-            )
+        [ row
         , case editData.validationResult of
             Err err ->
                 Html.span
