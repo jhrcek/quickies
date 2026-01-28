@@ -1,7 +1,6 @@
 module PermutationView exposing
     ( viewCard
     , viewCharacteristics
-    , viewCycleNotation
     , viewGraph
     )
 
@@ -27,25 +26,6 @@ viewCard content =
         , style "background" "#fff"
         ]
         content
-
-
-{-| Display the cycle notation of a permutation (read-only).
--}
-viewCycleNotation : Permutation.Permutation -> Html msg
-viewCycleNotation perm =
-    Html.div
-        [ style "margin-bottom" "12px"
-        , style "display" "flex"
-        , style "align-items" "center"
-        , style "gap" "8px"
-        , style "padding" "8px 12px"
-        , style "background" "#e8e8e8"
-        , style "border-radius" "4px"
-        , style "font-family" "monospace"
-        , style "font-size" "16px"
-        , style "min-height" "40px"
-        ]
-        [ Html.span [] [ Html.text (Permutation.toCyclesString perm) ] ]
 
 
 {-| Display computed characteristics of a permutation.
@@ -98,7 +78,8 @@ viewCharacteristics perm =
         , style "flex-direction" "column"
         , style "gap" "4px"
         ]
-        [ characteristic "Sign:" signStr
+        [ characteristic "Cycles:" (Permutation.toCyclesString perm)
+        , characteristic "Sign:" signStr
         , characteristic "Cycle type:" cycleTypeStr
         , characteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
         , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))

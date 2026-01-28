@@ -692,8 +692,7 @@ viewResultCard activeTab compositionMode editorP editorQ =
             [ style "border-top" "1px solid #ccc"
             , style "padding-top" "12px"
             ]
-            [ PermutationView.viewCycleNotation activeResult
-            , PermutationView.viewCharacteristics activeResult
+            [ PermutationView.viewCharacteristics activeResult
             , graphView
             ]
         ]
