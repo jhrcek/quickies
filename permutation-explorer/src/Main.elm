@@ -25,7 +25,7 @@ type alias Model =
     , route : Maybe Route.Route
     , page : Page
     , breadcrumbInputMode : Breadcrumb.InputMode
-    , cycleInputs : Dict Int Breadcrumb.CycleInputState
+    , cycleInputs : Dict Int Breadcrumb.CycleEditState
     }
 
 
@@ -76,6 +76,9 @@ type Msg
     | GotBreadcrumbRandomLehmer Int Int -- (permutationIndex, lehmer)
     | BreadcrumbCycleInputChange Int String -- (permutationIndex, newInput)
     | BreadcrumbInvertPermutation Int Int Int -- (n, currentLehmer, permutationIndex)
+    | BreadcrumbEnterCycleEdit Int -- permutationIndex
+    | BreadcrumbExitCycleEdit Int -- permutationIndex
+    | BreadcrumbSaveCycleEdit Int -- permutationIndex
 
 
 
@@ -303,9 +306,10 @@ update msg model =
                             Permutation.parseCycles n input
 
                         newState =
-                            { input = input
-                            , validationResult = validationResult
-                            }
+                            Breadcrumb.Editing
+                                { input = input
+                                , validationResult = validationResult
+                                }
                     in
                     ( { model | cycleInputs = Dict.insert permIdx newState model.cycleInputs }
                     , Cmd.none
@@ -329,40 +333,94 @@ update msg model =
             , Navigation.pushUrl model.key (Route.toString newRoute)
             )
 
+        BreadcrumbEnterCycleEdit permIdx ->
+            case model.route of
+                Just (Route.Group n groupPage) ->
+                    let
+                        currentLehmer =
+                            case groupPage of
+                                Route.GroupSummary ->
+                                    0
+
+                                Route.Permutation lehmer permPage ->
+                                    if permIdx == 1 then
+                                        lehmer
+
+                                    else
+                                        case permPage of
+                                            Route.PermutationSummary ->
+                                                0
+
+                                            Route.PermutationComposition lehmer2 ->
+                                                lehmer2
+
+                        perm =
+                            Permutation.fromLehmerCode n currentLehmer
+                                |> Maybe.withDefault (Permutation.identity n)
+
+                        newState =
+                            Breadcrumb.Editing
+                                { input = Permutation.toCyclesString perm
+                                , validationResult = Ok perm
+                                }
+                    in
+                    ( { model | cycleInputs = Dict.insert permIdx newState model.cycleInputs }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        BreadcrumbExitCycleEdit permIdx ->
+            ( { model | cycleInputs = Dict.insert permIdx Breadcrumb.NotEditing model.cycleInputs }
+            , Cmd.none
+            )
+
+        BreadcrumbSaveCycleEdit permIdx ->
+            case Dict.get permIdx model.cycleInputs of
+                Just (Breadcrumb.Editing editData) ->
+                    case editData.validationResult of
+                        Ok perm ->
+                            let
+                                newLehmer =
+                                    Permutation.toLehmerCode perm
+
+                                newRoute =
+                                    buildRouteWithLehmer model.route permIdx newLehmer
+                            in
+                            ( { model | cycleInputs = Dict.insert permIdx Breadcrumb.NotEditing model.cycleInputs }
+                            , Navigation.pushUrl model.key (Route.toString newRoute)
+                            )
+
+                        Err _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
 
 {-| Initialize cycle inputs from the current route.
 -}
-initCycleInputsFromRoute : Maybe Route.Route -> Dict Int Breadcrumb.CycleInputState
+initCycleInputsFromRoute : Maybe Route.Route -> Dict Int Breadcrumb.CycleEditState
 initCycleInputsFromRoute maybeRoute =
     case maybeRoute of
         Nothing ->
             Dict.empty
 
-        Just (Route.Group n groupPage) ->
+        Just (Route.Group _ groupPage) ->
             case groupPage of
                 Route.GroupSummary ->
                     Dict.empty
 
-                Route.Permutation lehmer permPage ->
-                    let
-                        makeCycleInput lehmerCode =
-                            let
-                                perm =
-                                    Permutation.fromLehmerCode n lehmerCode
-                                        |> Maybe.withDefault (Permutation.identity n)
-                            in
-                            { input = Permutation.toCyclesString perm
-                            , validationResult = Ok perm
-                            }
-                    in
+                Route.Permutation _ permPage ->
                     case permPage of
                         Route.PermutationSummary ->
-                            Dict.singleton 1 (makeCycleInput lehmer)
+                            Dict.singleton 1 Breadcrumb.NotEditing
 
-                        Route.PermutationComposition lehmer2 ->
+                        Route.PermutationComposition _ ->
                             Dict.fromList
-                                [ ( 1, makeCycleInput lehmer )
-                                , ( 2, makeCycleInput lehmer2 )
+                                [ ( 1, Breadcrumb.NotEditing )
+                                , ( 2, Breadcrumb.NotEditing )
                                 ]
 
 
@@ -429,6 +487,9 @@ viewBody model =
                     , onInvertPermutation = BreadcrumbInvertPermutation
                     , cycleInputs = model.cycleInputs
                     , onCycleInputChange = BreadcrumbCycleInputChange
+                    , onEnterCycleEdit = BreadcrumbEnterCycleEdit
+                    , onExitCycleEdit = BreadcrumbExitCycleEdit
+                    , onSaveCycleEdit = BreadcrumbSaveCycleEdit
                     }
                     route
 
