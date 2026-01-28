@@ -6,6 +6,7 @@ module Permutation exposing
     , centralizerSize
     , compose
     , conjugacyClassSize
+    , conjugacyClassSizeFromPartition
     , conjugateBy
     , cycleType
     , factorial
@@ -20,6 +21,7 @@ module Permutation exposing
     , isIdentity
     , isInvolution
     , isTransposition
+    , listConjugacyClasses
     , numCycles
     , numFixedPoints
     , order
@@ -755,11 +757,21 @@ Formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ is the count of cycles of length m�
 -}
 centralizerSize : Permutation -> Int
 centralizerSize perm =
+    centralizerSizeFromPartition (cycleType perm)
+
+
+{-| Compute the size of the centralizer from a partition (cycle type).
+
+Formula: ∏ (mₖ! · k^mₖ) where mₖ is the count of k in the partition.
+
+-}
+centralizerSizeFromPartition : List Int -> Int
+centralizerSizeFromPartition partition =
     let
         -- Group cycle lengths and count occurrences
         -- e.g., [3, 2, 2, 1, 1, 1] -> [(3, 1), (2, 2), (1, 3)]
         groupedCycles =
-            cycleType perm
+            partition
                 |> List.foldl
                     (\len acc ->
                         case acc of
@@ -791,6 +803,67 @@ Formula: n! / centralizerSize
 conjugacyClassSize : Permutation -> Int
 conjugacyClassSize perm =
     factorial (getSize perm) // centralizerSize perm
+
+
+{-| Compute the size of a conjugacy class from its partition (cycle type).
+
+Formula: n! / centralizerSize where n is the sum of the partition.
+
+-}
+conjugacyClassSizeFromPartition : Int -> List Int -> Int
+conjugacyClassSizeFromPartition n partition =
+    factorial n // centralizerSizeFromPartition partition
+
+
+{-| List all conjugacy classes of Sₙ as partitions.
+
+Each conjugacy class corresponds to a partition of n (the cycle type).
+Returns partitions in reverse lexicographic order: [5], [4,1], [3,2], [3,1,1], etc.
+Each partition is in descending order.
+
+-}
+listConjugacyClasses : Int -> List (List Int)
+listConjugacyClasses n =
+    if n <= 0 then
+        [ [] ]
+
+    else
+        -- Use tail-recursive helper with work stack
+        -- Each work item is (remaining sum, max part allowed, prefix built so far)
+        partitionsLoop [ ( n, n, [] ) ] []
+
+
+{-| Tail-recursive helper using a work stack.
+Work items are (remaining, maxPart, prefix).
+-}
+partitionsLoop : List ( Int, Int, List Int ) -> List (List Int) -> List (List Int)
+partitionsLoop work acc =
+    case work of
+        [] ->
+            List.reverse acc
+
+        ( remaining, maxPart, prefix ) :: restWork ->
+            if remaining == 0 then
+                -- Found a complete partition
+                partitionsLoop restWork (List.reverse prefix :: acc)
+
+            else if maxPart <= 0 then
+                -- No valid partition possible from here
+                partitionsLoop restWork acc
+
+            else
+                -- Add work items: first try using maxPart, then try without it
+                -- Order matters for reverse lexicographic: withMaxPart first
+                let
+                    -- Work item for partitions starting with maxPart
+                    withMaxPart =
+                        ( remaining - maxPart, min maxPart (remaining - maxPart), maxPart :: prefix )
+
+                    -- Work item for partitions with all parts < maxPart
+                    withoutMaxPart =
+                        ( remaining, maxPart - 1, prefix )
+                in
+                partitionsLoop (withMaxPart :: withoutMaxPart :: restWork) acc
 
 
 {-| Factorial of a non-negative integer.

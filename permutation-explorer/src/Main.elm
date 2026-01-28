@@ -481,6 +481,49 @@ viewGroupSummary model =
             [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutation 0 (Route.PermutationComposition 0)))) ]
                 [ Html.text "Go to Composition Editor" ]
             ]
+        , viewConjugacyClassesTable n
+        ]
+
+
+viewConjugacyClassesTable : Int -> Html Msg
+viewConjugacyClassesTable n =
+    let
+        classes =
+            Permutation.listConjugacyClasses n
+
+        headerRow =
+            Html.div
+                [ style "display" "flex"
+                , style "font-weight" "bold"
+                , style "border-bottom" "2px solid #333"
+                , style "padding" "8px 0"
+                ]
+                [ Html.div [ style "flex" "1" ] [ Html.text "Cycle Type" ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Class Size" ]
+                ]
+
+        dataRow partition =
+            Html.div
+                [ style "display" "flex"
+                , style "border-bottom" "1px solid #ddd"
+                , style "padding" "8px 0"
+                ]
+                [ Html.div [ style "flex" "1" ] [ Html.text (PermutationView.partitionToString partition) ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ]
+                    [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromPartition n partition)) ]
+                ]
+    in
+    Html.div
+        [ style "margin-top" "20px"
+        , style "max-width" "400px"
+        ]
+        [ Html.h3 [] [ Html.text "Conjugacy Classes" ]
+        , Html.div
+            [ style "border" "1px solid #ddd"
+            , style "border-radius" "4px"
+            , style "padding" "12px"
+            ]
+            (headerRow :: List.map dataRow classes)
         ]
 
 

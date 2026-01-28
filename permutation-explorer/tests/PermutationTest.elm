@@ -376,6 +376,105 @@ suite =
                     (code >= 0 && code < fact)
                         |> Expect.equal True
             ]
+        , describe "listConjugacyClasses"
+            [ test "n=1 has 1 partition: [[1]]" <|
+                \_ ->
+                    P.listConjugacyClasses 1
+                        |> Expect.equal [ [ 1 ] ]
+            , test "n=2 has 2 partitions" <|
+                \_ ->
+                    P.listConjugacyClasses 2
+                        |> Expect.equal [ [ 2 ], [ 1, 1 ] ]
+            , test "n=3 has 3 partitions" <|
+                \_ ->
+                    P.listConjugacyClasses 3
+                        |> Expect.equal [ [ 3 ], [ 2, 1 ], [ 1, 1, 1 ] ]
+            , test "n=4 has 5 partitions" <|
+                \_ ->
+                    P.listConjugacyClasses 4
+                        |> Expect.equal [ [ 4 ], [ 3, 1 ], [ 2, 2 ], [ 2, 1, 1 ], [ 1, 1, 1, 1 ] ]
+            , test "n=5 has 7 partitions" <|
+                \_ ->
+                    P.listConjugacyClasses 5
+                        |> Expect.equal [ [ 5 ], [ 4, 1 ], [ 3, 2 ], [ 3, 1, 1 ], [ 2, 2, 1 ], [ 2, 1, 1, 1 ], [ 1, 1, 1, 1, 1 ] ]
+            , test "n=0 returns [[]]" <|
+                \_ ->
+                    P.listConjugacyClasses 0
+                        |> Expect.equal [ [] ]
+            , fuzz (Fuzz.intRange 1 7) "each partition sums to n" <|
+                \n ->
+                    P.listConjugacyClasses n
+                        |> List.all (\partition -> List.sum partition == n)
+                        |> Expect.equal True
+            , fuzz (Fuzz.intRange 1 7) "each partition is in descending order" <|
+                \n ->
+                    P.listConjugacyClasses n
+                        |> List.all (\partition -> partition == List.sortBy negate partition)
+                        |> Expect.equal True
+            ]
+        , describe "conjugacyClassSizeFromPartition"
+            [ test "identity class in S3 has size 1" <|
+                \_ ->
+                    P.conjugacyClassSizeFromPartition 3 [ 1, 1, 1 ]
+                        |> Expect.equal 1
+            , test "transpositions in S3 have class size 3" <|
+                \_ ->
+                    P.conjugacyClassSizeFromPartition 3 [ 2, 1 ]
+                        |> Expect.equal 3
+            , test "3-cycles in S3 have class size 2" <|
+                \_ ->
+                    P.conjugacyClassSizeFromPartition 3 [ 3 ]
+                        |> Expect.equal 2
+            , test "identity class in S5 has size 1" <|
+                \_ ->
+                    P.conjugacyClassSizeFromPartition 5 [ 1, 1, 1, 1, 1 ]
+                        |> Expect.equal 1
+            , test "5-cycles in S5 have class size 24" <|
+                \_ ->
+                    P.conjugacyClassSizeFromPartition 5 [ 5 ]
+                        |> Expect.equal 24
+            , fuzz (Fuzz.intRange 1 6) "class sizes sum to n!" <|
+                \n ->
+                    let
+                        classes =
+                            P.listConjugacyClasses n
+
+                        totalSize =
+                            List.sum (List.map (P.conjugacyClassSizeFromPartition n) classes)
+                    in
+                    totalSize
+                        |> Expect.equal (P.factorial n)
+            , test "matches conjugacyClassSize for a 3-cycle" <|
+                \_ ->
+                    case P.fromCycles 5 [ [ 0, 1, 2 ] ] of
+                        Ok perm ->
+                            let
+                                fromPerm =
+                                    P.conjugacyClassSize perm
+
+                                fromPartition =
+                                    P.conjugacyClassSizeFromPartition 5 [ 3, 1, 1 ]
+                            in
+                            Expect.equal fromPerm fromPartition
+
+                        Err _ ->
+                            Expect.fail "Failed to create permutation"
+            , test "matches conjugacyClassSize for (0 1)(2 3)" <|
+                \_ ->
+                    case P.fromCycles 5 [ [ 0, 1 ], [ 2, 3 ] ] of
+                        Ok perm ->
+                            let
+                                fromPerm =
+                                    P.conjugacyClassSize perm
+
+                                fromPartition =
+                                    P.conjugacyClassSizeFromPartition 5 [ 2, 2, 1 ]
+                            in
+                            Expect.equal fromPerm fromPartition
+
+                        Err _ ->
+                            Expect.fail "Failed to create permutation"
+            ]
         ]
 
 
