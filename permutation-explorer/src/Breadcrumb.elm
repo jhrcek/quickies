@@ -191,8 +191,6 @@ baseButtonStyles =
     , style "border" "1px solid #ccc"
     , style "border-radius" "4px"
     , style "cursor" "pointer"
-    , style "background" "#f5f5f5"
-    , style "min-width" "28px"
     , style "height" "28px"
     , style "box-sizing" "border-box"
     ]

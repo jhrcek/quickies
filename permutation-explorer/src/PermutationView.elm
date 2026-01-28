@@ -19,8 +19,7 @@ import Permutation
 viewCard : List (Html msg) -> Html msg
 viewCard content =
     Html.div
-        [ style "flex" "1"
-        , style "min-width" "250px"
+        [ style "width" "350px"
         , style "border" "1px solid #ddd"
         , style "border-radius" "8px"
         , style "padding" "16px"
