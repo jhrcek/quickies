@@ -32,6 +32,7 @@ module Permutation exposing
     , prevLehmer
     , resize
     , sign
+    , toBipartiteGraph
     , toCycleGraph
     , toCyclesString
     , toLehmerCode
@@ -916,22 +917,14 @@ factorialHelp n acc =
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).
 -}
-toCycleGraph : Maybe String -> Permutation -> GV.Graph
-toCycleGraph mEdgeColor perm =
+toCycleGraph : Permutation -> GV.Graph
+toCycleGraph perm =
     let
         n =
             getSize perm
 
         cycles =
             toCycles perm
-
-        edgeAttrs =
-            case mEdgeColor of
-                Nothing ->
-                    []
-
-                Just colorStr ->
-                    [ ( "color", GV.str colorStr ) ]
 
         -- Convert cycles to edges
         cyclesToEdges : List (List Int) -> List GV.Edge
@@ -946,7 +939,7 @@ toCycleGraph mEdgeColor perm =
                             -- Fixed point: show as self-loop
                             [ { tail = String.fromInt single
                               , head = String.fromInt single
-                              , attributes = edgeAttrs
+                              , attributes = []
                               }
                             ]
 
@@ -959,7 +952,7 @@ toCycleGraph mEdgeColor perm =
                                 (\from to ->
                                     { tail = String.fromInt from
                                     , head = String.fromInt to
-                                    , attributes = edgeAttrs
+                                    , attributes = []
                                     }
                                 )
                                 (List.take (List.length cycle) cycleWithFirst)
@@ -981,4 +974,96 @@ toCycleGraph mEdgeColor perm =
             ]
         , edges = edges
         , nodes = List.map (\i -> GV.simpleNode (String.fromInt i)) (List.range 0 (n - 1))
+        , subgraphs = []
+    }
+
+
+{-| Convert a permutation to a bipartite graph with left nodes (L0..Ln-1) and right nodes (R0..Rn-1).
+Arrows go from Li to R(perm(i)).
+-}
+toBipartiteGraph : Permutation -> GV.Graph
+toBipartiteGraph (Permutation arr) =
+    let
+        -- TODO also support different node orders (based on cycle structure)
+        n =
+            Array.length arr
+
+        indices =
+            List.range 0 (n - 1)
+
+        invisibleAttrs =
+            [ ( "style", GV.str "invis" ) ]
+
+        -- Row subgraphs with rank=same to align Li and Ri horizontally
+        rowSubgraphs =
+            List.map
+                (\i ->
+                    { name = Nothing
+                    , graphAttributes = [ ( "rank", GV.str "same" ) ]
+                    , nodes =
+                        [ { name = "L" ++ String.fromInt i
+                          , attributes = [ ( "label", GV.str (String.fromInt i) ) ]
+                          }
+                        , { name = "R" ++ String.fromInt i
+                          , attributes = [ ( "label", GV.str (String.fromInt i) ) ]
+                          }
+                        ]
+                    }
+                )
+                indices
+
+        -- Invisible vertical edges for row ordering (L0->L1->L2...)
+        verticalOrderEdges =
+            List.map
+                (\i ->
+                    { tail = "L" ++ String.fromInt i
+                    , head = "L" ++ String.fromInt (i + 1)
+                    , attributes = invisibleAttrs
+                    }
+                )
+                (List.range 0 (n - 2))
+
+        -- Invisible horizontal edges to keep L left of R (Li->Ri)
+        horizontalOrderEdges =
+            List.map
+                (\i ->
+                    { tail = "L" ++ String.fromInt i
+                    , head = "R" ++ String.fromInt i
+                    , attributes = invisibleAttrs
+                    }
+                )
+                indices
+
+        -- Mapping edges from Li to R(perm(i)) - the actual permutation
+        mappingEdges =
+            List.map
+                (\i ->
+                    let
+                        target =
+                            Array.get i arr |> Maybe.withDefault i
+                    in
+                    { tail = "L" ++ String.fromInt i
+                    , head = "R" ++ String.fromInt target
+                    , attributes = [ ( "constraint", GV.bool False ) ]
+                    }
+                )
+                indices
+
+        empty =
+            GV.emptyGraph
+    in
+    { empty
+        | name = Just "Permutation"
+        , graphAttributes =
+            [ ( "nodesep", GV.num 1.0 )
+            , ( "ranksep", GV.num 0.2 )
+            , ( "splines", GV.str "line" )
+            ]
+        , nodeAttributes =
+            [ ( "shape", GV.str "circle" )
+            , ( "fontname", GV.str "sans-serif" )
+            ]
+        , nodes = []
+        , edges = verticalOrderEdges ++ horizontalOrderEdges ++ mappingEdges
+        , subgraphs = rowSubgraphs
     }

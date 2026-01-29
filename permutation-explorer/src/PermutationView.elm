@@ -1,5 +1,6 @@
 module PermutationView exposing
-    ( cycleTypeToString
+    ( GraphMode(..)
+    , cycleTypeToString
     , viewCard
     , viewCharacteristics
     , viewGraph
@@ -12,7 +13,15 @@ module PermutationView exposing
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes exposing (style)
+import Html.Events exposing (onClick)
 import Permutation
+
+
+{-| Graph visualization mode.
+-}
+type GraphMode
+    = CycleGraphMode
+    | BipartiteGraphMode
 
 
 {-| Wrap content in a standard card/panel container.
@@ -103,23 +112,65 @@ viewCharacteristics perm =
 
 {-| Display the graph visualization of a permutation.
 -}
-viewGraph : Maybe String -> Permutation.Permutation -> Html msg
-viewGraph edgeColor perm =
+viewGraph : { mode : GraphMode, onToggle : msg } -> Permutation.Permutation -> Html msg
+viewGraph config perm =
+    let
+        ( graph, engine ) =
+            case config.mode of
+                CycleGraphMode ->
+                    ( Permutation.toCycleGraph perm, GV.Circo )
+
+                BipartiteGraphMode ->
+                    ( Permutation.toBipartiteGraph perm, GV.Dot )
+
+        toggleLabel =
+            case config.mode of
+                CycleGraphMode ->
+                    "Bipartite"
+
+                BipartiteGraphMode ->
+                    "Cycle"
+    in
     Html.div
         [ style "background" "#f5f5f5"
         , style "padding" "12px"
         , style "border-radius" "8px"
         , style "text-align" "center"
+        , style "position" "relative"
         ]
-        [ GV.graphviz GV.Circo (Permutation.toCycleGraph edgeColor perm) ]
+        [ Html.button
+            [ onClick config.onToggle
+            , style "position" "absolute"
+            , style "top" "8px"
+            , style "right" "8px"
+            , style "padding" "4px 8px"
+            , style "border" "1px solid #ccc"
+            , style "border-radius" "4px"
+            , style "background" "#fff"
+            , style "cursor" "pointer"
+            , style "font-size" "12px"
+            ]
+            [ Html.text toggleLabel ]
+        , GV.graphviz engine graph
+        ]
 
 
 {-| Display a complete permutation card with label, characteristics, and graph.
 -}
-viewPermutation : String -> Maybe String -> Permutation.Permutation -> Html msg
-viewPermutation label edgeColor perm =
+viewPermutation :
+    { label : String
+    , graphMode : GraphMode
+    , onToggleGraph : msg
+    }
+    -> Permutation.Permutation
+    -> Html msg
+viewPermutation config perm =
     viewCard
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text label ]
+        [ Html.h2 [ style "margin-top" "0" ] [ Html.text config.label ]
         , viewCharacteristics perm
-        , viewGraph edgeColor perm
+        , viewGraph
+            { mode = config.graphMode
+            , onToggle = config.onToggleGraph
+            }
+            perm
         ]

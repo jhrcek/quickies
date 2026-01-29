@@ -23,6 +23,7 @@ type alias Model =
     , route : Route.Route
     , page : Page
     , inputMode : PermutationInput.InputMode
+    , graphMode : PermutationView.GraphMode
     }
 
 
@@ -68,6 +69,7 @@ type Msg
     | ToggleInputMode
     | SetResultTab ResultTab
     | SetPermutationListPage Int
+    | ToggleGraphMode
       -- Navigation
     | NavigateLehmer PermId Direction
     | NavigateInvert PermId
@@ -106,6 +108,16 @@ setRouteLehmer permId =
             Route.setLehmerQ
 
 
+toggleGraphMode : PermutationView.GraphMode -> PermutationView.GraphMode
+toggleGraphMode mode =
+    case mode of
+        PermutationView.CycleGraphMode ->
+            PermutationView.BipartiteGraphMode
+
+        PermutationView.BipartiteGraphMode ->
+            PermutationView.CycleGraphMode
+
+
 
 -- INIT
 
@@ -125,6 +137,7 @@ init _ url key =
       , route = route
       , page = page
       , inputMode = PermutationInput.LehmerMode
+      , graphMode = PermutationView.CycleGraphMode
       }
     , Cmd.none
     )
@@ -230,6 +243,9 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
+
+        ToggleGraphMode ->
+            ( { model | graphMode = toggleGraphMode model.graphMode }, Cmd.none )
 
         PermutationInputMsg permId inputMsg ->
             case ( permId, model.page ) of
@@ -383,10 +399,10 @@ viewBody model =
                 viewPermutationList state
 
             PermutationSummaryPage summary ->
-                viewPermutationSummary summary
+                viewPermutationSummary model.graphMode summary
 
             CompositionPage comp ->
-                viewComposition comp
+                viewComposition model.graphMode comp
         ]
 
 
@@ -650,10 +666,16 @@ viewConjugacyClassesTable n =
         ]
 
 
-viewPermutationSummary : PermutationSummaryModel -> Html Msg
-viewPermutationSummary summary =
+viewPermutationSummary : PermutationView.GraphMode -> PermutationSummaryModel -> Html Msg
+viewPermutationSummary graphMode summary =
     Html.div []
-        [ PermutationView.viewPermutation "" Nothing summary.permutation ]
+        [ PermutationView.viewPermutation
+            { label = ""
+            , graphMode = graphMode
+            , onToggleGraph = ToggleGraphMode
+            }
+            summary.permutation
+        ]
 
 
 viewPermInputHelper : PermId -> PermutationInput.InputMode -> Permutation.Permutation -> PermutationInput.Model -> Html Msg
@@ -685,8 +707,8 @@ viewCompositionInputQ inputMode comp =
     viewPermInputHelper Q inputMode comp.permQ comp.inputQ
 
 
-viewComposition : CompositionModel -> Html Msg
-viewComposition comp =
+viewComposition : PermutationView.GraphMode -> CompositionModel -> Html Msg
+viewComposition graphMode comp =
     Html.div []
         [ Html.div
             [ style "display" "flex"
@@ -694,15 +716,25 @@ viewComposition comp =
             , style "flex-wrap" "wrap"
             , style "align-items" "flex-start"
             ]
-            [ PermutationView.viewPermutation "P" Nothing comp.permP
-            , PermutationView.viewPermutation "Q" Nothing comp.permQ
-            , viewResultCard comp.resultTab comp.permP comp.permQ
+            [ PermutationView.viewPermutation
+                { label = "P"
+                , graphMode = graphMode
+                , onToggleGraph = ToggleGraphMode
+                }
+                comp.permP
+            , PermutationView.viewPermutation
+                { label = "Q"
+                , graphMode = graphMode
+                , onToggleGraph = ToggleGraphMode
+                }
+                comp.permQ
+            , viewResultCard graphMode comp
             ]
         ]
 
 
-viewResultCard : ResultTab -> Permutation.Permutation -> Permutation.Permutation -> Html Msg
-viewResultCard activeTab permP permQ =
+viewResultCard : PermutationView.GraphMode -> CompositionModel -> Html Msg
+viewResultCard graphMode comp =
     let
         labelP =
             "P"
@@ -719,18 +751,18 @@ viewResultCard activeTab permP permQ =
             ]
 
         activeResult =
-            case activeTab of
+            case comp.resultTab of
                 CompositionPQTab ->
-                    Permutation.compose permP permQ
+                    Permutation.compose comp.permP comp.permQ
 
                 CompositionQPTab ->
-                    Permutation.compose permQ permP
+                    Permutation.compose comp.permQ comp.permP
 
                 ConjugatePByQTab ->
-                    Permutation.conjugateBy permQ permP
+                    Permutation.conjugateBy comp.permQ comp.permP
 
                 ConjugateQByPTab ->
-                    Permutation.conjugateBy permP permQ
+                    Permutation.conjugateBy comp.permP comp.permQ
 
         tabButton ( tab, label ) =
             Html.button
@@ -738,7 +770,7 @@ viewResultCard activeTab permP permQ =
                 , style "padding" "8px 12px"
                 , style "border" "1px solid #ccc"
                 , style "border-bottom"
-                    (if tab == activeTab then
+                    (if tab == comp.resultTab then
                         "1px solid #fff"
 
                      else
@@ -746,7 +778,7 @@ viewResultCard activeTab permP permQ =
                     )
                 , style "border-radius" "4px 4px 0 0"
                 , style "background"
-                    (if tab == activeTab then
+                    (if tab == comp.resultTab then
                         "#fff"
 
                      else
@@ -757,7 +789,7 @@ viewResultCard activeTab permP permQ =
                 , style "margin-right" "-1px"
                 , style "position" "relative"
                 , style "z-index"
-                    (if tab == activeTab then
+                    (if tab == comp.resultTab then
                         "1"
 
                      else
@@ -778,7 +810,11 @@ viewResultCard activeTab permP permQ =
             , style "padding-top" "12px"
             ]
             [ PermutationView.viewCharacteristics activeResult
-            , PermutationView.viewGraph Nothing activeResult
+            , PermutationView.viewGraph
+                { mode = graphMode
+                , onToggle = ToggleGraphMode
+                }
+                activeResult
             ]
         ]
 

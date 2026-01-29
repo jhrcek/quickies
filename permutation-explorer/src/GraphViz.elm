@@ -2,7 +2,7 @@ module GraphViz exposing
     ( Graph, Node, Edge, Attribute, AttributeValue, Engine(..)
     , emptyGraph, str, num, bool
     , graphviz
-    , simpleNode
+    , Subgraph, simpleNode
     )
 
 {-| Module for declarative Graphviz rendering using viz-js.
@@ -34,8 +34,8 @@ type AttributeValue
 {-| Graphviz layout engine.
 -}
 type Engine
-    = -- TODO maybe add other engines (Dot, Neato etc.) if needed later
-      Circo
+    = Circo
+    | Dot
 
 
 {-| A key-value pair representing a Graphviz attribute.
@@ -62,6 +62,15 @@ type alias Edge =
     }
 
 
+{-| A subgraph for grouping nodes with shared attributes (e.g., rank=same).
+-}
+type alias Subgraph =
+    { name : Maybe String
+    , graphAttributes : List Attribute
+    , nodes : List Node
+    }
+
+
 {-| A complete Graphviz graph.
 -}
 type alias Graph =
@@ -72,6 +81,7 @@ type alias Graph =
     , edgeAttributes : List Attribute
     , nodes : List Node
     , edges : List Edge
+    , subgraphs : List Subgraph
     }
 
 
@@ -125,6 +135,17 @@ encodeEdge e =
         )
 
 
+encodeSubgraph : Subgraph -> E.Value
+encodeSubgraph s =
+    E.object
+        (List.filterMap identity
+            [ Maybe.map (\n -> ( "name", E.string n )) s.name
+            , nonEmptyList "graphAttributes" encodeAttributes s.graphAttributes
+            , nonEmptyListOf "nodes" encodeNode s.nodes
+            ]
+        )
+
+
 encodeGraph : Graph -> E.Value
 encodeGraph g =
     E.object
@@ -140,6 +161,7 @@ encodeGraph g =
             , nonEmptyList "edgeAttributes" encodeAttributes g.edgeAttributes
             , nonEmptyListOf "nodes" encodeNode g.nodes
             , nonEmptyListOf "edges" encodeEdge g.edges
+            , nonEmptyListOf "subgraphs" encodeSubgraph g.subgraphs
             ]
         )
 
@@ -149,6 +171,9 @@ engineToString engine =
     case engine of
         Circo ->
             "circo"
+
+        Dot ->
+            "dot"
 
 
 nonEmptyList : String -> (List a -> E.Value) -> List a -> Maybe ( String, E.Value )
@@ -184,6 +209,7 @@ emptyGraph =
     , edgeAttributes = []
     , nodes = []
     , edges = []
+    , subgraphs = []
     }
 
 
