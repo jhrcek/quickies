@@ -29,11 +29,11 @@ viewCard content =
         content
 
 
-{-| Format a cycle type (partition) as a string like "[3, 2, 1]".
+{-| Format a cycle type (partition) as a string like "[3,2,1]".
 -}
 cycleTypeToString : List Int -> String
 cycleTypeToString parts =
-    "[" ++ String.join ", " (List.map String.fromInt parts) ++ "]"
+    "[" ++ String.join "," (List.map String.fromInt parts) ++ "]"
 
 
 {-| Display computed characteristics of a permutation.

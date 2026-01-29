@@ -34,14 +34,12 @@ module Permutation exposing
     , sign
     , toCycleGraph
     , toCyclesString
-    , toExpandedCompositionGraph
     , toLehmerCode
     )
 
 import Array exposing (Array)
 import GraphViz as GV
 import Parser exposing ((|.), (|=), Parser)
-import Set
 
 
 {-| A permutation in S\_n, represented internally as an Array.
@@ -56,13 +54,6 @@ type Permutation
 getSize : Permutation -> Int
 getSize (Permutation arr) =
     Array.length arr
-
-
-{-| Get all mappings of a permutation as a list of (from, to) pairs.
--}
-toMappings : Permutation -> List ( Int, Int )
-toMappings (Permutation arr) =
-    Array.toIndexedList arr
 
 
 {-| Errors that can occur when validating permutation input.
@@ -990,98 +981,4 @@ toCycleGraph mEdgeColor perm =
             ]
         , edges = edges
         , nodes = List.map (\i -> GV.simpleNode (String.fromInt i)) (List.range 0 (n - 1))
-    }
-
-
-{-| Create a graph showing composition in progress.
-Nodes are shown in two columns: left column for domain, right column for intermediate.
-P edges (blue) go from left to right: L\_i -> R\_P(i)
-Q edges (red) go from right back to left: R\_j -> L\_Q(j)
-Composed edges (black solid) show the result: L\_i -> L\_{Q(P(i))}
-Intermediate nodes are hidden when they would be fixed points.
-This makes the graph homeomorphic to the composed permutation's cycle structure.
--}
-toExpandedCompositionGraph : Permutation -> Permutation -> GV.Graph
-toExpandedCompositionGraph permP permQ =
-    let
-        n =
-            getSize permP
-
-        leftName i =
-            "L" ++ String.fromInt i
-
-        rightName i =
-            "R" ++ String.fromInt i
-
-        -- An intermediate node R_b is needed only when there exists a chain a → b → c
-        -- where a ≠ b (non-trivial P edge into b) AND b ≠ c (non-trivial Q edge out of b)
-        nonTrivialP =
-            toMappings permP |> List.filter (\( from, to ) -> from /= to)
-
-        nonTrivialQ =
-            toMappings permQ |> List.filter (\( from, to ) -> from /= to)
-
-        neededIntermediates =
-            Set.intersect
-                (Set.fromList (List.map Tuple.second nonTrivialP))
-                (Set.fromList (List.map Tuple.first nonTrivialQ))
-
-        leftNodes =
-            List.map
-                (\i -> { name = leftName i, attributes = [ ( "label", GV.str (String.fromInt i) ) ] })
-                (List.range 0 (n - 1))
-
-        rightNodes =
-            Set.toList neededIntermediates
-                |> List.map
-                    (\i ->
-                        { name = rightName i
-                        , attributes = [ ( "label", GV.str (String.fromInt i) ), ( "style", GV.str "dotted" ) ]
-                        }
-                    )
-
-        pEdges =
-            nonTrivialP
-                |> List.filterMap
-                    (\( from, to ) ->
-                        if Set.member to neededIntermediates then
-                            Just { tail = leftName from, head = rightName to, attributes = [ ( "color", GV.str "blue" ) ] }
-
-                        else
-                            Nothing
-                    )
-
-        qEdges =
-            nonTrivialQ
-                |> List.filterMap
-                    (\( from, to ) ->
-                        if Set.member from neededIntermediates then
-                            Just { tail = rightName from, head = leftName to, attributes = [ ( "color", GV.str "red" ) ] }
-
-                        else
-                            Nothing
-                    )
-
-        composedEdges =
-            toMappings (compose permP permQ)
-                |> List.map
-                    (\( from, to ) ->
-                        { tail = leftName from
-                        , head = leftName to
-                        , attributes = []
-                        }
-                    )
-
-        empty =
-            GV.emptyGraph
-    in
-    { empty
-        | name = Just "Expanded Composition"
-        , graphAttributes = []
-        , nodeAttributes =
-            [ ( "shape", GV.str "circle" )
-            , ( "fontname", GV.str "sans-serif" )
-            ]
-        , nodes = leftNodes ++ rightNodes
-        , edges = pEdges ++ qEdges ++ composedEdges
     }

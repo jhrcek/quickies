@@ -3,7 +3,6 @@ module Main exposing (main)
 import Breadcrumb
 import Browser
 import Browser.Navigation as Navigation
-import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
 import Html.Events exposing (onClick)
@@ -47,14 +46,8 @@ type alias CompositionModel =
     , permQ : Permutation.Permutation
     , inputP : PermutationInput.Model
     , inputQ : PermutationInput.Model
-    , compositionViewMode : CompositionViewMode
     , resultTab : ResultTab
     }
-
-
-type CompositionViewMode
-    = CollapsedView
-    | ExpandedView
 
 
 type ResultTab
@@ -73,7 +66,6 @@ type Msg
     | UrlChanged Url
     | BreadcrumbNavigate Route.Route
     | ToggleInputMode
-    | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
     | SetPermutationListPage Int
       -- Navigation
@@ -184,7 +176,6 @@ initComposition n lehmer1 lehmer2 =
             |> Maybe.withDefault (Permutation.identity n)
     , inputP = PermutationInput.init
     , inputQ = PermutationInput.init
-    , compositionViewMode = CollapsedView
     , resultTab = CompositionPQTab
     }
 
@@ -219,16 +210,6 @@ update msg model =
 
         ToggleInputMode ->
             ( { model | inputMode = PermutationInput.toggleInputMode model.inputMode }, Cmd.none )
-
-        SetCompositionViewMode mode ->
-            case model.page of
-                CompositionPage comp ->
-                    ( { model | page = CompositionPage { comp | compositionViewMode = mode } }
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
 
         SetResultTab tab ->
             case model.page of
@@ -706,45 +687,22 @@ viewCompositionInputQ inputMode comp =
 
 viewComposition : CompositionModel -> Html Msg
 viewComposition comp =
-    let
-        ( edgeColorP, edgeColorQ ) =
-            case comp.compositionViewMode of
-                CollapsedView ->
-                    ( Nothing, Nothing )
-
-                ExpandedView ->
-                    ( Just "blue", Just "red" )
-    in
     Html.div []
         [ Html.div
-            [ style "margin-bottom" "20px"
-            , style "display" "flex"
-            , style "align-items" "center"
-            , style "gap" "10px"
-            , style "border" "1px solid #ddd"
-            , style "border-radius" "4px"
-            , style "padding" "8px 12px"
-            , style "background" "#f9f9f9"
-            , style "width" "fit-content"
-            ]
-            [ Html.label [ style "font-weight" "bold" ] [ Html.text "Composition view:" ]
-            , viewModeRadio comp.compositionViewMode
-            ]
-        , Html.div
             [ style "display" "flex"
             , style "gap" "20px"
             , style "flex-wrap" "wrap"
             , style "align-items" "flex-start"
             ]
-            [ PermutationView.viewPermutation "P" edgeColorP comp.permP
-            , PermutationView.viewPermutation "Q" edgeColorQ comp.permQ
-            , viewResultCard comp.resultTab comp.compositionViewMode comp.permP comp.permQ
+            [ PermutationView.viewPermutation "P" Nothing comp.permP
+            , PermutationView.viewPermutation "Q" Nothing comp.permQ
+            , viewResultCard comp.resultTab comp.permP comp.permQ
             ]
         ]
 
 
-viewResultCard : ResultTab -> CompositionViewMode -> Permutation.Permutation -> Permutation.Permutation -> Html Msg
-viewResultCard activeTab compositionMode permP permQ =
+viewResultCard : ResultTab -> Permutation.Permutation -> Permutation.Permutation -> Html Msg
+viewResultCard activeTab permP permQ =
     let
         labelP =
             "P"
@@ -773,29 +731,6 @@ viewResultCard activeTab compositionMode permP permQ =
 
                 ConjugateQByPTab ->
                     Permutation.conjugateBy permP permQ
-
-        graphView =
-            case ( activeTab, compositionMode ) of
-                ( CompositionPQTab, ExpandedView ) ->
-                    Html.div
-                        [ style "background" "#f5f5f5"
-                        , style "padding" "12px"
-                        , style "border-radius" "8px"
-                        , style "text-align" "center"
-                        ]
-                        [ GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permP permQ) ]
-
-                ( CompositionQPTab, ExpandedView ) ->
-                    Html.div
-                        [ style "background" "#f5f5f5"
-                        , style "padding" "12px"
-                        , style "border-radius" "8px"
-                        , style "text-align" "center"
-                        ]
-                        [ GV.graphviz GV.Circo (Permutation.toExpandedCompositionGraph permQ permP) ]
-
-                _ ->
-                    PermutationView.viewGraph Nothing activeResult
 
         tabButton ( tab, label ) =
             Html.button
@@ -843,37 +778,8 @@ viewResultCard activeTab compositionMode permP permQ =
             , style "padding-top" "12px"
             ]
             [ PermutationView.viewCharacteristics activeResult
-            , graphView
+            , PermutationView.viewGraph Nothing activeResult
             ]
-        ]
-
-
-viewModeRadio : CompositionViewMode -> Html Msg
-viewModeRadio currentMode =
-    let
-        item viewMode label =
-            Html.label
-                [ style "display" "flex"
-                , style "align-items" "center"
-                , style "gap" "4px"
-                , style "cursor" "pointer"
-                ]
-                [ Html.input
-                    [ Attr.type_ "radio"
-                    , Attr.name "compositionViewMode"
-                    , Attr.checked (currentMode == viewMode)
-                    , onClick (SetCompositionViewMode viewMode)
-                    ]
-                    []
-                , Html.text label
-                ]
-    in
-    Html.div
-        [ style "display" "flex"
-        , style "gap" "16px"
-        ]
-        [ item CollapsedView "Collapsed"
-        , item ExpandedView "Expanded"
         ]
 
 
