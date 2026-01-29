@@ -16,17 +16,20 @@ module Permutation exposing
     , getSize
     , identity
     , inverse
+    , inverseLehmer
     , isCyclic
     , isDerangement
     , isIdentity
     , isInvolution
     , isTransposition
     , listConjugacyClasses
+    , nextLehmer
     , numCycles
     , numFixedPoints
     , order
     , orderFromCycleType
     , parseCycles
+    , prevLehmer
     , resize
     , sign
     , toCycleGraph
@@ -198,6 +201,16 @@ inverse (Permutation arr) =
                 |> List.map Tuple.first
     in
     Permutation (Array.fromList invArr)
+
+
+
+-- TODO add newtype for LehmerCode
+
+
+inverseLehmer : Int -> Int -> Maybe Int
+inverseLehmer n lehmer =
+    fromLehmerCode n lehmer
+        |> Maybe.map (inverse >> toLehmerCode)
 
 
 {-| Conjugate a permutation by another: conjugateBy τ σ = τστ⁻¹.
@@ -411,6 +424,24 @@ fromLehmerCode n code =
                     buildPerm (remaining - 1) newCode newAvail (chosen :: acc)
         in
         Just (Permutation (Array.fromList (buildPerm n code available [])))
+
+
+prevLehmer : Int -> Int -> Int
+prevLehmer n currentLehmer =
+    let
+        maxL =
+            factorial n
+    in
+    currentLehmer - 1 |> modBy maxL
+
+
+nextLehmer : Int -> Int -> Int
+nextLehmer n currentLehmer =
+    let
+        maxL =
+            factorial n
+    in
+    currentLehmer + 1 |> modBy maxL
 
 
 {-| Parse a permutation from cycle notation string.

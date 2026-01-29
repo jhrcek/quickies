@@ -3,12 +3,12 @@ module Main exposing (main)
 import Breadcrumb
 import Browser
 import Browser.Navigation as Navigation
-import Dict exposing (Dict)
 import GraphViz as GV
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
 import Html.Events exposing (onClick)
 import Permutation
+import PermutationInput
 import PermutationView
 import Random
 import Route
@@ -21,25 +21,31 @@ import Url exposing (Url)
 
 type alias Model =
     { key : Navigation.Key
-    , route : Maybe Route.Route
+    , route : Route.Route
     , page : Page
-    , breadcrumbInputMode : Breadcrumb.InputMode
-    , cycleInputs : Dict Int Breadcrumb.CycleEditState
+    , inputMode : PermutationInput.InputMode
     }
 
 
 type Page
-    = NotFoundPage
-    | GroupSummaryPage Int -- n from S_n
+    = GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
     | ConjugacyClassPage (List Int) -- cycle type (partition)
-    | PermutationSummaryPage Permutation.Permutation
+    | PermutationSummaryPage PermutationSummaryModel
     | CompositionPage CompositionModel
+
+
+type alias PermutationSummaryModel =
+    { permutation : Permutation.Permutation
+    , input : PermutationInput.Model
+    }
 
 
 type alias CompositionModel =
     { permP : Permutation.Permutation
     , permQ : Permutation.Permutation
+    , inputP : PermutationInput.Model
+    , inputQ : PermutationInput.Model
     , compositionViewMode : CompositionViewMode
     , resultTab : ResultTab
     }
@@ -65,16 +71,45 @@ type Msg
     = UrlRequested Browser.UrlRequest
     | UrlChanged Url
     | BreadcrumbNavigate Route.Route
+    | ToggleInputMode
     | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
-    | ToggleBreadcrumbInputMode
-    | BreadcrumbRandomPermutation Int Int -- (n, permutationIndex)
-    | GotBreadcrumbRandomLehmer Int Int -- (permutationIndex, lehmer)
-    | BreadcrumbCycleInputChange Int String -- (permutationIndex, newInput)
-    | BreadcrumbInvertPermutation Int Int Int -- (n, currentLehmer, permutationIndex)
-    | BreadcrumbEnterCycleEdit Int -- permutationIndex
-    | BreadcrumbExitCycleEdit Int -- permutationIndex
-    | BreadcrumbSaveCycleEdit Int -- permutationIndex
+      -- Navigation
+    | NavigateLehmer PermId Direction
+    | NavigateInvert PermId
+    | GenerateRandomLehmer PermId
+    | GotRandomLehmer PermId Int
+    | PermutationInputMsg PermId PermutationInput.Msg
+
+
+type Direction
+    = Next
+    | Prev
+
+
+type PermId
+    = P
+    | Q
+
+
+updateRouteLehmer : PermId -> (Int -> Int -> Int) -> Route.Route -> Route.Route
+updateRouteLehmer permId =
+    case permId of
+        P ->
+            Route.updateLehmerP
+
+        Q ->
+            Route.updateLehmerQ
+
+
+setRouteLehmer : PermId -> Int -> Route.Route -> Route.Route
+setRouteLehmer permId =
+    case permId of
+        P ->
+            Route.setLehmerP
+
+        Q ->
+            Route.setLehmerQ
 
 
 
@@ -86,6 +121,8 @@ init _ url key =
     let
         route =
             Route.fromUrl url
+                -- TODO use home or not found
+                |> Maybe.withDefault (Route.Group 5 Route.GroupSummary)
 
         page =
             initPageFromRoute route
@@ -93,20 +130,16 @@ init _ url key =
     ( { key = key
       , route = route
       , page = page
-      , breadcrumbInputMode = Breadcrumb.LehmerMode
-      , cycleInputs = Dict.empty
+      , inputMode = PermutationInput.LehmerMode
       }
     , Cmd.none
     )
 
 
-initPageFromRoute : Maybe Route.Route -> Page
-initPageFromRoute maybeRoute =
-    case maybeRoute of
-        Nothing ->
-            NotFoundPage
-
-        Just (Route.Group n groupPage) ->
+initPageFromRoute : Route.Route -> Page
+initPageFromRoute route =
+    case route of
+        Route.Group n groupPage ->
             case groupPage of
                 Route.GroupSummary ->
                     GroupSummaryPage n
@@ -127,7 +160,10 @@ initPageFromRoute maybeRoute =
                                     Permutation.fromLehmerCode n lehmer
                                         |> Maybe.withDefault (Permutation.identity n)
                             in
-                            PermutationSummaryPage perm
+                            PermutationSummaryPage
+                                { permutation = perm
+                                , input = PermutationInput.init
+                                }
 
                         Route.PermutationComposition lehmer2 ->
                             CompositionPage (initComposition n lehmer lehmer2)
@@ -141,6 +177,8 @@ initComposition n lehmer1 lehmer2 =
     , permQ =
         Permutation.fromLehmerCode n lehmer2
             |> Maybe.withDefault (Permutation.identity n)
+    , inputP = PermutationInput.init
+    , inputQ = PermutationInput.init
     , compositionViewMode = CollapsedView
     , resultTab = CompositionPQTab
     }
@@ -164,22 +202,18 @@ update msg model =
         UrlChanged url ->
             let
                 route =
-                    Route.fromUrl url
+                    Route.fromUrl url |> Maybe.withDefault (Route.Group 5 Route.GroupSummary)
 
                 page =
                     initPageFromRoute route
-
-                newCycleInputs =
-                    if model.breadcrumbInputMode == Breadcrumb.CycleMode then
-                        initCycleInputsFromRoute route
-
-                    else
-                        Dict.empty
             in
-            ( { model | route = route, page = page, cycleInputs = newCycleInputs }, Cmd.none )
+            ( { model | route = route, page = page }, Cmd.none )
 
         BreadcrumbNavigate route ->
             ( model, Navigation.pushUrl model.key (Route.toString route) )
+
+        ToggleInputMode ->
+            ( { model | inputMode = PermutationInput.toggleInputMode model.inputMode }, Cmd.none )
 
         SetCompositionViewMode mode ->
             case model.page of
@@ -201,210 +235,103 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        ToggleBreadcrumbInputMode ->
-            let
-                newMode =
-                    case model.breadcrumbInputMode of
-                        Breadcrumb.LehmerMode ->
-                            Breadcrumb.CycleMode
+        PermutationInputMsg permId inputMsg ->
+            case ( permId, model.page ) of
+                ( P, PermutationSummaryPage summary ) ->
+                    handlePermutationInput
+                        { permutation = summary.permutation
+                        , inputModel = summary.input
+                        , updatePage = \newInput -> PermutationSummaryPage { summary | input = newInput }
+                        , routeSetter = Route.setLehmerP
+                        }
+                        inputMsg
+                        model
 
-                        Breadcrumb.CycleMode ->
-                            Breadcrumb.LehmerMode
+                ( P, CompositionPage comp ) ->
+                    handlePermutationInput
+                        { permutation = comp.permP
+                        , inputModel = comp.inputP
+                        , updatePage = \newInput -> CompositionPage { comp | inputP = newInput }
+                        , routeSetter = Route.setLehmerP
+                        }
+                        inputMsg
+                        model
 
-                newCycleInputs =
-                    if newMode == Breadcrumb.CycleMode then
-                        initCycleInputsFromRoute model.route
-
-                    else
-                        Dict.empty
-            in
-            ( { model
-                | breadcrumbInputMode = newMode
-                , cycleInputs = newCycleInputs
-              }
-            , Cmd.none
-            )
-
-        BreadcrumbRandomPermutation n permIdx ->
-            ( model
-            , Random.generate (GotBreadcrumbRandomLehmer permIdx) (Random.int 0 (Permutation.factorial n - 1))
-            )
-
-        GotBreadcrumbRandomLehmer permIdx lehmer ->
-            let
-                newRoute =
-                    buildRouteWithLehmer model.route permIdx lehmer
-            in
-            ( model
-            , Navigation.pushUrl model.key (Route.toString newRoute)
-            )
-
-        BreadcrumbCycleInputChange permIdx input ->
-            case model.route of
-                Just (Route.Group n _) ->
-                    let
-                        validationResult =
-                            Permutation.parseCycles n input
-
-                        newState =
-                            Breadcrumb.Editing
-                                { input = input
-                                , validationResult = validationResult
-                                }
-                    in
-                    ( { model | cycleInputs = Dict.insert permIdx newState model.cycleInputs }
-                    , Cmd.none
-                    )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        BreadcrumbInvertPermutation n currentLehmer permIdx ->
-            let
-                inverseLehmer =
-                    Permutation.fromLehmerCode n currentLehmer
-                        |> Maybe.map Permutation.inverse
-                        |> Maybe.map Permutation.toLehmerCode
-                        |> Maybe.withDefault 0
-
-                newRoute =
-                    buildRouteWithLehmer model.route permIdx inverseLehmer
-            in
-            ( model
-            , Navigation.pushUrl model.key (Route.toString newRoute)
-            )
-
-        BreadcrumbEnterCycleEdit permIdx ->
-            case model.route of
-                Just (Route.Group n groupPage) ->
-                    let
-                        -- TODO return maybe here and do nothing if route doesn't have perm with given permIdx
-                        currentLehmer =
-                            case groupPage of
-                                Route.GroupSummary ->
-                                    0
-
-                                Route.ConjugacyClasses _ ->
-                                    0
-
-                                Route.Permutation lehmer permPage ->
-                                    if permIdx == 1 then
-                                        lehmer
-
-                                    else
-                                        case permPage of
-                                            Route.PermutationSummary ->
-                                                0
-
-                                            Route.PermutationComposition lehmer2 ->
-                                                lehmer2
-
-                        perm =
-                            Permutation.fromLehmerCode n currentLehmer
-                                |> Maybe.withDefault (Permutation.identity n)
-
-                        newState =
-                            Breadcrumb.Editing
-                                { input = Permutation.toCyclesString perm
-                                , validationResult = Ok perm
-                                }
-                    in
-                    ( { model | cycleInputs = Dict.insert permIdx newState model.cycleInputs }
-                    , Cmd.none
-                    )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        BreadcrumbExitCycleEdit permIdx ->
-            ( { model | cycleInputs = Dict.insert permIdx Breadcrumb.NotEditing model.cycleInputs }
-            , Cmd.none
-            )
-
-        BreadcrumbSaveCycleEdit permIdx ->
-            case Dict.get permIdx model.cycleInputs of
-                Just (Breadcrumb.Editing editData) ->
-                    case editData.validationResult of
-                        Ok perm ->
-                            let
-                                newLehmer =
-                                    Permutation.toLehmerCode perm
-
-                                newRoute =
-                                    buildRouteWithLehmer model.route permIdx newLehmer
-                            in
-                            ( { model | cycleInputs = Dict.insert permIdx Breadcrumb.NotEditing model.cycleInputs }
-                            , Navigation.pushUrl model.key (Route.toString newRoute)
-                            )
-
-                        Err _ ->
-                            ( model, Cmd.none )
+                ( Q, CompositionPage comp ) ->
+                    handlePermutationInput
+                        { permutation = comp.permQ
+                        , inputModel = comp.inputQ
+                        , updatePage = \newInput -> CompositionPage { comp | inputQ = newInput }
+                        , routeSetter = Route.setLehmerQ
+                        }
+                        inputMsg
+                        model
 
                 _ ->
                     ( model, Cmd.none )
 
+        NavigateLehmer permId direction ->
+            let
+                newRoute =
+                    updateRouteLehmer permId
+                        (case direction of
+                            Next ->
+                                Permutation.nextLehmer
 
-{-| Initialize cycle inputs from the current route.
--}
-initCycleInputsFromRoute : Maybe Route.Route -> Dict Int Breadcrumb.CycleEditState
-initCycleInputsFromRoute maybeRoute =
-    -- TODO make this more sensible - no point in creating dict if we're not on route with permutations
-    case maybeRoute of
+                            Prev ->
+                                Permutation.prevLehmer
+                        )
+                        model.route
+            in
+            ( model, Navigation.pushUrl model.key (Route.toString newRoute) )
+
+        NavigateInvert permId ->
+            let
+                newRoute =
+                    updateRouteLehmer permId
+                        (\n lehmer ->
+                            Permutation.inverseLehmer n lehmer
+                                |> Maybe.withDefault lehmer
+                        )
+                        model.route
+            in
+            ( model, Navigation.pushUrl model.key (Route.toString newRoute) )
+
+        GenerateRandomLehmer permId ->
+            case model.route of
+                Route.Group n _ ->
+                    ( model
+                    , Random.generate (GotRandomLehmer permId) (Random.int 0 (Permutation.factorial n - 1))
+                    )
+
+        GotRandomLehmer permId newLehmer ->
+            let
+                newRoute =
+                    setRouteLehmer permId newLehmer model.route
+            in
+            ( model, Navigation.pushUrl model.key (Route.toString newRoute) )
+
+
+handlePermutationInput :
+    { permutation : Permutation.Permutation
+    , inputModel : PermutationInput.Model
+    , updatePage : PermutationInput.Model -> Page
+    , routeSetter : Int -> Route.Route -> Route.Route
+    }
+    -> PermutationInput.Msg
+    -> Model
+    -> ( Model, Cmd Msg )
+handlePermutationInput config inputMsg model =
+    let
+        ( newInput, maybeLehmer ) =
+            PermutationInput.update config.permutation inputMsg config.inputModel
+    in
+    case maybeLehmer of
+        Just newLehmer ->
+            ( model, Navigation.pushUrl model.key (Route.toString (config.routeSetter newLehmer model.route)) )
+
         Nothing ->
-            Dict.empty
-
-        Just (Route.Group _ groupPage) ->
-            case groupPage of
-                Route.GroupSummary ->
-                    Dict.empty
-
-                Route.ConjugacyClasses _ ->
-                    Dict.empty
-
-                Route.Permutation _ permPage ->
-                    case permPage of
-                        Route.PermutationSummary ->
-                            Dict.singleton 1 Breadcrumb.NotEditing
-
-                        Route.PermutationComposition _ ->
-                            Dict.fromList
-                                [ ( 1, Breadcrumb.NotEditing )
-                                , ( 2, Breadcrumb.NotEditing )
-                                ]
-
-
-{-| Build a new route with a given lehmer code at the specified permutation index.
--}
-buildRouteWithLehmer : Maybe Route.Route -> Int -> Int -> Route.Route
-buildRouteWithLehmer maybeRoute permIdx newLehmer =
-    case maybeRoute of
-        Nothing ->
-            Route.Group 5 (Route.Permutation newLehmer Route.PermutationSummary)
-
-        Just (Route.Group n groupPage) ->
-            case groupPage of
-                Route.GroupSummary ->
-                    Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
-
-                Route.ConjugacyClasses _ ->
-                    -- TODO it's unnecessary to have a case on this page - make this more sensible
-                    Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
-
-                Route.Permutation lehmer permPage ->
-                    case permPage of
-                        Route.PermutationSummary ->
-                            if permIdx == 1 then
-                                Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
-
-                            else
-                                Route.Group n (Route.Permutation lehmer Route.PermutationSummary)
-
-                        Route.PermutationComposition lehmer2 ->
-                            if permIdx == 1 then
-                                Route.Group n (Route.Permutation newLehmer (Route.PermutationComposition lehmer2))
-
-                            else
-                                Route.Group n (Route.Permutation lehmer (Route.PermutationComposition newLehmer))
+            ( { model | page = config.updatePage newInput }, Cmd.none )
 
 
 
@@ -426,28 +353,27 @@ viewBody model =
         , style "max-width" "1200px"
         , style "margin" "0 auto"
         ]
-        [ case model.route of
-            Just route ->
-                Breadcrumb.view
-                    { onNavigate = BreadcrumbNavigate
-                    , inputMode = model.breadcrumbInputMode
-                    , onToggleInputMode = ToggleBreadcrumbInputMode
-                    , onRandomPermutation = BreadcrumbRandomPermutation
-                    , onInvertPermutation = BreadcrumbInvertPermutation
-                    , cycleInputs = model.cycleInputs
-                    , onCycleInputChange = BreadcrumbCycleInputChange
-                    , onEnterCycleEdit = BreadcrumbEnterCycleEdit
-                    , onExitCycleEdit = BreadcrumbExitCycleEdit
-                    , onSaveCycleEdit = BreadcrumbSaveCycleEdit
-                    }
-                    route
+        [ let
+            ( permInput1, permInput2 ) =
+                case model.page of
+                    PermutationSummaryPage summary ->
+                        ( Just (viewPermSummaryInput model.inputMode summary), Nothing )
 
-            Nothing ->
-                Html.text ""
+                    CompositionPage comp ->
+                        ( Just (viewCompositionInputP model.inputMode comp), Just (viewCompositionInputQ model.inputMode comp) )
+
+                    _ ->
+                        ( Nothing, Nothing )
+          in
+          Breadcrumb.view
+            { onNavigate = BreadcrumbNavigate
+            , inputMode = model.inputMode
+            , onToggleInputMode = ToggleInputMode
+            }
+            model.route
+            permInput1
+            permInput2
         , case model.page of
-            NotFoundPage ->
-                viewNotFound
-
             GroupSummaryPage n ->
                 viewGroupSummary n
 
@@ -457,21 +383,11 @@ viewBody model =
             ConjugacyClassPage cycleType ->
                 viewConjugacyClass cycleType
 
-            PermutationSummaryPage perm ->
-                viewPermutationSummary perm
+            PermutationSummaryPage summary ->
+                viewPermutationSummary summary
 
             CompositionPage comp ->
                 viewComposition comp
-        ]
-
-
-viewNotFound : Html Msg
-viewNotFound =
-    Html.div
-        [ style "text-align" "center" ]
-        [ Html.h1 [] [ Html.text "404 - Page Not Found" ]
-        , Html.p [] [ Html.text "The requested page does not exist." ]
-        , Html.a [ Attr.href (Route.toString (Route.Group 5 Route.GroupSummary)) ] [ Html.text "Go to Group Summary" ]
         ]
 
 
@@ -572,11 +488,39 @@ viewConjugacyClassesTable n =
         ]
 
 
-viewPermutationSummary : Permutation.Permutation -> Html Msg
-viewPermutationSummary perm =
+viewPermutationSummary : PermutationSummaryModel -> Html Msg
+viewPermutationSummary summary =
     Html.div []
-        [ PermutationView.viewPermutation "" Nothing perm
-        ]
+        [ PermutationView.viewPermutation "" Nothing summary.permutation ]
+
+
+viewPermInputHelper : PermId -> PermutationInput.InputMode -> Permutation.Permutation -> PermutationInput.Model -> Html Msg
+viewPermInputHelper permId inputMode permutation inputModel =
+    PermutationInput.view
+        { permutation = permutation
+        , inputMode = inputMode
+        , toMsg = PermutationInputMsg permId
+        , onNavigatePrev = NavigateLehmer permId Prev
+        , onNavigateNext = NavigateLehmer permId Next
+        , onInvert = NavigateInvert permId
+        , onRandom = GenerateRandomLehmer permId
+        }
+        inputModel
+
+
+viewPermSummaryInput : PermutationInput.InputMode -> PermutationSummaryModel -> Html Msg
+viewPermSummaryInput inputMode summary =
+    viewPermInputHelper P inputMode summary.permutation summary.input
+
+
+viewCompositionInputP : PermutationInput.InputMode -> CompositionModel -> Html Msg
+viewCompositionInputP inputMode comp =
+    viewPermInputHelper P inputMode comp.permP comp.inputP
+
+
+viewCompositionInputQ : PermutationInput.InputMode -> CompositionModel -> Html Msg
+viewCompositionInputQ inputMode comp =
+    viewPermInputHelper Q inputMode comp.permQ comp.inputQ
 
 
 viewComposition : CompositionModel -> Html Msg

@@ -4,15 +4,22 @@ module Route exposing
     , PermutationPage(..)
     , Route(..)
     , fromUrl
+    , setLehmerP
+    , setLehmerQ
+    , setN
     , toString
+    , updateLehmerP
+    , updateLehmerQ
     )
 
+import Permutation
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser)
 
 
 type Route
-    = Group Int GroupPage
+    = -- TODO add home route - use it as default for not found routes
+      Group Int GroupPage
 
 
 type GroupPage
@@ -126,8 +133,8 @@ groupPageToString groupPage =
         ConjugacyClasses classPage ->
             "conjugacy-classes/" ++ conjugacyClassPageToString classPage
 
-        Permutation lehmer permPage ->
-            "permutation/" ++ String.fromInt lehmer ++ "/" ++ permutationPageToString permPage
+        Permutation lehmerP permPage ->
+            "permutation/" ++ String.fromInt lehmerP ++ "/" ++ permutationPageToString permPage
 
 
 conjugacyClassPageToString : ConjugacyClassPage -> String
@@ -146,5 +153,91 @@ permutationPageToString permPage =
         PermutationSummary ->
             ""
 
-        PermutationComposition lehmer2 ->
-            "composition/" ++ String.fromInt lehmer2
+        PermutationComposition lehmerQ ->
+            "composition/" ++ String.fromInt lehmerQ
+
+
+{-| Update the Lehmer code of P in the route given the result of a function from n and currentLehmer code of P
+-}
+updateLehmerP : (Int -> Int -> Int) -> Route -> Route
+updateLehmerP f route =
+    case route of
+        Group n groupPage ->
+            Group n <|
+                case groupPage of
+                    GroupSummary ->
+                        groupPage
+
+                    ConjugacyClasses _ ->
+                        groupPage
+
+                    Permutation lehmerP permutationPage ->
+                        Permutation (f n lehmerP) permutationPage
+
+
+setLehmerP : Int -> Route -> Route
+setLehmerP newLehmerP route =
+    updateLehmerP (\_ _ -> newLehmerP) route
+
+
+updateLehmerQ : (Int -> Int -> Int) -> Route -> Route
+updateLehmerQ f route =
+    case route of
+        Group n groupPage ->
+            Group n <|
+                case groupPage of
+                    GroupSummary ->
+                        GroupSummary
+
+                    ConjugacyClasses cs ->
+                        ConjugacyClasses cs
+
+                    Permutation lehmerP permutationPage ->
+                        Permutation lehmerP <|
+                            case permutationPage of
+                                PermutationSummary ->
+                                    PermutationSummary
+
+                                PermutationComposition lehmerQ ->
+                                    PermutationComposition (f n lehmerQ)
+
+
+setLehmerQ : Int -> Route -> Route
+setLehmerQ newLehmerQ route =
+    updateLehmerQ (\_ _ -> newLehmerQ) route
+
+
+setN : Int -> Route -> Route
+setN newN route =
+    -- Setting n means we have to potentially resize permutations and other things stored deeper in the route
+    case route of
+        Group oldN groupPage ->
+            Group newN <|
+                case groupPage of
+                    GroupSummary ->
+                        GroupSummary
+
+                    ConjugacyClasses conjugacyClassPage ->
+                        ConjugacyClasses <|
+                            case conjugacyClassPage of
+                                ConjugacyClassSummary ->
+                                    ConjugacyClassSummary
+
+                                ConjugacyClass _ ->
+                                    -- TODO do something more intelligent here, preserving as much of the previous as possible?
+                                    ConjugacyClass [ newN ]
+
+                    Permutation lehmerP permutationPage ->
+                        let
+                            resizeLehmer lehmer =
+                                Permutation.fromLehmerCode oldN lehmer
+                                    |> Maybe.map (Permutation.resize newN >> Permutation.toLehmerCode)
+                                    |> Maybe.withDefault 0
+                        in
+                        Permutation (resizeLehmer lehmerP) <|
+                            case permutationPage of
+                                PermutationSummary ->
+                                    PermutationSummary
+
+                                PermutationComposition lehmerQ ->
+                                    PermutationComposition (resizeLehmer lehmerQ)
