@@ -31,6 +31,7 @@ type Page
     = GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
     | ConjugacyClassPage (List Int) -- cycle type (partition)
+    | PermutationListPage Int -- n from S_n
     | PermutationSummaryPage PermutationSummaryModel
     | CompositionPage CompositionModel
 
@@ -152,9 +153,12 @@ initPageFromRoute route =
                         Route.ConjugacyClass cycleType ->
                             ConjugacyClassPage cycleType
 
-                Route.Permutation lehmer permPage ->
+                Route.Permutations permPage ->
                     case permPage of
-                        Route.PermutationSummary ->
+                        Route.PermutationList ->
+                            PermutationListPage n
+
+                        Route.PermutationDetail lehmer ->
                             let
                                 perm =
                                     Permutation.fromLehmerCode n lehmer
@@ -165,8 +169,8 @@ initPageFromRoute route =
                                 , input = PermutationInput.init
                                 }
 
-                        Route.PermutationComposition lehmer2 ->
-                            CompositionPage (initComposition n lehmer lehmer2)
+                        Route.PermutationComposition lehmerP lehmerQ ->
+                            CompositionPage (initComposition n lehmerP lehmerQ)
 
 
 initComposition : Int -> Int -> Int -> CompositionModel
@@ -383,6 +387,9 @@ viewBody model =
             ConjugacyClassPage cycleType ->
                 viewConjugacyClass cycleType
 
+            PermutationListPage n ->
+                viewPermutationList n
+
             PermutationSummaryPage summary ->
                 viewPermutationSummary summary
 
@@ -407,7 +414,11 @@ viewGroupSummary n =
                 [ Html.text ("Conjugacy Classes: " ++ String.fromInt conjugacyClassCount) ]
             ]
         , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutation 0 (Route.PermutationComposition 0)))) ]
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutations Route.PermutationList))) ]
+                [ Html.text ("Permutations: " ++ String.fromInt order) ]
+            ]
+        , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutations (Route.PermutationComposition 0 0)))) ]
                 -- TODO replace this with more sensible way to go to composition editor - maybe just have link to list of all permutations in S_n?
                 [ Html.text "Go to Composition Editor" ]
             ]
@@ -429,6 +440,13 @@ viewConjugacyClass cycleType =
               -- shared order of each element etc.
               Html.text ("Cycle type: " ++ PermutationView.cycleTypeToString cycleType)
             ]
+        ]
+
+
+viewPermutationList : Int -> Html Msg
+viewPermutationList n =
+    Html.div []
+        [ Html.text "TODO"
         ]
 
 

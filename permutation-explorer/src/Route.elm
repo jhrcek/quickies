@@ -25,7 +25,7 @@ type Route
 type GroupPage
     = GroupSummary
     | ConjugacyClasses ConjugacyClassPage
-    | Permutation Int PermutationPage
+    | Permutations PermutationPage
 
 
 type ConjugacyClassPage
@@ -34,8 +34,9 @@ type ConjugacyClassPage
 
 
 type PermutationPage
-    = PermutationSummary
-    | PermutationComposition Int
+    = PermutationList
+    | PermutationDetail Int
+    | PermutationComposition Int Int
 
 
 
@@ -65,7 +66,7 @@ groupPageParser =
     Parser.oneOf
         [ Parser.map GroupSummary Parser.top
         , Parser.map ConjugacyClasses (Parser.s "conjugacy-classes" </> conjugacyClassPageParser)
-        , Parser.map Permutation (Parser.s "permutation" </> Parser.int </> permutationPageParser)
+        , Parser.map Permutations (Parser.s "permutations" </> permutationPageParser)
         ]
 
 
@@ -110,8 +111,9 @@ sequenceListOfMaybes list =
 permutationPageParser : Parser (PermutationPage -> a) a
 permutationPageParser =
     Parser.oneOf
-        [ Parser.map PermutationSummary Parser.top
-        , Parser.map PermutationComposition (Parser.s "composition" </> Parser.int)
+        [ Parser.map PermutationList Parser.top
+        , Parser.map PermutationDetail Parser.int
+        , Parser.map PermutationComposition (Parser.int </> Parser.s "composition" </> Parser.int)
         ]
 
 
@@ -133,8 +135,8 @@ groupPageToString groupPage =
         ConjugacyClasses classPage ->
             "conjugacy-classes/" ++ conjugacyClassPageToString classPage
 
-        Permutation lehmerP permPage ->
-            "permutation/" ++ String.fromInt lehmerP ++ "/" ++ permutationPageToString permPage
+        Permutations permPage ->
+            "permutations/" ++ permutationPageToString permPage
 
 
 conjugacyClassPageToString : ConjugacyClassPage -> String
@@ -150,11 +152,14 @@ conjugacyClassPageToString classPage =
 permutationPageToString : PermutationPage -> String
 permutationPageToString permPage =
     case permPage of
-        PermutationSummary ->
+        PermutationList ->
             ""
 
-        PermutationComposition lehmerQ ->
-            "composition/" ++ String.fromInt lehmerQ
+        PermutationDetail lehmerP ->
+            String.fromInt lehmerP
+
+        PermutationComposition lehmerP lehmerQ ->
+            String.fromInt lehmerP ++ "/composition/" ++ String.fromInt lehmerQ
 
 
 {-| Update the Lehmer code of P in the route given the result of a function from n and currentLehmer code of P
@@ -171,8 +176,17 @@ updateLehmerP f route =
                     ConjugacyClasses _ ->
                         groupPage
 
-                    Permutation lehmerP permutationPage ->
-                        Permutation (f n lehmerP) permutationPage
+                    Permutations permPage ->
+                        Permutations <|
+                            case permPage of
+                                PermutationList ->
+                                    permPage
+
+                                PermutationDetail lehmerP ->
+                                    PermutationDetail (f n lehmerP)
+
+                                PermutationComposition lehmerP lehmerQ ->
+                                    PermutationComposition (f n lehmerP) lehmerQ
 
 
 setLehmerP : Int -> Route -> Route
@@ -192,14 +206,17 @@ updateLehmerQ f route =
                     ConjugacyClasses cs ->
                         ConjugacyClasses cs
 
-                    Permutation lehmerP permutationPage ->
-                        Permutation lehmerP <|
-                            case permutationPage of
-                                PermutationSummary ->
-                                    PermutationSummary
+                    Permutations permPage ->
+                        Permutations <|
+                            case permPage of
+                                PermutationList ->
+                                    PermutationList
 
-                                PermutationComposition lehmerQ ->
-                                    PermutationComposition (f n lehmerQ)
+                                PermutationDetail lehmerP ->
+                                    PermutationDetail lehmerP
+
+                                PermutationComposition lehmerP lehmerQ ->
+                                    PermutationComposition lehmerP (f n lehmerQ)
 
 
 setLehmerQ : Int -> Route -> Route
@@ -227,17 +244,20 @@ setN newN route =
                                     -- TODO do something more intelligent here, preserving as much of the previous as possible?
                                     ConjugacyClass [ newN ]
 
-                    Permutation lehmerP permutationPage ->
+                    Permutations permPage ->
                         let
                             resizeLehmer lehmer =
                                 Permutation.fromLehmerCode oldN lehmer
                                     |> Maybe.map (Permutation.resize newN >> Permutation.toLehmerCode)
                                     |> Maybe.withDefault 0
                         in
-                        Permutation (resizeLehmer lehmerP) <|
-                            case permutationPage of
-                                PermutationSummary ->
-                                    PermutationSummary
+                        Permutations <|
+                            case permPage of
+                                PermutationList ->
+                                    PermutationList
 
-                                PermutationComposition lehmerQ ->
-                                    PermutationComposition (resizeLehmer lehmerQ)
+                                PermutationDetail lehmerP ->
+                                    PermutationDetail (resizeLehmer lehmerP)
+
+                                PermutationComposition lehmerP lehmerQ ->
+                                    PermutationComposition (resizeLehmer lehmerP) (resizeLehmer lehmerQ)

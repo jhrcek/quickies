@@ -74,10 +74,24 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                     , Html.span [ style "font-weight" "bold" ] [ Html.text (PermutationView.cycleTypeToString cycleType) ]
                     ]
 
-        Permutation lehmer permPage ->
+        Permutations permPage ->
             case permPage of
-                PermutationSummary ->
+                PermutationList ->
                     [ viewNSegment config n route
+                    , viewSeparator
+                    , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutations" ]
+                    ]
+
+                PermutationDetail _ ->
+                    [ viewNSegment config n route
+                    , viewSeparator
+                    , Html.a
+                        [ Attr.href (Route.toString (Group n (Permutations PermutationList)))
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        , style "font-weight" "bold"
+                        ]
+                        [ Html.text "Permutations" ]
                     , viewSeparator
                     , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutation" ]
                     ]
@@ -89,11 +103,19 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                                     []
                            )
 
-                PermutationComposition _ ->
+                PermutationComposition lehmerP _ ->
                     [ viewNSegment config n route
                     , viewSeparator
                     , Html.a
-                        [ Attr.href (Route.toString (Group n (Permutation lehmer PermutationSummary)))
+                        [ Attr.href (Route.toString (Group n (Permutations PermutationList)))
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        , style "font-weight" "bold"
+                        ]
+                        [ Html.text "Permutations" ]
+                    , viewSeparator
+                    , Html.a
+                        [ Attr.href (Route.toString (Group n (Permutations (PermutationDetail lehmerP))))
                         , style "text-decoration" "none"
                         , style "color" "#0066cc"
                         , style "font-weight" "bold"
