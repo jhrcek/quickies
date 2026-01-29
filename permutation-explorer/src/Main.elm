@@ -30,7 +30,9 @@ type alias Model =
 
 type Page
     = NotFoundPage
-    | GroupSummaryPage
+    | GroupSummaryPage Int -- n from S_n
+    | ConjugacyClassSummaryPage Int -- n from S_n
+    | ConjugacyClassPage (List Int) -- cycle type (partition)
     | PermutationSummaryPage Permutation.Permutation
     | CompositionPage CompositionModel
 
@@ -107,7 +109,15 @@ initPageFromRoute maybeRoute =
         Just (Route.Group n groupPage) ->
             case groupPage of
                 Route.GroupSummary ->
-                    GroupSummaryPage
+                    GroupSummaryPage n
+
+                Route.ConjugacyClasses classPage ->
+                    case classPage of
+                        Route.ConjugacyClassSummary ->
+                            ConjugacyClassSummaryPage n
+
+                        Route.ConjugacyClass cycleType ->
+                            ConjugacyClassPage cycleType
 
                 Route.Permutation lehmer permPage ->
                     case permPage of
@@ -268,9 +278,13 @@ update msg model =
             case model.route of
                 Just (Route.Group n groupPage) ->
                     let
+                        -- TODO return maybe here and do nothing if route doesn't have perm with given permIdx
                         currentLehmer =
                             case groupPage of
                                 Route.GroupSummary ->
+                                    0
+
+                                Route.ConjugacyClasses _ ->
                                     0
 
                                 Route.Permutation lehmer permPage ->
@@ -334,6 +348,7 @@ update msg model =
 -}
 initCycleInputsFromRoute : Maybe Route.Route -> Dict Int Breadcrumb.CycleEditState
 initCycleInputsFromRoute maybeRoute =
+    -- TODO make this more sensible - no point in creating dict if we're not on route with permutations
     case maybeRoute of
         Nothing ->
             Dict.empty
@@ -341,6 +356,9 @@ initCycleInputsFromRoute maybeRoute =
         Just (Route.Group _ groupPage) ->
             case groupPage of
                 Route.GroupSummary ->
+                    Dict.empty
+
+                Route.ConjugacyClasses _ ->
                     Dict.empty
 
                 Route.Permutation _ permPage ->
@@ -368,6 +386,10 @@ buildRouteWithLehmer maybeRoute permIdx newLehmer =
                 Route.GroupSummary ->
                     Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
 
+                Route.ConjugacyClasses _ ->
+                    -- TODO it's unnecessary to have a case on this page - make this more sensible
+                    Route.Group n (Route.Permutation newLehmer Route.PermutationSummary)
+
                 Route.Permutation lehmer permPage ->
                     case permPage of
                         Route.PermutationSummary ->
@@ -391,11 +413,7 @@ buildRouteWithLehmer maybeRoute permIdx newLehmer =
 
 view : Model -> Browser.Document Msg
 view model =
-    let
-        n =
-            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
-    in
-    { title = "Permutation Groups - S" ++ String.fromInt n
+    { title = "Permutation Explorer"
     , body = [ viewBody model ]
     }
 
@@ -430,8 +448,14 @@ viewBody model =
             NotFoundPage ->
                 viewNotFound
 
-            GroupSummaryPage ->
-                viewGroupSummary model
+            GroupSummaryPage n ->
+                viewGroupSummary n
+
+            ConjugacyClassSummaryPage n ->
+                viewConjugacyClassSummary n
+
+            ConjugacyClassPage cycleType ->
+                viewConjugacyClass cycleType
 
             PermutationSummaryPage perm ->
                 viewPermutationSummary perm
@@ -447,26 +471,48 @@ viewNotFound =
         [ style "text-align" "center" ]
         [ Html.h1 [] [ Html.text "404 - Page Not Found" ]
         , Html.p [] [ Html.text "The requested page does not exist." ]
-        , Html.a [ Attr.href (Route.toString (Route.Group 5 (Route.Permutation 0 (Route.PermutationComposition 0)))) ] [ Html.text "Go to Composition Editor" ]
+        , Html.a [ Attr.href (Route.toString (Route.Group 5 Route.GroupSummary)) ] [ Html.text "Go to Group Summary" ]
         ]
 
 
-viewGroupSummary : Model -> Html Msg
-viewGroupSummary model =
+viewGroupSummary : Int -> Html Msg
+viewGroupSummary n =
     let
-        n =
-            model.route |> Maybe.map Route.getN |> Maybe.withDefault 5
-
         order =
             Permutation.factorial n
+
+        conjugacyClassCount =
+            List.length (Permutation.listConjugacyClasses n)
     in
     Html.div []
         [ Html.p [] [ Html.text ("Order: " ++ String.fromInt order) ]
         , Html.p []
+            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary))) ]
+                [ Html.text ("Conjugacy Classes: " ++ String.fromInt conjugacyClassCount) ]
+            ]
+        , Html.p []
             [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutation 0 (Route.PermutationComposition 0)))) ]
+                -- TODO replace this with more sensible way to go to composition editor - maybe just have link to list of all permutations in S_n?
                 [ Html.text "Go to Composition Editor" ]
             ]
-        , viewConjugacyClassesTable n
+        ]
+
+
+viewConjugacyClassSummary : Int -> Html Msg
+viewConjugacyClassSummary n =
+    Html.div []
+        [ viewConjugacyClassesTable n
+        ]
+
+
+viewConjugacyClass : List Int -> Html Msg
+viewConjugacyClass cycleType =
+    Html.div []
+        [ Html.p []
+            [ -- TODO more content for conjugacy class - show graphviz graph of a representative,
+              -- shared order of each element etc.
+              Html.text ("Cycle type: " ++ PermutationView.cycleTypeToString cycleType)
+            ]
         ]
 
 
@@ -490,14 +536,8 @@ viewConjugacyClassesTable n =
 
         dataRow partition =
             let
-                canonicalPerm =
-                    Permutation.canonicalOfCycleType n partition
-
-                lehmer =
-                    Permutation.toLehmerCode canonicalPerm
-
-                route =
-                    Route.Group n (Route.Permutation lehmer Route.PermutationSummary)
+                classRoute =
+                    Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass partition))
             in
             Html.div
                 [ style "display" "flex"
@@ -505,14 +545,12 @@ viewConjugacyClassesTable n =
                 , style "padding" "8px 0"
                 ]
                 [ Html.div [ style "flex" "1" ]
-                    [ Html.text (PermutationView.partitionToString partition)
-                    , Html.a
-                        [ Attr.href (Route.toString route)
-                        , Attr.title "Jump to canonical representative"
-                        , style "margin-left" "6px"
+                    [ Html.a
+                        [ Attr.href (Route.toString classRoute)
                         , style "text-decoration" "none"
+                        , style "color" "#0066cc"
                         ]
-                        [ Html.text "↗" ]
+                        [ Html.text (PermutationView.cycleTypeToString partition) ]
                     ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
                     [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromPartition n partition)) ]

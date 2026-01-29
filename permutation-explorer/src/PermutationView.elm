@@ -1,5 +1,5 @@
 module PermutationView exposing
-    ( partitionToString
+    ( cycleTypeToString
     , viewCard
     , viewCharacteristics
     , viewGraph
@@ -29,9 +29,11 @@ viewCard content =
         content
 
 
-partitionToString : List Int -> String
-partitionToString partition =
-    "[" ++ String.join "," (List.map String.fromInt partition) ++ "]"
+{-| Format a cycle type (partition) as a string like "[3, 2, 1]".
+-}
+cycleTypeToString : List Int -> String
+cycleTypeToString parts =
+    "[" ++ String.join ", " (List.map String.fromInt parts) ++ "]"
 
 
 {-| Display computed characteristics of a permutation.
@@ -49,7 +51,7 @@ viewCharacteristics perm =
 
         cycleTypeStr =
             Permutation.cycleType perm
-                |> partitionToString
+                |> cycleTypeToString
 
         orderStr =
             String.fromInt (Permutation.order perm)

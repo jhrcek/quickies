@@ -23,6 +23,8 @@ config =
         , NoUnused.CustomTypeConstructorArgs.rule
         , NoUnused.Dependencies.rule
         , NoUnused.Exports.rule
+            -- ignore warning about unuse `num` and `bool` functions
+            |> Review.Rule.ignoreErrorsForFiles [ "src/GraphViz.elm" ]
         , NoUnused.Modules.rule
         , NoUnused.Parameters.rule
         , NoUnused.Patterns.rule

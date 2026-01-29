@@ -6,7 +6,8 @@ import Html.Attributes as Attr exposing (style)
 import Html.Events as Events
 import Json.Decode as Decode
 import Permutation
-import Route exposing (GroupPage(..), PermutationPage(..), Route(..))
+import PermutationView
+import Route exposing (ConjugacyClassPage(..), GroupPage(..), PermutationPage(..), Route(..))
 
 
 type InputMode
@@ -63,6 +64,28 @@ viewSegments config (Group n groupPage) =
         GroupSummary ->
             [ viewNSegment config n groupPage
             ]
+
+        ConjugacyClasses classPage ->
+            case classPage of
+                ConjugacyClassSummary ->
+                    [ viewNSegment config n groupPage
+                    , viewSeparator
+                    , Html.span [ style "font-weight" "bold" ] [ Html.text "Conjugacy Classes" ]
+                    ]
+
+                ConjugacyClass cycleType ->
+                    [ viewNSegment config n groupPage
+                    , viewSeparator
+                    , Html.a
+                        [ Attr.href (Route.toString (Group n (ConjugacyClasses ConjugacyClassSummary)))
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        , style "font-weight" "bold"
+                        ]
+                        [ Html.text "Conjugacy Classes" ]
+                    , viewSeparator
+                    , Html.span [ style "font-weight" "bold" ] [ Html.text (PermutationView.cycleTypeToString cycleType) ]
+                    ]
 
         Permutation lehmer permPage ->
             case permPage of
@@ -158,6 +181,9 @@ buildRouteForNewN currentN currentPage newN =
             case currentPage of
                 GroupSummary ->
                     GroupSummary
+
+                ConjugacyClasses classPage ->
+                    ConjugacyClasses classPage
 
                 Permutation lehmerCode permPage ->
                     Permutation (resizeLehmer lehmerCode) (resizePermPage permPage)

@@ -5,10 +5,13 @@
 - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
 - [x] turn it into application with url parsing with pages like
     - [x] Whole S_n group summary page
-        - [ ] number of elems
+        - [ ] order / number of elements linking to permutations page
         - [ ] number (list of) conjugacy classes - with count of elements / order of each
-    - [ ] Conjugacy class
-    - [x] Single permutation (with all its properties)
+    - [ ] Conjugacy classes - table of all conjugacy classes with a pager
+        - [ ] conjugacy class
+            - [ ] showing shape as a graph and properties shared by all elements
+    - [ ] permutations - showing (sortable?) table of all permutations with a pager
+        - [x] Single permutation (with all its properties)
     - [x] Permutation composition
 
 - [ ] add concept lattice with all the boolean properties, showing number of permutations belonging to each node for given S_n
