@@ -31,7 +31,7 @@ type Page
     = GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
     | ConjugacyClassPage (List Int) -- cycle type (partition)
-    | PermutationListPage Int -- n from S_n
+    | PermutationListPage { n : Int, currentPage : Int }
     | PermutationSummaryPage PermutationSummaryModel
     | CompositionPage CompositionModel
 
@@ -75,6 +75,7 @@ type Msg
     | ToggleInputMode
     | SetCompositionViewMode CompositionViewMode
     | SetResultTab ResultTab
+    | SetPermutationListPage Int
       -- Navigation
     | NavigateLehmer PermId Direction
     | NavigateInvert PermId
@@ -156,7 +157,7 @@ initPageFromRoute route =
                 Route.Permutations permPage ->
                     case permPage of
                         Route.PermutationList ->
-                            PermutationListPage n
+                            PermutationListPage { n = n, currentPage = 0 }
 
                         Route.PermutationDetail lehmer ->
                             let
@@ -233,6 +234,16 @@ update msg model =
             case model.page of
                 CompositionPage comp ->
                     ( { model | page = CompositionPage { comp | resultTab = tab } }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SetPermutationListPage page ->
+            case model.page of
+                PermutationListPage state ->
+                    ( { model | page = PermutationListPage { state | currentPage = page } }
                     , Cmd.none
                     )
 
@@ -387,8 +398,8 @@ viewBody model =
             ConjugacyClassPage cycleType ->
                 viewConjugacyClass cycleType
 
-            PermutationListPage n ->
-                viewPermutationList n
+            PermutationListPage state ->
+                viewPermutationList state
 
             PermutationSummaryPage summary ->
                 viewPermutationSummary summary
@@ -443,11 +454,163 @@ viewConjugacyClass cycleType =
         ]
 
 
-viewPermutationList : Int -> Html Msg
-viewPermutationList n =
+viewPermutationList : { n : Int, currentPage : Int } -> Html Msg
+viewPermutationList { n, currentPage } =
+    let
+        pageSize =
+            10
+
+        total =
+            Permutation.factorial n
+
+        totalPages =
+            ceiling (toFloat total / toFloat pageSize)
+
+        startLehmer =
+            currentPage * pageSize
+
+        endLehmer =
+            min (startLehmer + pageSize - 1) (total - 1)
+
+        permutations =
+            List.range startLehmer endLehmer
+                |> List.filterMap (Permutation.fromLehmerCode n)
+    in
     Html.div []
-        [ Html.text "TODO"
+        [ viewPermutationTable n permutations
+        , viewPager { currentPage = currentPage, totalPages = totalPages }
         ]
+
+
+viewPager : { currentPage : Int, totalPages : Int } -> Html Msg
+viewPager { currentPage, totalPages } =
+    let
+        isFirst =
+            currentPage == 0
+
+        isLast =
+            currentPage >= totalPages - 1
+
+        buttonStyle enabled =
+            [ style "padding" "6px 12px"
+            , style "border" "1px solid #ccc"
+            , style "border-radius" "4px"
+            , style "background"
+                (if enabled then
+                    "#fff"
+
+                 else
+                    "#f0f0f0"
+                )
+            , style "cursor"
+                (if enabled then
+                    "pointer"
+
+                 else
+                    "not-allowed"
+                )
+            , style "color"
+                (if enabled then
+                    "#333"
+
+                 else
+                    "#999"
+                )
+            ]
+
+        pagerButton label enabled targetPage =
+            Html.button
+                (buttonStyle enabled
+                    ++ (if enabled then
+                            [ onClick (SetPermutationListPage targetPage) ]
+
+                        else
+                            [ Attr.disabled True ]
+                       )
+                )
+                [ Html.text label ]
+    in
+    Html.div
+        [ style "display" "flex"
+        , style "align-items" "center"
+        , style "gap" "8px"
+        , style "margin" "16px 0"
+        ]
+        [ pagerButton "First" (not isFirst) 0
+        , pagerButton "Prev" (not isFirst) (currentPage - 1)
+        , Html.span
+            [ style "padding" "0 12px"
+            , style "font-size" "14px"
+            ]
+            [ Html.text ("Page " ++ String.fromInt (currentPage + 1) ++ " of " ++ String.fromInt totalPages) ]
+        , pagerButton "Next" (not isLast) (currentPage + 1)
+        , pagerButton "Last" (not isLast) (totalPages - 1)
+        ]
+
+
+viewPermutationTable : Int -> List Permutation.Permutation -> Html Msg
+viewPermutationTable n permutations =
+    let
+        headerRow =
+            Html.div
+                [ style "display" "flex"
+                , style "font-weight" "bold"
+                , style "border-bottom" "2px solid #333"
+                , style "padding" "8px 0"
+                ]
+                [ Html.div [ style "flex" "1" ] [ Html.text "Lehmer" ]
+                , Html.div [ style "flex" "2" ] [ Html.text "Cycles" ]
+                , Html.div [ style "flex" "1" ] [ Html.text "Cycle Type" ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Sign" ]
+                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Order" ]
+                ]
+
+        dataRow perm =
+            let
+                lehmer =
+                    Permutation.toLehmerCode perm
+
+                detailRoute =
+                    Route.Group n (Route.Permutations (Route.PermutationDetail lehmer))
+
+                signStr =
+                    case Permutation.sign perm of
+                        Permutation.Even ->
+                            "+1"
+
+                        Permutation.Odd ->
+                            "-1"
+            in
+            Html.div
+                [ style "display" "flex"
+                , style "border-bottom" "1px solid #ddd"
+                , style "padding" "8px 0"
+                ]
+                [ Html.div [ style "flex" "1" ]
+                    [ Html.a
+                        [ Attr.href (Route.toString detailRoute)
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        ]
+                        [ Html.text (String.fromInt lehmer) ]
+                    ]
+                , Html.div [ style "flex" "2", style "font-family" "monospace" ]
+                    [ Html.text (Permutation.toCyclesString perm) ]
+                , Html.div [ style "flex" "1", style "font-family" "monospace" ]
+                    [ Html.text (PermutationView.cycleTypeToString (Permutation.cycleType perm)) ]
+                , Html.div [ style "flex" "1", style "text-align" "right", style "font-family" "monospace" ]
+                    [ Html.text signStr ]
+                , Html.div [ style "flex" "1", style "text-align" "right", style "font-family" "monospace" ]
+                    [ Html.text (String.fromInt (Permutation.order perm)) ]
+                ]
+    in
+    Html.div
+        [ style "margin-top" "12px"
+        , style "border" "1px solid #ddd"
+        , style "border-radius" "4px"
+        , style "padding" "12px"
+        ]
+        (headerRow :: List.map dataRow permutations)
 
 
 viewConjugacyClassesTable : Int -> Html Msg
