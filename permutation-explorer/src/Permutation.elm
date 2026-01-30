@@ -6,7 +6,7 @@ module Permutation exposing
     , centralizerSize
     , compose
     , conjugacyClassSize
-    , conjugacyClassSizeFromPartition
+    , conjugacyClassSizeFromCycleType
     , conjugateBy
     , cycleType
     , factorial
@@ -736,12 +736,12 @@ order perm =
 
 {-| Compute the order of permutations with a given cycle type.
 
-The order is the LCM of all cycle lengths in the partition.
+The order is the LCM of all cycle lengths in the cycle type.
 
 -}
 orderFromCycleType : List Int -> Int
-orderFromCycleType partition =
-    List.foldl lcm 1 partition
+orderFromCycleType cycleTyp =
+    List.foldl lcm 1 cycleTyp
 
 
 {-| Least common multiple of two positive integers.
@@ -837,35 +837,35 @@ Formula: ∏ (kᵢ! · mᵢ^kᵢ) where kᵢ is the count of cycles of length m�
 -}
 centralizerSize : Permutation -> Int
 centralizerSize perm =
-    centralizerSizeFromPartition (cycleType perm)
+    centralizerSizeFromCycleType (cycleType perm)
 
 
-{-| Compute the size of the centralizer from a partition (cycle type).
+{-| Compute the size of the centralizer from a cycle type.
 
-Formula: ∏ (mₖ! · k^mₖ) where mₖ is the count of k in the partition.
+Formula: ∏ (mₖ! · k^mₖ) where mₖ is the count of k in the cycle type.
 
 -}
-centralizerSizeFromPartition : List Int -> Int
-centralizerSizeFromPartition partition =
+centralizerSizeFromCycleType : List Int -> Int
+centralizerSizeFromCycleType cycleTyp =
     let
         -- Group cycle lengths and count occurrences
         -- e.g., [3, 2, 2, 1, 1, 1] -> [(3, 1), (2, 2), (1, 3)]
         groupedCycles =
-            partition
-                |> List.foldl
-                    (\len acc ->
-                        case acc of
-                            ( m, k ) :: rest ->
-                                if m == len then
-                                    ( m, k + 1 ) :: rest
+            List.foldl
+                (\len acc ->
+                    case acc of
+                        ( m, k ) :: rest ->
+                            if m == len then
+                                ( m, k + 1 ) :: rest
 
-                                else
-                                    ( len, 1 ) :: acc
+                            else
+                                ( len, 1 ) :: acc
 
-                            [] ->
-                                [ ( len, 1 ) ]
-                    )
-                    []
+                        [] ->
+                            [ ( len, 1 ) ]
+                )
+                []
+                cycleTyp
 
         -- k! * m^k for each group
         contribution ( m, k ) =
@@ -885,21 +885,21 @@ conjugacyClassSize perm =
     factorial (getSize perm) // centralizerSize perm
 
 
-{-| Compute the size of a conjugacy class from its partition (cycle type).
+{-| Compute the size of a conjugacy class from its cycle type.
 
-Formula: n! / centralizerSize where n is the sum of the partition.
+Formula: n! / centralizerSize where n is the sum of the cycle type.
 
 -}
-conjugacyClassSizeFromPartition : Int -> List Int -> Int
-conjugacyClassSizeFromPartition n partition =
-    factorial n // centralizerSizeFromPartition partition
+conjugacyClassSizeFromCycleType : Int -> List Int -> Int
+conjugacyClassSizeFromCycleType n cycleTyp =
+    factorial n // centralizerSizeFromCycleType cycleTyp
 
 
-{-| List all conjugacy classes of Sₙ as partitions.
+{-| List all conjugacy classes of Sₙ.
 
 Each conjugacy class corresponds to a partition of n (the cycle type).
-Returns partitions in reverse lexicographic order: [5], [4,1], [3,2], [3,1,1], etc.
-Each partition is in descending order.
+Returns cycle types in reverse lexicographic order: [5], [4,1], [3,2], [3,1,1], etc.
+Each cycle type is in descending order.
 
 -}
 listConjugacyClasses : Int -> List (List Int)
@@ -910,14 +910,14 @@ listConjugacyClasses n =
     else
         -- Use tail-recursive helper with work stack
         -- Each work item is (remaining sum, max part allowed, prefix built so far)
-        partitionsLoop [ ( n, n, [] ) ] []
+        listConjugacyClassesHelp [ ( n, n, [] ) ] []
 
 
 {-| Tail-recursive helper using a work stack.
 Work items are (remaining, maxPart, prefix).
 -}
-partitionsLoop : List ( Int, Int, List Int ) -> List (List Int) -> List (List Int)
-partitionsLoop work acc =
+listConjugacyClassesHelp : List ( Int, Int, List Int ) -> List (List Int) -> List (List Int)
+listConjugacyClassesHelp work acc =
     case work of
         [] ->
             List.reverse acc
@@ -925,11 +925,11 @@ partitionsLoop work acc =
         ( remaining, maxPart, prefix ) :: restWork ->
             if remaining == 0 then
                 -- Found a complete partition
-                partitionsLoop restWork (List.reverse prefix :: acc)
+                listConjugacyClassesHelp restWork (List.reverse prefix :: acc)
 
             else if maxPart <= 0 then
                 -- No valid partition possible from here
-                partitionsLoop restWork acc
+                listConjugacyClassesHelp restWork acc
 
             else
                 -- Add work items: first try using maxPart, then try without it
@@ -943,7 +943,7 @@ partitionsLoop work acc =
                     withoutMaxPart =
                         ( remaining, maxPart - 1, prefix )
                 in
-                partitionsLoop (withMaxPart :: withoutMaxPart :: restWork) acc
+                listConjugacyClassesHelp (withMaxPart :: withoutMaxPart :: restWork) acc
 
 
 {-| Factorial of a non-negative integer.

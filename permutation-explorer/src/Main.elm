@@ -30,7 +30,7 @@ type alias Model =
 type Page
     = GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
-    | ConjugacyClassPage (List Int) -- cycle type (partition)
+    | ConjugacyClassPage (List Int) -- cycle type
     | PermutationListPage { n : Int, currentPage : Int }
     | PermutationSummaryPage PermutationSummaryModel
     | CompositionPage CompositionModel
@@ -594,7 +594,20 @@ viewPermutationTable n permutations =
                 , Html.div [ style "flex" "2", style "font-family" "monospace" ]
                     [ Html.text (Permutation.toCyclesString perm) ]
                 , Html.div [ style "flex" "1", style "font-family" "monospace" ]
-                    [ Html.text (PermutationView.cycleTypeToString (Permutation.cycleType perm)) ]
+                    [ let
+                        cycleType =
+                            Permutation.cycleType perm
+
+                        cycleTypeRoute =
+                            Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
+                      in
+                      Html.a
+                        [ Attr.href (Route.toString cycleTypeRoute)
+                        , style "text-decoration" "none"
+                        , style "color" "#0066cc"
+                        ]
+                        [ Html.text (PermutationView.cycleTypeToString cycleType) ]
+                    ]
                 , Html.div [ style "flex" "1", style "text-align" "right", style "font-family" "monospace" ]
                     [ Html.text signStr ]
                 , Html.div [ style "flex" "1", style "text-align" "right", style "font-family" "monospace" ]
@@ -628,10 +641,10 @@ viewConjugacyClassesTable n =
                 , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Order of elements" ]
                 ]
 
-        dataRow partition =
+        dataRow cycleType =
             let
                 classRoute =
-                    Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass partition))
+                    Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
             in
             Html.div
                 [ style "display" "flex"
@@ -644,12 +657,12 @@ viewConjugacyClassesTable n =
                         , style "text-decoration" "none"
                         , style "color" "#0066cc"
                         ]
-                        [ Html.text (PermutationView.cycleTypeToString partition) ]
+                        [ Html.text (PermutationView.cycleTypeToString cycleType) ]
                     ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
-                    [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromPartition n partition)) ]
+                    [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromCycleType n cycleType)) ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
-                    [ Html.text (String.fromInt (Permutation.orderFromCycleType partition)) ]
+                    [ Html.text (String.fromInt (Permutation.orderFromCycleType cycleType)) ]
                 ]
     in
     Html.div

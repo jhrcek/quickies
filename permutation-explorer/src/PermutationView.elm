@@ -12,9 +12,10 @@ module PermutationView exposing
 
 import GraphViz as GV
 import Html exposing (Html)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (href, style)
 import Html.Events exposing (onClick)
 import Permutation
+import Route
 
 
 {-| Graph visualization mode.
@@ -38,7 +39,7 @@ viewCard content =
         content
 
 
-{-| Format a cycle type (partition) as a string like "[3,2,1]".
+{-| Format a cycle type as a string like "[3,2,1]".
 -}
 cycleTypeToString : List Int -> String
 cycleTypeToString parts =
@@ -72,23 +73,46 @@ viewCharacteristics perm =
                 Permutation.Odd ->
                     "-1 (odd)"
 
-        cycleTypeStr =
+        cycleType =
             Permutation.cycleType perm
-                |> cycleTypeToString
+
+        cycleTypeStr =
+            cycleTypeToString cycleType
+
+        cycleTypeRoute =
+            Route.Group (Permutation.getSize perm)
+                (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
 
         orderStr =
             String.fromInt (Permutation.order perm)
 
-        characteristic : String -> String -> Html msg
-        characteristic label val =
+        characteristic : String -> Html msg -> Html msg
+        characteristic label valElem =
             Html.div
                 [ style "display" "flex"
                 , style "justify-content" "space-between"
                 , style "gap" "8px"
                 ]
                 [ Html.span [ style "color" "#666" ] [ Html.text label ]
-                , Html.span [ style "font-family" "monospace" ] [ Html.text val ]
+                , valElem
                 ]
+
+        textCharacteristic : String -> String -> Html msg
+        textCharacteristic label value =
+            characteristic label
+                (Html.span [ style "font-family" "monospace" ]
+                    [ Html.text value ]
+                )
+
+        linkCharacteristic : String -> Route.Route -> String -> Html msg
+        linkCharacteristic label route value =
+            characteristic label
+                (Html.a
+                    [ style "font-family" "monospace"
+                    , href (Route.toString route)
+                    ]
+                    [ Html.text value ]
+                )
 
         boolStr b =
             if b then
@@ -107,22 +131,22 @@ viewCharacteristics perm =
         , style "flex-direction" "column"
         , style "gap" "4px"
         ]
-        [ characteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
-        , characteristic "Cycle notation:" (Permutation.toCyclesString perm)
-        , characteristic "Sign:" signStr
-        , characteristic "Cycle type:" cycleTypeStr
-        , characteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
-        , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
-        , characteristic "Order:" orderStr
-        , characteristic "Rank:" (String.fromInt (Permutation.toRank perm))
-        , characteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
-        , characteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
-        , characteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
-        , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))
-        , characteristic "Is involution:" (boolStr (Permutation.isInvolution perm))
-        , characteristic "Is derangement:" (boolStr (Permutation.isDerangement perm))
-        , characteristic "Is transposition:" (boolStr (Permutation.isTransposition perm))
-        , characteristic "Is cyclic:" (boolStr (Permutation.isCyclic perm))
+        [ textCharacteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
+        , textCharacteristic "Cycle notation:" (Permutation.toCyclesString perm)
+        , textCharacteristic "Sign:" signStr
+        , linkCharacteristic "Cycle type:" cycleTypeRoute cycleTypeStr
+        , textCharacteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
+        , textCharacteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
+        , textCharacteristic "Order:" orderStr
+        , textCharacteristic "Rank:" (String.fromInt (Permutation.toRank perm))
+        , textCharacteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
+        , textCharacteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
+        , textCharacteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
+        , textCharacteristic "Is identity:" (boolStr (Permutation.isIdentity perm))
+        , textCharacteristic "Is involution:" (boolStr (Permutation.isInvolution perm))
+        , textCharacteristic "Is derangement:" (boolStr (Permutation.isDerangement perm))
+        , textCharacteristic "Is transposition:" (boolStr (Permutation.isTransposition perm))
+        , textCharacteristic "Is cyclic:" (boolStr (Permutation.isCyclic perm))
         ]
 
 
