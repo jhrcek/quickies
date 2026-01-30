@@ -431,7 +431,7 @@ viewGroupSummary n =
                 ]
                 [ Html.text title ]
 
-        statRow label formula value maybeRoute =
+        statRow label formula value =
             Html.div
                 [ style "display" "flex"
                 , style "padding" "4px 0"
@@ -440,33 +440,26 @@ viewGroupSummary n =
                 [ Html.span [ style "flex" "3" ] label
                 , Html.span [ style "flex" "3", style "color" "#666" ] [ Html.text formula ]
                 , Html.span [ style "flex" "1", style "text-align" "right" ]
-                    [ case maybeRoute of
-                        Just route ->
-                            routeLink route (String.fromInt value)
-
-                        Nothing ->
-                            Html.text (String.fromInt value)
-                    ]
+                    [ Html.text (String.fromInt value) ]
                 ]
     in
     Html.div [ style "max-width" "600px" ]
         [ -- Basic Properties
           Html.div sectionStyle
             [ sectionHeader "Basic Properties"
-            , statRow [ Html.text "Order (|S", Html.sub [] [ Html.text "n" ], Html.text "|)" ] "n!" order Nothing
-            , statRow [ Html.text "Conjugacy classes" ] "p(n)" conjugacyClassCount (Just (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary)))
+            , statRow [ Html.text "Order (|S", Html.sub [] [ Html.text "n" ], Html.text "|)" ] "n!" order
+            , statRow [ routeLink (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary)) "Conjugacy classes" ] "p(n)" conjugacyClassCount
             ]
 
         -- Element Counts
         , Html.div sectionStyle
             [ sectionHeader "Element Counts"
-            , statRow [ Html.text "Even permutations" ] "n!/2" halfOrder Nothing
-            , statRow [ Html.text "Odd permutations" ] "n!/2" halfOrder Nothing
-            , statRow [ Html.text "Identity" ] "1" 1 (Just (Route.Group n (Route.Permutations (Route.PermutationDetail 0))))
-            , statRow [ Html.text "Transpositions" ] "n·(n-1)/2" (Permutation.countTranspositions n) Nothing
-            , statRow [ Html.text "Involutions" ] "a(n) = a(n-1)+(n-1)·a(n-2)" (Permutation.countInvolutions n) Nothing
-            , statRow [ Html.text "Derangements" ] "!n" (Permutation.countDerangements n) Nothing
-            , statRow [ Html.text ("Cyclic (" ++ String.fromInt n ++ "-cycles)") ] "(n-1)!" (Permutation.countCyclicPermutations n) Nothing
+            , statRow [ Html.text "Even permutations" ] "n!/2" halfOrder
+            , statRow [ Html.text "Odd permutations" ] "n!/2" halfOrder
+            , statRow [ Html.text "Transpositions" ] "n·(n-1)/2" (Permutation.countTranspositions n)
+            , statRow [ Html.text "Involutions" ] "a(n) = a(n-1)+(n-1)·a(n-2)" (Permutation.countInvolutions n)
+            , statRow [ Html.text "Derangements" ] "!n" (Permutation.countDerangements n)
+            , statRow [ Html.text ("Cyclic (" ++ String.fromInt n ++ "-cycles)") ] "(n-1)!" (Permutation.countCyclicPermutations n)
             ]
 
         -- Navigation
@@ -477,8 +470,6 @@ viewGroupSummary n =
           in
           Html.div sectionStyle
             [ sectionHeader "Navigation"
-            , navLink (Route.Group n (Route.Permutations (Route.PermutationDetail 0))) "Identity permutation (rank 0)"
-            , navLink (Route.Group n (Route.Permutations (Route.PermutationDetail (order - 1)))) ("Reverse permutation (rank " ++ String.fromInt (order - 1) ++ ")")
             , navLink (Route.Group n (Route.Permutations Route.PermutationList)) "Browse all permutations"
             , navLink (Route.Group n (Route.Permutations (Route.PermutationComposition 0 0))) "Composition editor"
             ]
