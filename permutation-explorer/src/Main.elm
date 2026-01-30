@@ -10,8 +10,9 @@ import Permutation
 import PermutationInput
 import PermutationView
 import Random
-import Route
+import Route exposing (Route)
 import Url exposing (Url)
+import ViewHelpers
 
 
 
@@ -20,7 +21,7 @@ import Url exposing (Url)
 
 type alias Model =
     { key : Navigation.Key
-    , route : Route.Route
+    , route : Route
     , page : Page
     , inputMode : PermutationInput.InputMode
     , graphMode : PermutationView.GraphMode
@@ -65,7 +66,7 @@ type ResultTab
 type Msg
     = UrlRequested Browser.UrlRequest
     | UrlChanged Url
-    | BreadcrumbNavigate Route.Route
+    | BreadcrumbNavigate Route
     | ToggleInputMode
     | SetResultTab ResultTab
     | SetPermutationListPage Int
@@ -88,7 +89,7 @@ type PermId
     | Q
 
 
-updateRouteRank : PermId -> (Int -> Int -> Int) -> Route.Route -> Route.Route
+updateRouteRank : PermId -> (Int -> Int -> Int) -> Route -> Route
 updateRouteRank permId =
     case permId of
         P ->
@@ -98,7 +99,7 @@ updateRouteRank permId =
             Route.updateRankQ
 
 
-setRouteRank : PermId -> Int -> Route.Route -> Route.Route
+setRouteRank : PermId -> Int -> Route -> Route
 setRouteRank permId =
     case permId of
         P ->
@@ -143,7 +144,7 @@ init _ url key =
     )
 
 
-initPageFromRoute : Route.Route -> Page
+initPageFromRoute : Route -> Page
 initPageFromRoute route =
     case route of
         Route.Group n groupPage ->
@@ -328,7 +329,7 @@ handlePermutationInput :
     { permutation : Permutation.Permutation
     , inputModel : PermutationInput.Model
     , updatePage : PermutationInput.Model -> Page
-    , routeSetter : Int -> Route.Route -> Route.Route
+    , routeSetter : Int -> Route -> Route
     }
     -> PermutationInput.Msg
     -> Model
@@ -414,21 +415,72 @@ viewGroupSummary n =
 
         conjugacyClassCount =
             List.length (Permutation.listConjugacyClasses n)
+
+        halfOrder =
+            order // 2
+
+        sectionStyle =
+            [ style "margin-bottom" "20px" ]
+
+        sectionHeader title =
+            Html.div
+                [ style "font-weight" "bold"
+                , style "border-bottom" "1px solid #666"
+                , style "margin-bottom" "8px"
+                , style "padding-bottom" "4px"
+                ]
+                [ Html.text title ]
+
+        statRow label formula value maybeRoute =
+            Html.div
+                [ style "display" "flex"
+                , style "padding" "4px 0"
+                , style "font-family" "monospace"
+                ]
+                [ Html.span [ style "flex" "3" ] label
+                , Html.span [ style "flex" "3", style "color" "#666" ] [ Html.text formula ]
+                , Html.span [ style "flex" "1", style "text-align" "right" ]
+                    [ case maybeRoute of
+                        Just route ->
+                            routeLink route (String.fromInt value)
+
+                        Nothing ->
+                            Html.text (String.fromInt value)
+                    ]
+                ]
     in
-    Html.div []
-        [ Html.p [] [ Html.text ("Order: " ++ String.fromInt order) ]
-        , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary))) ]
-                [ Html.text ("Conjugacy Classes: " ++ String.fromInt conjugacyClassCount) ]
+    Html.div [ style "max-width" "600px" ]
+        [ -- Basic Properties
+          Html.div sectionStyle
+            [ sectionHeader "Basic Properties"
+            , statRow [ Html.text "Order (|S", Html.sub [] [ Html.text "n" ], Html.text "|)" ] "n!" order Nothing
+            , statRow [ Html.text "Conjugacy classes" ] "p(n)" conjugacyClassCount (Just (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary)))
             ]
-        , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutations Route.PermutationList))) ]
-                [ Html.text ("Permutations: " ++ String.fromInt order) ]
+
+        -- Element Counts
+        , Html.div sectionStyle
+            [ sectionHeader "Element Counts"
+            , statRow [ Html.text "Even permutations" ] "n!/2" halfOrder Nothing
+            , statRow [ Html.text "Odd permutations" ] "n!/2" halfOrder Nothing
+            , statRow [ Html.text "Identity" ] "1" 1 (Just (Route.Group n (Route.Permutations (Route.PermutationDetail 0))))
+            , statRow [ Html.text "Transpositions" ] "n·(n-1)/2" (Permutation.countTranspositions n) Nothing
+            , statRow [ Html.text "Involutions" ] "a(n) = a(n-1)+(n-1)·a(n-2)" (Permutation.countInvolutions n) Nothing
+            , statRow [ Html.text "Derangements" ] "!n" (Permutation.countDerangements n) Nothing
+            , statRow [ Html.text ("Cyclic (" ++ String.fromInt n ++ "-cycles)") ] "(n-1)!" (Permutation.countCyclicPermutations n) Nothing
             ]
-        , Html.p []
-            [ Html.a [ Attr.href (Route.toString (Route.Group n (Route.Permutations (Route.PermutationComposition 0 0)))) ]
-                -- TODO replace this with more sensible way to go to composition editor - maybe just have link to list of all permutations in S_n?
-                [ Html.text "Go to Composition Editor" ]
+
+        -- Navigation
+        , let
+            navLink route label =
+                Html.div [ style "padding" "4px 0" ]
+                    [ routeLink route label ]
+          in
+          Html.div sectionStyle
+            [ sectionHeader "Navigation"
+            , navLink (Route.Group n (Route.Permutations (Route.PermutationDetail 0))) "Identity permutation (rank 0)"
+            , navLink (Route.Group n (Route.Permutations (Route.PermutationDetail (order - 1)))) ("Reverse permutation (rank " ++ String.fromInt (order - 1) ++ ")")
+            , navLink (Route.Group n (Route.Permutations Route.PermutationList)) "Browse all permutations"
+            , navLink (Route.Group n (Route.Permutations (Route.PermutationComposition 0 0))) "Composition editor"
             ]
         ]
 
@@ -584,13 +636,7 @@ viewPermutationTable n permutations =
                 , style "padding" "8px 0"
                 ]
                 [ Html.div [ style "flex" "1" ]
-                    [ Html.a
-                        [ Attr.href (Route.toString detailRoute)
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        ]
-                        [ Html.text (String.fromInt rank) ]
-                    ]
+                    [ routeLink detailRoute (String.fromInt rank) ]
                 , Html.div [ style "flex" "2", style "font-family" "monospace" ]
                     [ Html.text (Permutation.toCyclesString perm) ]
                 , Html.div [ style "flex" "1", style "font-family" "monospace" ]
@@ -601,12 +647,7 @@ viewPermutationTable n permutations =
                         cycleTypeRoute =
                             Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
                       in
-                      Html.a
-                        [ Attr.href (Route.toString cycleTypeRoute)
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        ]
-                        [ Html.text (PermutationView.cycleTypeToString cycleType) ]
+                      routeLink cycleTypeRoute (PermutationView.cycleTypeToString cycleType)
                     ]
                 , Html.div [ style "flex" "1", style "text-align" "right", style "font-family" "monospace" ]
                     [ Html.text signStr ]
@@ -652,13 +693,7 @@ viewConjugacyClassesTable n =
                 , style "padding" "8px 0"
                 ]
                 [ Html.div [ style "flex" "1" ]
-                    [ Html.a
-                        [ Attr.href (Route.toString classRoute)
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        ]
-                        [ Html.text (PermutationView.cycleTypeToString cycleType) ]
-                    ]
+                    [ routeLink classRoute (PermutationView.cycleTypeToString cycleType) ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
                     [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromCycleType n cycleType)) ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ]
@@ -677,6 +712,11 @@ viewConjugacyClassesTable n =
             ]
             (headerRow :: List.map dataRow classes)
         ]
+
+
+routeLink : Route -> String -> Html msg
+routeLink =
+    ViewHelpers.routeLink []
 
 
 viewPermutationSummary : PermutationView.GraphMode -> PermutationSummaryModel -> Html Msg

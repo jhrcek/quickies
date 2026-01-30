@@ -12,10 +12,11 @@ module PermutationView exposing
 
 import GraphViz as GV
 import Html exposing (Html)
-import Html.Attributes exposing (href, style)
+import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
 import Permutation
 import Route
+import ViewHelpers
 
 
 {-| Graph visualization mode.
@@ -107,12 +108,7 @@ viewCharacteristics perm =
         linkCharacteristic : String -> Route.Route -> String -> Html msg
         linkCharacteristic label route value =
             characteristic label
-                (Html.a
-                    [ style "font-family" "monospace"
-                    , href (Route.toString route)
-                    ]
-                    [ Html.text value ]
-                )
+                (ViewHelpers.routeLink [ style "font-family" "monospace" ] route value)
 
         boolStr b =
             if b then

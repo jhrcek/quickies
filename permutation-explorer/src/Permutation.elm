@@ -8,6 +8,10 @@ module Permutation exposing
     , conjugacyClassSize
     , conjugacyClassSizeFromCycleType
     , conjugateBy
+    , countCyclicPermutations
+    , countDerangements
+    , countInvolutions
+    , countTranspositions
     , cycleType
     , factorial
     , fromArray
@@ -979,6 +983,81 @@ factorial n =
 factorialLookup : Array Int
 factorialLookup =
     Array.fromList [ 1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800 ]
+
+
+{-| Count the number of transpositions in Sₙ: n(n-1)/2
+-}
+countTranspositions : Int -> Int
+countTranspositions n =
+    n * (n - 1) // 2
+
+
+{-| Count the number of derangements in Sₙ (subfactorial !n).
+
+Uses the recurrence: !n = (n-1) · (!(n-1) + !(n-2)) with !0 = 1, !1 = 0
+
+-}
+countDerangements : Int -> Int
+countDerangements n =
+    if n <= 0 then
+        1
+
+    else if n == 1 then
+        0
+
+    else
+        countDerangementsHelper n 1 0
+
+
+countDerangementsHelper : Int -> Int -> Int -> Int
+countDerangementsHelper remaining dPrev2 dPrev1 =
+    if remaining <= 1 then
+        dPrev1
+
+    else
+        let
+            current =
+                (remaining - 1) * (dPrev1 + dPrev2)
+        in
+        countDerangementsHelper (remaining - 1) dPrev1 current
+
+
+{-| Count the number of involutions in Sₙ.
+
+Uses the recurrence: a(n) = a(n-1) + (n-1) · a(n-2) with a(0) = 1, a(1) = 1
+
+-}
+countInvolutions : Int -> Int
+countInvolutions n =
+    if n <= 1 then
+        1
+
+    else
+        countInvolutionsHelper n 1 1
+
+
+countInvolutionsHelper : Int -> Int -> Int -> Int
+countInvolutionsHelper remaining aPrev2 aPrev1 =
+    if remaining <= 1 then
+        aPrev1
+
+    else
+        let
+            current =
+                aPrev1 + (remaining - 1) * aPrev2
+        in
+        countInvolutionsHelper (remaining - 1) aPrev1 current
+
+
+{-| Count the number of cyclic permutations (n-cycles) in Sₙ: (n-1)!
+-}
+countCyclicPermutations : Int -> Int
+countCyclicPermutations n =
+    if n <= 0 then
+        1
+
+    else
+        factorial (n - 1)
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).

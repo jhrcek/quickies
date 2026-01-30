@@ -7,6 +7,7 @@ import Json.Decode as Decode
 import PermutationInput
 import PermutationView
 import Route exposing (ConjugacyClassPage(..), GroupPage(..), PermutationPage(..), Route(..))
+import ViewHelpers
 
 
 type alias Config msg =
@@ -63,13 +64,9 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                 ConjugacyClass cycleType ->
                     [ viewNSegment config n route
                     , viewSeparator
-                    , Html.a
-                        [ Attr.href (Route.toString (Group n (ConjugacyClasses ConjugacyClassSummary)))
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        , style "font-weight" "bold"
-                        ]
-                        [ Html.text "Conjugacy Classes" ]
+                    , routeLink
+                        (Group n (ConjugacyClasses ConjugacyClassSummary))
+                        "Conjugacy Classes"
                     , viewSeparator
                     , Html.span [ style "font-weight" "bold" ] [ Html.text (PermutationView.cycleTypeToString cycleType) ]
                     ]
@@ -85,13 +82,9 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                 PermutationDetail _ ->
                     [ viewNSegment config n route
                     , viewSeparator
-                    , Html.a
-                        [ Attr.href (Route.toString (Group n (Permutations PermutationList)))
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        , style "font-weight" "bold"
-                        ]
-                        [ Html.text "Permutations" ]
+                    , routeLink
+                        (Group n (Permutations PermutationList))
+                        "Permutations"
                     , viewSeparator
                     , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutation" ]
                     ]
@@ -106,21 +99,13 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                 PermutationComposition rankP _ ->
                     [ viewNSegment config n route
                     , viewSeparator
-                    , Html.a
-                        [ Attr.href (Route.toString (Group n (Permutations PermutationList)))
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        , style "font-weight" "bold"
-                        ]
-                        [ Html.text "Permutations" ]
+                    , routeLink
+                        (Group n (Permutations PermutationList))
+                        "Permutations"
                     , viewSeparator
-                    , Html.a
-                        [ Attr.href (Route.toString (Group n (Permutations (PermutationDetail rankP))))
-                        , style "text-decoration" "none"
-                        , style "color" "#0066cc"
-                        , style "font-weight" "bold"
-                        ]
-                        [ Html.text "Permutation" ]
+                    , routeLink
+                        (Group n (Permutations (PermutationDetail rankP)))
+                        "Permutation"
                     ]
                         ++ (case permInput1 of
                                 Just input ->
@@ -148,13 +133,9 @@ viewNSegment config n route =
         , style "align-items" "center"
         , style "gap" "4px"
         ]
-        [ Html.a
-            [ Attr.href (Route.toString (Group n GroupSummary))
-            , style "text-decoration" "none"
-            , style "color" "#0066cc"
-            , style "font-weight" "bold"
-            ]
-            [ Html.text ("S" ++ toSubscript n) ]
+        [ routeLink
+            (Group n GroupSummary)
+            ("S" ++ toSubscript n)
         , viewNDropdown config n route
         ]
 
@@ -278,3 +259,8 @@ targetValueInt =
                     Nothing ->
                         Decode.fail "Not an int"
             )
+
+
+routeLink : Route -> String -> Html msg
+routeLink =
+    ViewHelpers.routeLink [ style "font-weight" "bold" ]
