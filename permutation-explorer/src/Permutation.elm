@@ -319,15 +319,25 @@ toLehmerCode (Permutation arr) =
         n =
             Array.length arr
 
-        -- Count elements less than val in the remaining list
+        -- Count elements less than val in the list
         countLessThan : Int -> List Int -> Int
         countLessThan val remaining =
-            List.filter (\x -> x < val) remaining |> List.length
+            List.foldl
+                (\x count ->
+                    if x < val then
+                        count + 1
+
+                    else
+                        count
+                )
+                0
+                remaining
 
         -- Build Lehmer code and compute ordinal
-        -- factorialBase tracks (remaining_length - 1)! at each step
-        computeOrdinal : List Int -> Int -> Int -> Int
-        computeOrdinal remaining factorialBase acc =
+        -- remainingCount tracks length to avoid O(n) List.length calls
+        -- factorialBase tracks (remainingCount - 1)! at each step
+        computeOrdinal : List Int -> Int -> Int -> Int -> Int
+        computeOrdinal remaining remainingCount factorialBase acc =
             case remaining of
                 [] ->
                     acc
@@ -337,26 +347,20 @@ toLehmerCode (Permutation arr) =
                         digit =
                             countLessThan v rest
 
-                        -- Go from (k-1)! to (k-2)! by dividing by (k-1)
-                        -- where k = List.length remaining
                         newFactorial =
-                            if List.length remaining > 1 then
-                                factorialBase // (List.length remaining - 1)
+                            if remainingCount > 1 then
+                                factorialBase // (remainingCount - 1)
 
                             else
                                 1
                     in
-                    computeOrdinal rest newFactorial (acc + digit * factorialBase)
+                    computeOrdinal rest (remainingCount - 1) newFactorial (acc + digit * factorialBase)
     in
     if n <= 1 then
         0
 
     else
-        let
-            values =
-                Array.toList arr
-        in
-        computeOrdinal values (factorial (n - 1)) 0
+        computeOrdinal (Array.toList arr) n (factorial (n - 1)) 0
 
 
 {-| Create a permutation from its Lehmer code in Sₙ.
