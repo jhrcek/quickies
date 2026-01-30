@@ -201,6 +201,28 @@ inverse (Permutation arr) =
 
 
 -- TODO add newtype for LehmerCode
+-- TODO don't call it Lehmer
+-- TODO actually add function that returns Lehmer code digits as List Int
+{-
+   ME:   I'm just asking about the naming throughout the codebase.
+      So what would be proper and commonly used name for the ordinal we're calculating by multiplying those lehmer code digits with those factorials?
+
+   CLAUDE: The single ordinal number is most commonly called:
+
+           - Lexicographic rank (or lex rank)
+           - Permutation rank / permutation index
+
+           The current naming (toLehmerCode, fromLehmerCode) is slightly imprecise — it's computing the lexicographic rank using the Lehmer code digits, but not exposing the Lehmer code itself.
+
+           More precise naming would be:
+           - toLexRank / fromLexRank
+           - toPermutationIndex / fromPermutationIndex
+           - rank / unrank (common in combinatorics literature)
+
+           If you later wanted to expose the actual digit sequence, you could have:
+           - toLehmerCode : Permutation -> List Int (the digits)
+           - toLexRank : Permutation -> Int (the ordinal)
+-}
 
 
 inverseLehmer : Int -> Int -> Maybe Int
