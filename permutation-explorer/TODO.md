@@ -5,12 +5,12 @@
 - [ ] generate random permutation of specific type (e.g. transposition, involution etc.)
 - [x] turn it into application with url parsing with pages like
     - [x] Whole S_n group summary page
-        - [ ] order / number of elements linking to permutations page
-        - [ ] number (list of) conjugacy classes - with count of elements / order of each
+        - [x] order / number of elements linking to permutations page
+        - [x] number (list of) conjugacy classes - with count of elements / order of each
     - [ ] Conjugacy classes - table of all conjugacy classes with a pager
         - [ ] conjugacy class
             - [ ] showing shape as a graph and properties shared by all elements
-    - [ ] permutations - showing (sortable?) table of all permutations with a pager
+    - [x] permutations - showing (sortable?) table of all permutations with a pager
         - [x] Single permutation (with all its properties)
     - [x] Permutation composition
 
@@ -38,7 +38,7 @@
 - [ ] 12. Descent set - positions i where σ(i) > σ(i+1)
 - [ ] 13. Number of descents - size of descent set
 - [ ] 14. Major index - sum of descent positions
-- [ ] 15. Lehmer code - vector where position i counts inversions involving i
+- [x] 15. Lehmer code - vector where position i counts inversions involving i
 
 ### Excedance Statistics
 - [ ] 16. Excedances - positions where σ(i) > i

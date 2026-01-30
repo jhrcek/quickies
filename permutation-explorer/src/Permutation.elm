@@ -35,6 +35,8 @@ module Permutation exposing
     , toBipartiteGraph
     , toCycleGraph
     , toCyclesString
+    , toLehmerDigits
+    , toOneLineNotation
     , toRank
     )
 
@@ -310,53 +312,63 @@ For example, in S₃:
 
 -}
 toRank : Permutation -> Int
-toRank (Permutation arr) =
+toRank perm =
     let
+        digits =
+            toLehmerDigits perm
+
         n =
-            Array.length arr
+            List.length digits
+    in
+    digits
+        |> List.indexedMap (\i d -> d * factorial (n - 1 - i))
+        |> List.sum
 
-        -- Count elements less than val in the list
-        countLessThan : Int -> List Int -> Int
-        countLessThan val remaining =
-            List.foldl
-                (\x count ->
-                    if x < val then
-                        count + 1
 
-                    else
-                        count
-                )
-                0
-                remaining
+{-| Extract the Lehmer code digits from a permutation.
 
-        -- Build Lehmer code and compute ordinal
-        -- remainingCount tracks length to avoid O(n) List.length calls
-        -- factorialBase tracks (remainingCount - 1)! at each step
-        computeOrdinal : List Int -> Int -> Int -> Int -> Int
-        computeOrdinal remaining remainingCount factorialBase acc =
+The Lehmer code digit at position i is the count of elements smaller than
+perm[i] that appear after position i in the permutation.
+
+For example, in S₃:
+
+  - [0,1,2] → [0, 0, 0]
+  - [0,2,1] → [0, 1, 0]
+  - [1,0,2] → [1, 0, 0]
+  - [1,2,0] → [1, 1, 0]
+  - [2,0,1] → [2, 0, 0]
+  - [2,1,0] → [2, 1, 0]
+
+-}
+toLehmerDigits : Permutation -> List Int
+toLehmerDigits (Permutation arr) =
+    let
+        buildDigits : List Int -> List Int -> List Int
+        buildDigits remaining acc =
             case remaining of
                 [] ->
-                    acc
+                    List.reverse acc
 
                 v :: rest ->
-                    let
-                        digit =
-                            countLessThan v rest
-
-                        newFactorial =
-                            if remainingCount > 1 then
-                                factorialBase // (remainingCount - 1)
-
-                            else
-                                1
-                    in
-                    computeOrdinal rest (remainingCount - 1) newFactorial (acc + digit * factorialBase)
+                    buildDigits rest (countLessThan v rest :: acc)
     in
-    if n <= 1 then
-        0
+    buildDigits (Array.toList arr) []
 
-    else
-        computeOrdinal (Array.toList arr) n (factorial (n - 1)) 0
+
+{-| Count elements less than val in the list.
+-}
+countLessThan : Int -> List Int -> Int
+countLessThan val remaining =
+    List.foldl
+        (\x count ->
+            if x < val then
+                count + 1
+
+            else
+                count
+        )
+        0
+        remaining
 
 
 {-| Create a permutation from its lexicographic rank in Sₙ.
@@ -383,19 +395,23 @@ fromRank n code =
                 List.range 0 (n - 1)
 
             -- Remove element at given index from list, return (element, remaining)
+            -- Tail-recursive: accumulator holds reversed prefix
             removeAt : Int -> List Int -> ( Int, List Int )
             removeAt idx lst =
-                let
-                    before =
-                        List.take idx lst
+                removeAtHelp idx lst []
 
-                    after =
-                        List.drop (idx + 1) lst
+            removeAtHelp : Int -> List Int -> List Int -> ( Int, List Int )
+            removeAtHelp idx lst acc =
+                case lst of
+                    [] ->
+                        ( 0, List.reverse acc )
 
-                    element =
-                        List.drop idx lst |> List.head |> Maybe.withDefault 0
-                in
-                ( element, before ++ after )
+                    x :: xs ->
+                        if idx == 0 then
+                            ( x, List.foldl (::) xs acc )
+
+                        else
+                            removeAtHelp (idx - 1) xs (x :: acc)
 
             -- Extract Lehmer digits and build permutation
             buildPerm : Int -> Int -> List Int -> List Int -> List Int
@@ -649,6 +665,19 @@ toCyclesString perm =
         nonTrivialCycles
             |> List.map cycleToString
             |> String.concat
+
+
+{-| Convert a permutation to one-line notation.
+
+Returns a list where the element at index i is the image of i under the permutation.
+
+For example, the permutation (1 3) in S₅ returns [0, 3, 2, 1, 4],
+meaning 0→0, 1→3, 2→2, 3→1, 4→4.
+
+-}
+toOneLineNotation : Permutation -> List Int
+toOneLineNotation (Permutation arr) =
+    Array.toList arr
 
 
 {-| The sign (parity) of a permutation: Even or Odd.

@@ -45,6 +45,20 @@ cycleTypeToString parts =
     "[" ++ String.join "," (List.map String.fromInt parts) ++ "]"
 
 
+{-| Format Lehmer digits as a string like "[2,1,0]".
+-}
+lehmerDigitsToString : List Int -> String
+lehmerDigitsToString digits =
+    "[" ++ String.join "," (List.map String.fromInt digits) ++ "]"
+
+
+{-| Format one-line notation as a string like "0 3 2 1 4".
+-}
+oneLineToString : List Int -> String
+oneLineToString elements =
+    String.join " " (List.map String.fromInt elements)
+
+
 {-| Display computed characteristics of a permutation.
 -}
 viewCharacteristics : Permutation.Permutation -> Html msg
@@ -93,13 +107,15 @@ viewCharacteristics perm =
         , style "flex-direction" "column"
         , style "gap" "4px"
         ]
-        [ characteristic "Cycles:" (Permutation.toCyclesString perm)
+        [ characteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
+        , characteristic "Cycle notation:" (Permutation.toCyclesString perm)
         , characteristic "Sign:" signStr
         , characteristic "Cycle type:" cycleTypeStr
         , characteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
         , characteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
         , characteristic "Order:" orderStr
         , characteristic "Rank:" (String.fromInt (Permutation.toRank perm))
+        , characteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
         , characteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
         , characteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
         , characteristic "Is identity:" (boolStr (Permutation.isIdentity perm))

@@ -376,6 +376,48 @@ suite =
                     (rank >= 0 && rank < fact)
                         |> Expect.equal True
             ]
+        , describe "toLehmerDigits"
+            [ test "identity permutation [0,1,2] has digits [0,0,0]" <|
+                \_ ->
+                    P.identity 3
+                        |> P.toLehmerDigits
+                        |> Expect.equal [ 0, 0, 0 ]
+            , test "[0,2,1] has digits [0,1,0]" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 0, 2, 1 ])
+                        |> Result.map P.toLehmerDigits
+                        |> Expect.equal (Ok [ 0, 1, 0 ])
+            , test "[1,0,2] has digits [1,0,0]" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 1, 0, 2 ])
+                        |> Result.map P.toLehmerDigits
+                        |> Expect.equal (Ok [ 1, 0, 0 ])
+            , test "[1,2,0] has digits [1,1,0]" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 1, 2, 0 ])
+                        |> Result.map P.toLehmerDigits
+                        |> Expect.equal (Ok [ 1, 1, 0 ])
+            , test "[2,0,1] has digits [2,0,0]" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 2, 0, 1 ])
+                        |> Result.map P.toLehmerDigits
+                        |> Expect.equal (Ok [ 2, 0, 0 ])
+            , test "[2,1,0] has digits [2,1,0]" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 2, 1, 0 ])
+                        |> Result.map P.toLehmerDigits
+                        |> Expect.equal (Ok [ 2, 1, 0 ])
+            , test "empty permutation has empty digits" <|
+                \_ ->
+                    P.identity 0
+                        |> P.toLehmerDigits
+                        |> Expect.equal []
+            , test "single element permutation has [0]" <|
+                \_ ->
+                    P.identity 1
+                        |> P.toLehmerDigits
+                        |> Expect.equal [ 0 ]
+            ]
         , describe "listConjugacyClasses"
             [ test "n=1 has 1 partition: [[1]]" <|
                 \_ ->
