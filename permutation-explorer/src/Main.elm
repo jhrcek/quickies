@@ -29,7 +29,8 @@ type alias Model =
 
 
 type Page
-    = GroupSummaryPage Int -- n from S_n
+    = HomePage
+    | GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
     | ConjugacyClassPage (List Int) -- cycle type
     | PermutationListPage { n : Int, currentPage : Int }
@@ -128,8 +129,7 @@ init _ url key =
     let
         route =
             Route.fromUrl url
-                -- TODO use home or not found
-                |> Maybe.withDefault (Route.Group 5 Route.GroupSummary)
+                |> Maybe.withDefault Route.Home
 
         page =
             initPageFromRoute route
@@ -147,6 +147,9 @@ init _ url key =
 initPageFromRoute : Route -> Page
 initPageFromRoute route =
     case route of
+        Route.Home ->
+            HomePage
+
         Route.Group n groupPage ->
             case groupPage of
                 Route.GroupSummary ->
@@ -312,6 +315,9 @@ update msg model =
 
         GenerateRandomRank permId ->
             case model.route of
+                Route.Home ->
+                    ( model, Cmd.none )
+
                 Route.Group n _ ->
                     ( model
                     , Random.generate (GotRandomRank permId) (Random.int 0 (Permutation.factorial n - 1))
@@ -387,6 +393,9 @@ viewBody model =
             permInput1
             permInput2
         , case model.page of
+            HomePage ->
+                viewHomePage
+
             GroupSummaryPage n ->
                 viewGroupSummary n
 
@@ -404,6 +413,23 @@ viewBody model =
 
             CompositionPage comp ->
                 viewComposition model.graphMode comp
+        ]
+
+
+viewHomePage : Html Msg
+viewHomePage =
+    Html.div []
+        [ Html.text "Welcome to the Permutation Explorer! Let's explore few small symmetric groups..."
+
+        -- TODO add something more interesting to home
+        , List.range 1 10
+            |> List.map
+                (\n ->
+                    routeLink (Route.Group n Route.GroupSummary)
+                        ("S" ++ Breadcrumb.toSubscript n)
+                )
+            |> List.intersperse (Html.text ", ")
+            |> Html.p []
         ]
 
 

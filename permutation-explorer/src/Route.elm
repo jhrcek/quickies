@@ -18,8 +18,8 @@ import Url.Parser as Parser exposing ((</>), Parser)
 
 
 type Route
-    = -- TODO add home route - use it as default for not found routes
-      Group Int GroupPage
+    = Home
+    | Group Int GroupPage
 
 
 type GroupPage
@@ -58,7 +58,10 @@ fromUrl url =
 
 parser : Parser (Route -> a) a
 parser =
-    Parser.map Group (Parser.s "group" </> Parser.int </> groupPageParser)
+    Parser.oneOf
+        [ Parser.map Home Parser.top
+        , Parser.map Group (Parser.s "group" </> Parser.int </> groupPageParser)
+        ]
 
 
 groupPageParser : Parser (GroupPage -> a) a
@@ -122,8 +125,15 @@ permutationPageParser =
 
 
 toString : Route -> String
-toString (Group n groupPage) =
-    "#/group/" ++ String.fromInt n ++ "/" ++ groupPageToString groupPage
+toString route =
+    "#/"
+        ++ (case route of
+                Home ->
+                    ""
+
+                Group n groupPage ->
+                    "group/" ++ String.fromInt n ++ "/" ++ groupPageToString groupPage
+           )
 
 
 groupPageToString : GroupPage -> String
@@ -167,6 +177,9 @@ permutationPageToString permPage =
 updateRankP : (Int -> Int -> Int) -> Route -> Route
 updateRankP f route =
     case route of
+        Home ->
+            Home
+
         Group n groupPage ->
             Group n <|
                 case groupPage of
@@ -197,6 +210,9 @@ setRankP newRankP route =
 updateRankQ : (Int -> Int -> Int) -> Route -> Route
 updateRankQ f route =
     case route of
+        Home ->
+            Home
+
         Group n groupPage ->
             Group n <|
                 case groupPage of
@@ -228,6 +244,9 @@ setN : Int -> Route -> Route
 setN newN route =
     -- Setting n means we have to potentially resize permutations and other things stored deeper in the route
     case route of
+        Home ->
+            Home
+
         Group oldN groupPage ->
             Group newN <|
                 case groupPage of

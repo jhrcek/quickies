@@ -1,4 +1,4 @@
-module Breadcrumb exposing (Config, view)
+module Breadcrumb exposing (Config, toSubscript, view)
 
 import Html exposing (Html)
 import Html.Attributes as Attr exposing (style)
@@ -47,83 +47,88 @@ view config route permInput1 permInput2 =
 
 
 viewSegments : Config msg -> Route -> Maybe (Html msg) -> Maybe (Html msg) -> List (Html msg)
-viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
-    case groupPage of
-        GroupSummary ->
-            [ viewNSegment config n route
-            ]
+viewSegments config route permInput1 permInput2 =
+    case route of
+        Home ->
+            [ Html.span [ style "font-weight" "bold" ] [ Html.text "Home" ] ]
 
-        ConjugacyClasses classPage ->
-            case classPage of
-                ConjugacyClassSummary ->
+        Group n groupPage ->
+            case groupPage of
+                GroupSummary ->
                     [ viewNSegment config n route
-                    , viewSeparator
-                    , Html.span [ style "font-weight" "bold" ] [ Html.text "Conjugacy Classes" ]
                     ]
 
-                ConjugacyClass cycleType ->
-                    [ viewNSegment config n route
-                    , viewSeparator
-                    , routeLink
-                        (Group n (ConjugacyClasses ConjugacyClassSummary))
-                        "Conjugacy Classes"
-                    , viewSeparator
-                    , Html.span [ style "font-weight" "bold" ] [ Html.text (PermutationView.cycleTypeToString cycleType) ]
-                    ]
+                ConjugacyClasses classPage ->
+                    case classPage of
+                        ConjugacyClassSummary ->
+                            [ viewNSegment config n route
+                            , viewSeparator
+                            , Html.span [ style "font-weight" "bold" ] [ Html.text "Conjugacy Classes" ]
+                            ]
 
-        Permutations permPage ->
-            case permPage of
-                PermutationList ->
-                    [ viewNSegment config n route
-                    , viewSeparator
-                    , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutations" ]
-                    ]
+                        ConjugacyClass cycleType ->
+                            [ viewNSegment config n route
+                            , viewSeparator
+                            , routeLink
+                                (Group n (ConjugacyClasses ConjugacyClassSummary))
+                                "Conjugacy Classes"
+                            , viewSeparator
+                            , Html.span [ style "font-weight" "bold" ] [ Html.text (PermutationView.cycleTypeToString cycleType) ]
+                            ]
 
-                PermutationDetail _ ->
-                    [ viewNSegment config n route
-                    , viewSeparator
-                    , routeLink
-                        (Group n (Permutations PermutationList))
-                        "Permutations"
-                    , viewSeparator
-                    , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutation" ]
-                    ]
-                        ++ (case permInput1 of
-                                Just input ->
-                                    [ input ]
+                Permutations permPage ->
+                    case permPage of
+                        PermutationList ->
+                            [ viewNSegment config n route
+                            , viewSeparator
+                            , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutations" ]
+                            ]
 
-                                Nothing ->
-                                    []
-                           )
+                        PermutationDetail _ ->
+                            [ viewNSegment config n route
+                            , viewSeparator
+                            , routeLink
+                                (Group n (Permutations PermutationList))
+                                "Permutations"
+                            , viewSeparator
+                            , Html.span [ style "font-weight" "bold" ] [ Html.text "Permutation" ]
+                            ]
+                                ++ (case permInput1 of
+                                        Just input ->
+                                            [ input ]
 
-                PermutationComposition rankP _ ->
-                    [ viewNSegment config n route
-                    , viewSeparator
-                    , routeLink
-                        (Group n (Permutations PermutationList))
-                        "Permutations"
-                    , viewSeparator
-                    , routeLink
-                        (Group n (Permutations (PermutationDetail rankP)))
-                        "Permutation"
-                    ]
-                        ++ (case permInput1 of
-                                Just input ->
-                                    [ input ]
+                                        Nothing ->
+                                            []
+                                   )
 
-                                Nothing ->
-                                    []
-                           )
-                        ++ [ viewSeparator
-                           , Html.span [ style "font-weight" "bold" ] [ Html.text "Composition" ]
-                           ]
-                        ++ (case permInput2 of
-                                Just input ->
-                                    [ input ]
+                        PermutationComposition rankP _ ->
+                            [ viewNSegment config n route
+                            , viewSeparator
+                            , routeLink
+                                (Group n (Permutations PermutationList))
+                                "Permutations"
+                            , viewSeparator
+                            , routeLink
+                                (Group n (Permutations (PermutationDetail rankP)))
+                                "Permutation"
+                            ]
+                                ++ (case permInput1 of
+                                        Just input ->
+                                            [ input ]
 
-                                Nothing ->
-                                    []
-                           )
+                                        Nothing ->
+                                            []
+                                   )
+                                ++ [ viewSeparator
+                                   , Html.span [ style "font-weight" "bold" ] [ Html.text "Composition" ]
+                                   ]
+                                ++ (case permInput2 of
+                                        Just input ->
+                                            [ input ]
+
+                                        Nothing ->
+                                            []
+                                   )
 
 
 viewNSegment : Config msg -> Int -> Route -> Html msg
