@@ -187,12 +187,16 @@ compose (Permutation arr1) (Permutation arr2) =
 inverse : Permutation -> Permutation
 inverse (Permutation arr) =
     let
+        n =
+            Array.length arr
+
         invArr =
-            Array.toIndexedList arr
-                |> List.sortBy Tuple.second
-                |> List.map Tuple.first
+            List.foldl
+                (\( i, j ) inv -> Array.set j i inv)
+                (Array.initialize n Basics.identity)
+                (Array.toIndexedList arr)
     in
-    Permutation (Array.fromList invArr)
+    Permutation invArr
 
 
 
@@ -590,24 +594,29 @@ toCycles (Permutation arr) =
             else
                 let
                     cycle =
-                        traceCycle idx []
+                        traceCycle idx
 
                     newVisited =
                         List.foldl (\i vArr -> Array.set i True vArr) visitedArr cycle
                 in
                 findCycles (idx + 1) newVisited (cycle :: foundCycles)
 
-        traceCycle : Int -> List Int -> List Int
-        traceCycle idx cycle =
-            if List.member idx cycle then
-                List.reverse cycle
+        traceCycle : Int -> List Int
+        traceCycle start =
+            let
+                go : Int -> List Int -> List Int
+                go idx acc =
+                    let
+                        next =
+                            Array.get idx arr |> Maybe.withDefault idx
+                    in
+                    if next == start then
+                        List.reverse (idx :: acc)
 
-            else
-                let
-                    next =
-                        Array.get idx arr |> Maybe.withDefault idx
-                in
-                traceCycle next (idx :: cycle)
+                    else
+                        go next (idx :: acc)
+            in
+            go start []
     in
     findCycles 0 visited []
         |> List.reverse
@@ -778,8 +787,17 @@ numCycles perm =
 {-| Count the number of fixed points (elements where σ(i) = i).
 -}
 numFixedPoints : Permutation -> Int
-numFixedPoints perm =
-    cycleType perm |> List.filter (\len -> len == 1) |> List.length
+numFixedPoints (Permutation arr) =
+    List.foldl
+        (\( i, j ) acc ->
+            if i == j then
+                acc + 1
+
+            else
+                acc
+        )
+        0
+        (Array.toIndexedList arr)
 
 
 {-| Compute the size of the centralizer of a permutation.
@@ -900,19 +918,20 @@ partitionsLoop work acc =
 
 
 {-| Factorial of a non-negative integer.
+
+NOTE: this is just array lookup that only works for n up to and including 12 (the largest that Elm's Int can support).
+If larger n is needed, we'd have to switch to different number representation.
+
 -}
 factorial : Int -> Int
 factorial n =
-    factorialHelp n 1
+    Array.get n factorialLookup
+        |> Maybe.withDefault 0
 
 
-factorialHelp : Int -> Int -> Int
-factorialHelp n acc =
-    if n <= 1 then
-        acc
-
-    else
-        factorialHelp (n - 1) (n * acc)
+factorialLookup : Array Int
+factorialLookup =
+    Array.fromList [ 1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800 ]
 
 
 {-| Convert a permutation to a GraphViz graph with optional edge color (Nothing = black edges).
