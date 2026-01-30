@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(make check:*)",
-      "Bash(make test:*)"
+      "Bash(make test:*)",
+      "Bash(make review:*)"
     ]
   },
   "hooks": {
@@ -13,6 +14,17 @@
           {
             "type": "command",
             "command": "case \"$CLAUDE_FILE_PATHS\" in *.elm) make check ;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "elm-test 1>&2"
           }
         ]
       }
