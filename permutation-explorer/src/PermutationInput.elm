@@ -16,21 +16,21 @@ import Json.Decode as Decode
 import Permutation
 
 
-{-| Input mode: Lehmer code or Cycle notation.
+{-| Input mode: Rank or Cycle notation.
 -}
 type InputMode
-    = LehmerMode
+    = RankMode
     | CycleMode
 
 
 toggleInputMode : InputMode -> InputMode
 toggleInputMode mode =
     case mode of
-        LehmerMode ->
+        RankMode ->
             CycleMode
 
         CycleMode ->
-            LehmerMode
+            RankMode
 
 
 {-| Edit state for a single permutation input.
@@ -64,11 +64,11 @@ type Msg
     | CancelCycleEdit
     | SaveCycleEdit
     | CycleInputChange String
-    | LehmerInputChange String
+    | RankInputChange String
 
 
-{-| Update the component. Returns (newModel, Maybe newLehmerCode).
-The Maybe is `Just newLehmerCode` when a new permutation should be navigated to, Nothing otherwise.
+{-| Update the component. Returns (newModel, Maybe newRank).
+The Maybe is `Just newRank` when a new permutation should be navigated to, Nothing otherwise.
 -}
 update : Permutation.Permutation -> Msg -> Model -> ( Model, Maybe Int )
 update currentPermutation msg model =
@@ -101,7 +101,7 @@ update currentPermutation msg model =
                 Editing editState ->
                     case editState.validationResult of
                         Ok perm ->
-                            ( NotEditing, Just (Permutation.toLehmerCode perm) )
+                            ( NotEditing, Just (Permutation.toRank perm) )
 
                         Err _ ->
                             ( model, Nothing )
@@ -109,15 +109,15 @@ update currentPermutation msg model =
                 NotEditing ->
                     ( model, Nothing )
 
-        LehmerInputChange value ->
+        RankInputChange value ->
             let
                 n =
                     Permutation.getSize currentPermutation
 
-                newLehmer =
-                    clampLehmer n value
+                newRank =
+                    clampRank n value
             in
-            ( model, Just newLehmer )
+            ( model, Just newRank )
 
 
 {-| Configuration for rendering a permutation input.
@@ -138,30 +138,30 @@ type alias Config msg =
 view : Config msg -> Model -> Html msg
 view config model =
     case config.inputMode of
-        LehmerMode ->
-            viewLehmerInput config
+        RankMode ->
+            viewRankInput config
 
         CycleMode ->
             viewCycleInput config model
 
 
-viewLehmerInput : Config msg -> Html msg
-viewLehmerInput config =
+viewRankInput : Config msg -> Html msg
+viewRankInput config =
     let
-        currentLehmer =
-            Permutation.toLehmerCode config.permutation
+        currentRank =
+            Permutation.toRank config.permutation
 
         input =
             Html.input
                 [ Attr.type_ "text"
-                , Attr.value (String.fromInt currentLehmer)
+                , Attr.value (String.fromInt currentRank)
                 , style "width" "60px"
                 , style "padding" "4px 8px"
                 , style "font-size" "14px"
                 , style "border" "1px solid #ccc"
                 , style "border-radius" "4px"
-                , onBlurWithValue (\value -> config.toMsg (LehmerInputChange value))
-                , onEnterWithValue (\value -> config.toMsg (LehmerInputChange value))
+                , onBlurWithValue (\value -> config.toMsg (RankInputChange value))
+                , onEnterWithValue (\value -> config.toMsg (RankInputChange value))
                 ]
                 []
     in
@@ -418,17 +418,17 @@ onEnterNoValue msg =
         )
 
 
-{-| Clamp a string value to a valid lehmer code range.
+{-| Clamp a string value to a valid rank range.
 -}
-clampLehmer : Int -> String -> Int
-clampLehmer n value =
+clampRank : Int -> String -> Int
+clampRank n value =
     case String.toInt value of
         Just parsed ->
             let
-                maxLehmer =
+                maxRank =
                     Permutation.factorial n - 1
             in
-            clamp 0 maxLehmer parsed
+            clamp 0 maxRank parsed
 
         Nothing ->
             0

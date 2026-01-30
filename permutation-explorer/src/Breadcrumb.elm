@@ -103,7 +103,7 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                                     []
                            )
 
-                PermutationComposition lehmerP _ ->
+                PermutationComposition rankP _ ->
                     [ viewNSegment config n route
                     , viewSeparator
                     , Html.a
@@ -115,7 +115,7 @@ viewSegments config ((Group n groupPage) as route) permInput1 permInput2 =
                         [ Html.text "Permutations" ]
                     , viewSeparator
                     , Html.a
-                        [ Attr.href (Route.toString (Group n (Permutations (PermutationDetail lehmerP))))
+                        [ Attr.href (Route.toString (Group n (Permutations (PermutationDetail rankP))))
                         , style "text-decoration" "none"
                         , style "color" "#0066cc"
                         , style "font-weight" "bold"
@@ -244,11 +244,11 @@ viewModeToggle config =
     let
         ( icon, title ) =
             case config.inputMode of
-                PermutationInput.LehmerMode ->
+                PermutationInput.RankMode ->
                     ( "σ", "Switch to cycle notation" )
 
                 PermutationInput.CycleMode ->
-                    ( "#", "Switch to Lehmer code" )
+                    ( "#", "Switch to rank" )
     in
     Html.button
         [ Attr.title title

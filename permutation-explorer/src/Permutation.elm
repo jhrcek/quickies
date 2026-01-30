@@ -12,30 +12,30 @@ module Permutation exposing
     , factorial
     , fromArray
     , fromCycles
-    , fromLehmerCode
+    , fromRank
     , getSize
     , identity
     , inverse
-    , inverseLehmer
+    , inverseRank
     , isCyclic
     , isDerangement
     , isIdentity
     , isInvolution
     , isTransposition
     , listConjugacyClasses
-    , nextLehmer
+    , nextRank
     , numCycles
     , numFixedPoints
     , order
     , orderFromCycleType
     , parseCycles
-    , prevLehmer
+    , prevRank
     , resize
     , sign
     , toBipartiteGraph
     , toCycleGraph
     , toCyclesString
-    , toLehmerCode
+    , toRank
     )
 
 import Array exposing (Array)
@@ -199,36 +199,10 @@ inverse (Permutation arr) =
     Permutation invArr
 
 
-
--- TODO add newtype for LehmerCode
--- TODO don't call it Lehmer
--- TODO actually add function that returns Lehmer code digits as List Int
-{-
-   ME:   I'm just asking about the naming throughout the codebase.
-      So what would be proper and commonly used name for the ordinal we're calculating by multiplying those lehmer code digits with those factorials?
-
-   CLAUDE: The single ordinal number is most commonly called:
-
-           - Lexicographic rank (or lex rank)
-           - Permutation rank / permutation index
-
-           The current naming (toLehmerCode, fromLehmerCode) is slightly imprecise — it's computing the lexicographic rank using the Lehmer code digits, but not exposing the Lehmer code itself.
-
-           More precise naming would be:
-           - toLexRank / fromLexRank
-           - toPermutationIndex / fromPermutationIndex
-           - rank / unrank (common in combinatorics literature)
-
-           If you later wanted to expose the actual digit sequence, you could have:
-           - toLehmerCode : Permutation -> List Int (the digits)
-           - toLexRank : Permutation -> Int (the ordinal)
--}
-
-
-inverseLehmer : Int -> Int -> Maybe Int
-inverseLehmer n lehmer =
-    fromLehmerCode n lehmer
-        |> Maybe.map (inverse >> toLehmerCode)
+inverseRank : Int -> Int -> Maybe Int
+inverseRank n rank =
+    fromRank n rank
+        |> Maybe.map (inverse >> toRank)
 
 
 {-| Conjugate a permutation by another: conjugateBy τ σ = τστ⁻¹.
@@ -320,10 +294,10 @@ fromArray arr =
                     Ok (Permutation arr)
 
 
-{-| Convert a permutation to its Lehmer code (position in lexicographic order).
+{-| Convert a permutation to its lexicographic rank.
 
-The Lehmer code is ordinal = Σ(dᵢ × (n-1-i)!) where dᵢ is the count of
-elements smaller than aᵢ appearing after position i.
+The rank is ordinal = Σ(dᵢ × (n-1-i)!) where dᵢ is the count of
+elements smaller than aᵢ appearing after position i (the Lehmer code digits).
 
 For example, in S₃:
 
@@ -335,8 +309,8 @@ For example, in S₃:
   - [2,1,0] → 5
 
 -}
-toLehmerCode : Permutation -> Int
-toLehmerCode (Permutation arr) =
+toRank : Permutation -> Int
+toRank (Permutation arr) =
     let
         n =
             Array.length arr
@@ -385,20 +359,20 @@ toLehmerCode (Permutation arr) =
         computeOrdinal (Array.toList arr) n (factorial (n - 1)) 0
 
 
-{-| Create a permutation from its Lehmer code in Sₙ.
+{-| Create a permutation from its lexicographic rank in Sₙ.
 
-Returns Nothing if the code is out of range [0, n!-1].
-First argument is n (the size), second is the Lehmer code.
+Returns Nothing if the rank is out of range [0, n!-1].
+First argument is n (the size), second is the rank.
 
 For example, in S₃:
 
-  - fromLehmerCode 3 0 → Just [0,1,2]
-  - fromLehmerCode 3 5 → Just [2,1,0]
-  - fromLehmerCode 3 6 → Nothing (out of range)
+  - fromRank 3 0 → Just [0,1,2]
+  - fromRank 3 5 → Just [2,1,0]
+  - fromRank 3 6 → Nothing (out of range)
 
 -}
-fromLehmerCode : Int -> Int -> Maybe Permutation
-fromLehmerCode n code =
+fromRank : Int -> Int -> Maybe Permutation
+fromRank n code =
     if n < 0 || code < 0 || code >= factorial n then
         Nothing
 
@@ -448,22 +422,22 @@ fromLehmerCode n code =
         Just (Permutation (Array.fromList (buildPerm n code available [])))
 
 
-prevLehmer : Int -> Int -> Int
-prevLehmer n currentLehmer =
+prevRank : Int -> Int -> Int
+prevRank n currentRank =
     let
-        maxL =
+        maxR =
             factorial n
     in
-    currentLehmer - 1 |> modBy maxL
+    currentRank - 1 |> modBy maxR
 
 
-nextLehmer : Int -> Int -> Int
-nextLehmer n currentLehmer =
+nextRank : Int -> Int -> Int
+nextRank n currentRank =
     let
-        maxL =
+        maxR =
             factorial n
     in
-    currentLehmer + 1 |> modBy maxL
+    currentRank + 1 |> modBy maxR
 
 
 {-| Parse a permutation from cycle notation string.

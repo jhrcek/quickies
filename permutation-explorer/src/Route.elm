@@ -4,12 +4,12 @@ module Route exposing
     , PermutationPage(..)
     , Route(..)
     , fromUrl
-    , setLehmerP
-    , setLehmerQ
     , setN
+    , setRankP
+    , setRankQ
     , toString
-    , updateLehmerP
-    , updateLehmerQ
+    , updateRankP
+    , updateRankQ
     )
 
 import Permutation
@@ -155,17 +155,17 @@ permutationPageToString permPage =
         PermutationList ->
             ""
 
-        PermutationDetail lehmerP ->
-            String.fromInt lehmerP
+        PermutationDetail rankP ->
+            String.fromInt rankP
 
-        PermutationComposition lehmerP lehmerQ ->
-            String.fromInt lehmerP ++ "/composition/" ++ String.fromInt lehmerQ
+        PermutationComposition rankP rankQ ->
+            String.fromInt rankP ++ "/composition/" ++ String.fromInt rankQ
 
 
-{-| Update the Lehmer code of P in the route given the result of a function from n and currentLehmer code of P
+{-| Update the rank of P in the route given the result of a function from n and current rank of P
 -}
-updateLehmerP : (Int -> Int -> Int) -> Route -> Route
-updateLehmerP f route =
+updateRankP : (Int -> Int -> Int) -> Route -> Route
+updateRankP f route =
     case route of
         Group n groupPage ->
             Group n <|
@@ -182,20 +182,20 @@ updateLehmerP f route =
                                 PermutationList ->
                                     permPage
 
-                                PermutationDetail lehmerP ->
-                                    PermutationDetail (f n lehmerP)
+                                PermutationDetail rankP ->
+                                    PermutationDetail (f n rankP)
 
-                                PermutationComposition lehmerP lehmerQ ->
-                                    PermutationComposition (f n lehmerP) lehmerQ
-
-
-setLehmerP : Int -> Route -> Route
-setLehmerP newLehmerP route =
-    updateLehmerP (\_ _ -> newLehmerP) route
+                                PermutationComposition rankP rankQ ->
+                                    PermutationComposition (f n rankP) rankQ
 
 
-updateLehmerQ : (Int -> Int -> Int) -> Route -> Route
-updateLehmerQ f route =
+setRankP : Int -> Route -> Route
+setRankP newRankP route =
+    updateRankP (\_ _ -> newRankP) route
+
+
+updateRankQ : (Int -> Int -> Int) -> Route -> Route
+updateRankQ f route =
     case route of
         Group n groupPage ->
             Group n <|
@@ -212,16 +212,16 @@ updateLehmerQ f route =
                                 PermutationList ->
                                     PermutationList
 
-                                PermutationDetail lehmerP ->
-                                    PermutationDetail lehmerP
+                                PermutationDetail rankP ->
+                                    PermutationDetail rankP
 
-                                PermutationComposition lehmerP lehmerQ ->
-                                    PermutationComposition lehmerP (f n lehmerQ)
+                                PermutationComposition rankP rankQ ->
+                                    PermutationComposition rankP (f n rankQ)
 
 
-setLehmerQ : Int -> Route -> Route
-setLehmerQ newLehmerQ route =
-    updateLehmerQ (\_ _ -> newLehmerQ) route
+setRankQ : Int -> Route -> Route
+setRankQ newRankQ route =
+    updateRankQ (\_ _ -> newRankQ) route
 
 
 setN : Int -> Route -> Route
@@ -246,9 +246,9 @@ setN newN route =
 
                     Permutations permPage ->
                         let
-                            resizeLehmer lehmer =
-                                Permutation.fromLehmerCode oldN lehmer
-                                    |> Maybe.map (Permutation.resize newN >> Permutation.toLehmerCode)
+                            resizeRank rank =
+                                Permutation.fromRank oldN rank
+                                    |> Maybe.map (Permutation.resize newN >> Permutation.toRank)
                                     |> Maybe.withDefault 0
                         in
                         Permutations <|
@@ -256,8 +256,8 @@ setN newN route =
                                 PermutationList ->
                                     PermutationList
 
-                                PermutationDetail lehmerP ->
-                                    PermutationDetail (resizeLehmer lehmerP)
+                                PermutationDetail rankP ->
+                                    PermutationDetail (resizeRank rankP)
 
-                                PermutationComposition lehmerP lehmerQ ->
-                                    PermutationComposition (resizeLehmer lehmerP) (resizeLehmer lehmerQ)
+                                PermutationComposition rankP rankQ ->
+                                    PermutationComposition (resizeRank rankP) (resizeRank rankQ)

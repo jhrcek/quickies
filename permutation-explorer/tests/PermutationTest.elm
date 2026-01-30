@@ -278,102 +278,102 @@ suite =
                         |> Result.map P.toCyclesString
                         |> Expect.equal (Ok "()")
             ]
-        , describe "Lehmer code functions"
-            [ test "identity permutation has Lehmer code 0" <|
+        , describe "Rank functions"
+            [ test "identity permutation has rank 0" <|
                 \_ ->
                     P.identity 3
-                        |> P.toLehmerCode
+                        |> P.toRank
                         |> Expect.equal 0
-            , test "toLehmerCode [0,1,2] = 0" <|
+            , test "toRank [0,1,2] = 0" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 0, 1, 2 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 0)
-            , test "toLehmerCode [0,2,1] = 1" <|
+            , test "toRank [0,2,1] = 1" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 0, 2, 1 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 1)
-            , test "toLehmerCode [1,0,2] = 2" <|
+            , test "toRank [1,0,2] = 2" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 1, 0, 2 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 2)
-            , test "toLehmerCode [1,2,0] = 3" <|
+            , test "toRank [1,2,0] = 3" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 1, 2, 0 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 3)
-            , test "toLehmerCode [2,0,1] = 4" <|
+            , test "toRank [2,0,1] = 4" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 2, 0, 1 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 4)
-            , test "toLehmerCode [2,1,0] = 5" <|
+            , test "toRank [2,1,0] = 5" <|
                 \_ ->
                     P.fromArray (Array.fromList [ 2, 1, 0 ])
-                        |> Result.map P.toLehmerCode
+                        |> Result.map P.toRank
                         |> Expect.equal (Ok 5)
-            , test "fromLehmerCode 3 0 = Just [0,1,2]" <|
+            , test "fromRank 3 0 = Just [0,1,2]" <|
                 \_ ->
-                    P.fromLehmerCode 3 0
+                    P.fromRank 3 0
                         |> Maybe.map P.toCyclesString
                         |> Expect.equal (Just "()")
-            , test "fromLehmerCode 3 5 = Just [2,1,0]" <|
+            , test "fromRank 3 5 = Just [2,1,0]" <|
                 \_ ->
-                    P.fromLehmerCode 3 5
+                    P.fromRank 3 5
                         |> Maybe.andThen (\p -> P.fromArray (Array.fromList [ 2, 1, 0 ]) |> Result.toMaybe |> Maybe.map (\expected -> p == expected))
                         |> Expect.equal (Just True)
-            , test "fromLehmerCode 3 5 gives (0 2) transposition" <|
+            , test "fromRank 3 5 gives (0 2) transposition" <|
                 \_ ->
-                    P.fromLehmerCode 3 5
+                    P.fromRank 3 5
                         |> Maybe.map P.toCyclesString
                         |> Expect.equal (Just "(0 2)")
-            , test "fromLehmerCode 3 6 = Nothing (out of range)" <|
+            , test "fromRank 3 6 = Nothing (out of range)" <|
                 \_ ->
-                    P.fromLehmerCode 3 6
+                    P.fromRank 3 6
                         |> Expect.equal Nothing
-            , test "fromLehmerCode 3 -1 = Nothing (negative)" <|
+            , test "fromRank 3 -1 = Nothing (negative)" <|
                 \_ ->
-                    P.fromLehmerCode 3 -1
+                    P.fromRank 3 -1
                         |> Expect.equal Nothing
-            , test "fromLehmerCode with n=0 and code=0 gives empty permutation" <|
+            , test "fromRank with n=0 and rank=0 gives empty permutation" <|
                 \_ ->
-                    P.fromLehmerCode 0 0
+                    P.fromRank 0 0
                         |> Maybe.map P.getSize
                         |> Expect.equal (Just 0)
-            , test "fromLehmerCode with n=1 and code=0 gives identity" <|
+            , test "fromRank with n=1 and rank=0 gives identity" <|
                 \_ ->
-                    P.fromLehmerCode 1 0
+                    P.fromRank 1 0
                         |> Maybe.map P.toCyclesString
                         |> Expect.equal (Just "()")
-            , fuzz (Fuzz.intRange 1 6) "Lehmer code roundtrip for all codes in Sₙ" <|
+            , fuzz (Fuzz.intRange 1 6) "rank roundtrip for all ranks in Sₙ" <|
                 \n ->
                     let
                         fact =
                             P.factorial n
 
-                        allCodes =
+                        allRanks =
                             List.range 0 (fact - 1)
 
-                        roundtrip code =
-                            P.fromLehmerCode n code
-                                |> Maybe.map P.toLehmerCode
-                                |> (==) (Just code)
+                        roundtrip rank =
+                            P.fromRank n rank
+                                |> Maybe.map P.toRank
+                                |> (==) (Just rank)
                     in
-                    List.all roundtrip allCodes
+                    List.all roundtrip allRanks
                         |> Expect.equal True
-            , fuzz (Fuzz.intRange 1 6) "toLehmerCode produces codes in valid range" <|
+            , fuzz (Fuzz.intRange 1 6) "toRank produces ranks in valid range" <|
                 \n ->
                     let
                         fact =
                             P.factorial n
 
                         -- Test identity permutation
-                        code =
-                            P.identity n |> P.toLehmerCode
+                        rank =
+                            P.identity n |> P.toRank
                     in
-                    (code >= 0 && code < fact)
+                    (rank >= 0 && rank < fact)
                         |> Expect.equal True
             ]
         , describe "listConjugacyClasses"

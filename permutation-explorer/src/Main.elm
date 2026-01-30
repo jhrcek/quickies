@@ -71,10 +71,10 @@ type Msg
     | SetPermutationListPage Int
     | ToggleGraphMode
       -- Navigation
-    | NavigateLehmer PermId Direction
+    | NavigateRank PermId Direction
     | NavigateInvert PermId
-    | GenerateRandomLehmer PermId
-    | GotRandomLehmer PermId Int
+    | GenerateRandomRank PermId
+    | GotRandomRank PermId Int
     | PermutationInputMsg PermId PermutationInput.Msg
 
 
@@ -88,24 +88,24 @@ type PermId
     | Q
 
 
-updateRouteLehmer : PermId -> (Int -> Int -> Int) -> Route.Route -> Route.Route
-updateRouteLehmer permId =
+updateRouteRank : PermId -> (Int -> Int -> Int) -> Route.Route -> Route.Route
+updateRouteRank permId =
     case permId of
         P ->
-            Route.updateLehmerP
+            Route.updateRankP
 
         Q ->
-            Route.updateLehmerQ
+            Route.updateRankQ
 
 
-setRouteLehmer : PermId -> Int -> Route.Route -> Route.Route
-setRouteLehmer permId =
+setRouteRank : PermId -> Int -> Route.Route -> Route.Route
+setRouteRank permId =
     case permId of
         P ->
-            Route.setLehmerP
+            Route.setRankP
 
         Q ->
-            Route.setLehmerQ
+            Route.setRankQ
 
 
 toggleGraphMode : PermutationView.GraphMode -> PermutationView.GraphMode
@@ -136,7 +136,7 @@ init _ url key =
     ( { key = key
       , route = route
       , page = page
-      , inputMode = PermutationInput.LehmerMode
+      , inputMode = PermutationInput.RankMode
       , graphMode = PermutationView.CycleGraphMode
       }
     , Cmd.none
@@ -164,10 +164,10 @@ initPageFromRoute route =
                         Route.PermutationList ->
                             PermutationListPage { n = n, currentPage = 0 }
 
-                        Route.PermutationDetail lehmer ->
+                        Route.PermutationDetail rank ->
                             let
                                 perm =
-                                    Permutation.fromLehmerCode n lehmer
+                                    Permutation.fromRank n rank
                                         |> Maybe.withDefault (Permutation.identity n)
                             in
                             PermutationSummaryPage
@@ -175,17 +175,17 @@ initPageFromRoute route =
                                 , input = PermutationInput.init
                                 }
 
-                        Route.PermutationComposition lehmerP lehmerQ ->
-                            CompositionPage (initComposition n lehmerP lehmerQ)
+                        Route.PermutationComposition rankP rankQ ->
+                            CompositionPage (initComposition n rankP rankQ)
 
 
 initComposition : Int -> Int -> Int -> CompositionModel
-initComposition n lehmer1 lehmer2 =
+initComposition n rank1 rank2 =
     { permP =
-        Permutation.fromLehmerCode n lehmer1
+        Permutation.fromRank n rank1
             |> Maybe.withDefault (Permutation.identity n)
     , permQ =
-        Permutation.fromLehmerCode n lehmer2
+        Permutation.fromRank n rank2
             |> Maybe.withDefault (Permutation.identity n)
     , inputP = PermutationInput.init
     , inputQ = PermutationInput.init
@@ -254,7 +254,7 @@ update msg model =
                         { permutation = summary.permutation
                         , inputModel = summary.input
                         , updatePage = \newInput -> PermutationSummaryPage { summary | input = newInput }
-                        , routeSetter = Route.setLehmerP
+                        , routeSetter = Route.setRankP
                         }
                         inputMsg
                         model
@@ -264,7 +264,7 @@ update msg model =
                         { permutation = comp.permP
                         , inputModel = comp.inputP
                         , updatePage = \newInput -> CompositionPage { comp | inputP = newInput }
-                        , routeSetter = Route.setLehmerP
+                        , routeSetter = Route.setRankP
                         }
                         inputMsg
                         model
@@ -274,7 +274,7 @@ update msg model =
                         { permutation = comp.permQ
                         , inputModel = comp.inputQ
                         , updatePage = \newInput -> CompositionPage { comp | inputQ = newInput }
-                        , routeSetter = Route.setLehmerQ
+                        , routeSetter = Route.setRankQ
                         }
                         inputMsg
                         model
@@ -282,16 +282,16 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        NavigateLehmer permId direction ->
+        NavigateRank permId direction ->
             let
                 newRoute =
-                    updateRouteLehmer permId
+                    updateRouteRank permId
                         (case direction of
                             Next ->
-                                Permutation.nextLehmer
+                                Permutation.nextRank
 
                             Prev ->
-                                Permutation.prevLehmer
+                                Permutation.prevRank
                         )
                         model.route
             in
@@ -300,26 +300,26 @@ update msg model =
         NavigateInvert permId ->
             let
                 newRoute =
-                    updateRouteLehmer permId
-                        (\n lehmer ->
-                            Permutation.inverseLehmer n lehmer
-                                |> Maybe.withDefault lehmer
+                    updateRouteRank permId
+                        (\n rank ->
+                            Permutation.inverseRank n rank
+                                |> Maybe.withDefault rank
                         )
                         model.route
             in
             ( model, Navigation.pushUrl model.key (Route.toString newRoute) )
 
-        GenerateRandomLehmer permId ->
+        GenerateRandomRank permId ->
             case model.route of
                 Route.Group n _ ->
                     ( model
-                    , Random.generate (GotRandomLehmer permId) (Random.int 0 (Permutation.factorial n - 1))
+                    , Random.generate (GotRandomRank permId) (Random.int 0 (Permutation.factorial n - 1))
                     )
 
-        GotRandomLehmer permId newLehmer ->
+        GotRandomRank permId newRank ->
             let
                 newRoute =
-                    setRouteLehmer permId newLehmer model.route
+                    setRouteRank permId newRank model.route
             in
             ( model, Navigation.pushUrl model.key (Route.toString newRoute) )
 
@@ -335,12 +335,12 @@ handlePermutationInput :
     -> ( Model, Cmd Msg )
 handlePermutationInput config inputMsg model =
     let
-        ( newInput, maybeLehmer ) =
+        ( newInput, maybeRank ) =
             PermutationInput.update config.permutation inputMsg config.inputModel
     in
-    case maybeLehmer of
-        Just newLehmer ->
-            ( model, Navigation.pushUrl model.key (Route.toString (config.routeSetter newLehmer model.route)) )
+    case maybeRank of
+        Just newRank ->
+            ( model, Navigation.pushUrl model.key (Route.toString (config.routeSetter newRank model.route)) )
 
         Nothing ->
             ( { model | page = config.updatePage newInput }, Cmd.none )
@@ -463,15 +463,15 @@ viewPermutationList { n, currentPage } =
         totalPages =
             ceiling (toFloat total / toFloat pageSize)
 
-        startLehmer =
+        startRank =
             currentPage * pageSize
 
-        endLehmer =
-            min (startLehmer + pageSize - 1) (total - 1)
+        endRank =
+            min (startRank + pageSize - 1) (total - 1)
 
         permutations =
-            List.range startLehmer endLehmer
-                |> List.filterMap (Permutation.fromLehmerCode n)
+            List.range startRank endRank
+                |> List.filterMap (Permutation.fromRank n)
     in
     Html.div []
         [ viewPermutationTable n permutations
@@ -555,7 +555,7 @@ viewPermutationTable n permutations =
                 , style "border-bottom" "2px solid #333"
                 , style "padding" "8px 0"
                 ]
-                [ Html.div [ style "flex" "1" ] [ Html.text "Lehmer" ]
+                [ Html.div [ style "flex" "1" ] [ Html.text "Rank" ]
                 , Html.div [ style "flex" "2" ] [ Html.text "Cycles" ]
                 , Html.div [ style "flex" "1" ] [ Html.text "Cycle Type" ]
                 , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Sign" ]
@@ -564,11 +564,11 @@ viewPermutationTable n permutations =
 
         dataRow perm =
             let
-                lehmer =
-                    Permutation.toLehmerCode perm
+                rank =
+                    Permutation.toRank perm
 
                 detailRoute =
-                    Route.Group n (Route.Permutations (Route.PermutationDetail lehmer))
+                    Route.Group n (Route.Permutations (Route.PermutationDetail rank))
 
                 signStr =
                     case Permutation.sign perm of
@@ -589,7 +589,7 @@ viewPermutationTable n permutations =
                         , style "text-decoration" "none"
                         , style "color" "#0066cc"
                         ]
-                        [ Html.text (String.fromInt lehmer) ]
+                        [ Html.text (String.fromInt rank) ]
                     ]
                 , Html.div [ style "flex" "2", style "font-family" "monospace" ]
                     [ Html.text (Permutation.toCyclesString perm) ]
@@ -684,10 +684,10 @@ viewPermInputHelper permId inputMode permutation inputModel =
         { permutation = permutation
         , inputMode = inputMode
         , toMsg = PermutationInputMsg permId
-        , onNavigatePrev = NavigateLehmer permId Prev
-        , onNavigateNext = NavigateLehmer permId Next
+        , onNavigatePrev = NavigateRank permId Prev
+        , onNavigateNext = NavigateRank permId Next
         , onInvert = NavigateInvert permId
-        , onRandom = GenerateRandomLehmer permId
+        , onRandom = GenerateRandomRank permId
         }
         inputModel
 
