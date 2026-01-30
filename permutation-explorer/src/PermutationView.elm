@@ -131,15 +131,16 @@ viewCharacteristics perm =
         , style "flex-direction" "column"
         , style "gap" "4px"
         ]
-        [ textCharacteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
+        [ textCharacteristic "Rank:" (String.fromInt (Permutation.toRank perm))
+        , textCharacteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
+        , textCharacteristic "Inversion count:" (String.fromInt (Permutation.inversionCount perm))
+        , textCharacteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
         , textCharacteristic "Cycle notation:" (Permutation.toCyclesString perm)
-        , textCharacteristic "Sign:" signStr
         , linkCharacteristic "Cycle type:" cycleTypeRoute cycleTypeStr
         , textCharacteristic "# of cycles:" (String.fromInt (Permutation.numCycles perm))
         , textCharacteristic "# of fixed points:" (String.fromInt (Permutation.numFixedPoints perm))
+        , textCharacteristic "Sign:" signStr
         , textCharacteristic "Order:" orderStr
-        , textCharacteristic "Rank:" (String.fromInt (Permutation.toRank perm))
-        , textCharacteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
         , textCharacteristic "Centralizer size:" (String.fromInt (Permutation.centralizerSize perm))
         , textCharacteristic "Conjugacy class size:" (String.fromInt (Permutation.conjugacyClassSize perm))
         , textCharacteristic "Is identity:" (boolStr (Permutation.isIdentity perm))

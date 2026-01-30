@@ -17,6 +17,7 @@ module Permutation exposing
     , identity
     , inverse
     , inverseRank
+    , inversionCount
     , isCyclic
     , isDerangement
     , isIdentity
@@ -597,7 +598,7 @@ toCycles (Permutation arr) =
             Array.length arr
 
         visited =
-            Array.initialize n (always False)
+            Array.repeat n False
 
         findCycles : Int -> Array Bool -> List (List Int) -> List (List Int)
         findCycles idx visitedArr foundCycles =
@@ -827,6 +828,23 @@ numFixedPoints (Permutation arr) =
         )
         0
         (Array.toIndexedList arr)
+
+
+{-| Count the number of inversions in a permutation.
+
+An inversion is a pair (i, j) where i < j but perm[i] > perm[j].
+The inversion count equals the sum of the Lehmer code digits.
+
+For example:
+
+  - [0,1,2] has 0 inversions (sorted)
+  - [2,1,0] has 3 inversions: (0,1), (0,2), (1,2)
+  - [1,0,2] has 1 inversion: (0,1)
+
+-}
+inversionCount : Permutation -> Int
+inversionCount perm =
+    List.sum (toLehmerDigits perm)
 
 
 {-| Compute the size of the centralizer of a permutation.

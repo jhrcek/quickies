@@ -34,7 +34,7 @@
 - [x] 10. Is cyclic - consists of a single n-cycle
 
 ### Inversion-Based Statistics
-- [ ] 11. Number of inversions - pairs (i,j) where i < j but σ(i) > σ(j)
+- [x] 11. Number of inversions - pairs (i,j) where i < j but σ(i) > σ(j)
 - [ ] 12. Descent set - positions i where σ(i) > σ(i+1)
 - [ ] 13. Number of descents - size of descent set
 - [ ] 14. Major index - sum of descent positions

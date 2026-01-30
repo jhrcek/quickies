@@ -454,6 +454,62 @@ suite =
                         |> List.all (\cycleType -> cycleType == List.sortBy negate cycleType)
                         |> Expect.equal True
             ]
+        , describe "inversionCount"
+            [ test "identity permutation has 0 inversions" <|
+                \_ ->
+                    P.identity 3
+                        |> P.inversionCount
+                        |> Expect.equal 0
+            , test "[2,1,0] has 3 inversions" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 2, 1, 0 ])
+                        |> Result.map P.inversionCount
+                        |> Expect.equal (Ok 3)
+            , test "[1,0,2] has 1 inversion" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 1, 0, 2 ])
+                        |> Result.map P.inversionCount
+                        |> Expect.equal (Ok 1)
+            , test "[0,2,1] has 1 inversion" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 0, 2, 1 ])
+                        |> Result.map P.inversionCount
+                        |> Expect.equal (Ok 1)
+            , test "[1,2,0] has 2 inversions" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 1, 2, 0 ])
+                        |> Result.map P.inversionCount
+                        |> Expect.equal (Ok 2)
+            , test "[2,0,1] has 2 inversions" <|
+                \_ ->
+                    P.fromArray (Array.fromList [ 2, 0, 1 ])
+                        |> Result.map P.inversionCount
+                        |> Expect.equal (Ok 2)
+            , test "empty permutation has 0 inversions" <|
+                \_ ->
+                    P.identity 0
+                        |> P.inversionCount
+                        |> Expect.equal 0
+            , test "single element has 0 inversions" <|
+                \_ ->
+                    P.identity 1
+                        |> P.inversionCount
+                        |> Expect.equal 0
+            , fuzz (Fuzz.intRange 1 6) "inversion count equals sum of Lehmer digits" <|
+                \n ->
+                    let
+                        perm =
+                            P.identity n
+
+                        inversions =
+                            P.inversionCount perm
+
+                        lehmerSum =
+                            List.sum (P.toLehmerDigits perm)
+                    in
+                    inversions
+                        |> Expect.equal lehmerSum
+            ]
         , describe "conjugacyClassSizeFromCycleType"
             [ test "identity class in S3 has size 1" <|
                 \_ ->
