@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "case \"$CLAUDE_FILE_PATHS\" in *.elm) make check ;; esac"
+            "command": "jq -e '.tool_input.file_path | test(\"\\\\.elm$\")' >/dev/null && make check || true"
           }
         ]
       }

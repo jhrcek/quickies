@@ -738,13 +738,18 @@ routeLink =
 
 viewPermutationSummary : PermutationView.GraphMode -> PermutationSummaryModel -> Html Msg
 viewPermutationSummary graphMode summary =
-    Html.div []
+    Html.div
+        [ style "display" "flex"
+        , style "gap" "20px"
+        , style "align-items" "flex-start"
+        ]
         [ PermutationView.viewPermutation
             { label = ""
             , graphMode = graphMode
             , onToggleGraph = ToggleGraphMode
             }
             summary.permutation
+        , PermutationView.viewDerivationGraph summary.permutation
         ]
 
 

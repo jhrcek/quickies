@@ -3,6 +3,7 @@ module PermutationView exposing
     , cycleTypeToString
     , viewCard
     , viewCharacteristics
+    , viewDerivationGraph
     , viewGraph
     , viewPermutation
     )
@@ -145,6 +146,101 @@ viewCharacteristics perm =
         , textCharacteristic "Is transposition:" (boolStr (Permutation.isTransposition perm))
         , textCharacteristic "Is cyclic:" (boolStr (Permutation.isCyclic perm))
         ]
+
+
+{-| Build a GraphViz graph showing how permutation properties derive from each other.
+-}
+toDerivationGraph : Permutation.Permutation -> GV.Graph
+toDerivationGraph perm =
+    let
+        cycleTypeStr =
+            cycleTypeToString (Permutation.cycleType perm)
+
+        boolStr b =
+            if b then
+                "Yes"
+
+            else
+                "No"
+
+        signStr =
+            case Permutation.sign perm of
+                Permutation.Even ->
+                    "+1 (even)"
+
+                Permutation.Odd ->
+                    "-1 (odd)"
+
+        lehmerDigitsStr =
+            lehmerDigitsToString (Permutation.toLehmerDigits perm)
+
+        nodes =
+            [ { name = "cycles", attributes = [ ( "label", GV.str ("Cycles\\n" ++ Permutation.toCyclesString perm) ) ] }
+            , { name = "cycleType", attributes = [ ( "label", GV.str ("Cycle Type\\n" ++ cycleTypeStr) ) ] }
+            , { name = "numCycles", attributes = [ ( "label", GV.str ("# Cycles\\n" ++ String.fromInt (Permutation.numCycles perm)) ) ] }
+            , { name = "numFixed", attributes = [ ( "label", GV.str ("# Fixed Pts\\n" ++ String.fromInt (Permutation.numFixedPoints perm)) ) ] }
+            , { name = "order", attributes = [ ( "label", GV.str ("Order\\n" ++ String.fromInt (Permutation.order perm)) ) ] }
+            , { name = "sign", attributes = [ ( "label", GV.str ("Sign\\n" ++ signStr) ) ] }
+            , { name = "isIdentity", attributes = [ ( "label", GV.str ("Identity\\n" ++ boolStr (Permutation.isIdentity perm)) ) ] }
+            , { name = "isDerangement", attributes = [ ( "label", GV.str ("Derangement\\n" ++ boolStr (Permutation.isDerangement perm)) ) ] }
+            , { name = "isInvolution", attributes = [ ( "label", GV.str ("Involution\\n" ++ boolStr (Permutation.isInvolution perm)) ) ] }
+            , { name = "isCyclic", attributes = [ ( "label", GV.str ("Cyclic\\n" ++ boolStr (Permutation.isCyclic perm)) ) ] }
+            , { name = "isTransposition", attributes = [ ( "label", GV.str ("Transposition\\n" ++ boolStr (Permutation.isTransposition perm)) ) ] }
+            , { name = "lehmerDigits", attributes = [ ( "label", GV.str ("Lehmer Digits\\n" ++ lehmerDigitsStr) ) ] }
+            , { name = "rank", attributes = [ ( "label", GV.str ("Rank\\n" ++ String.fromInt (Permutation.toRank perm)) ) ] }
+            , { name = "inversionCount", attributes = [ ( "label", GV.str ("Inversion Count\\n" ++ String.fromInt (Permutation.inversionCount perm)) ) ] }
+            ]
+
+        edges =
+            [ { tail = "cycles", head = "cycleType", attributes = [ ( "label", GV.str "lengths" ) ] }
+            , { tail = "cycleType", head = "numCycles", attributes = [ ( "label", GV.str "count parts" ) ] }
+            , { tail = "cycleType", head = "numFixed", attributes = [ ( "label", GV.str "count 1s" ) ] }
+            , { tail = "cycleType", head = "order", attributes = [ ( "label", GV.str "LCM" ) ] }
+            , { tail = "cycleType", head = "isInvolution", attributes = [ ( "label", GV.str "all ≤ 2" ) ] }
+            , { tail = "cycleType", head = "isCyclic", attributes = [ ( "label", GV.str "single n-cycle" ) ] }
+            , { tail = "cycleType", head = "isTransposition", attributes = [ ( "label", GV.str "one 2, rest 1s" ) ] }
+            , { tail = "numCycles", head = "sign", attributes = [ ( "label", GV.str "(-1)^(n-k)" ) ] }
+            , { tail = "numFixed", head = "isIdentity", attributes = [ ( "label", GV.str "= n" ) ] }
+            , { tail = "numFixed", head = "isDerangement", attributes = [ ( "label", GV.str "= 0" ) ] }
+            , { tail = "lehmerDigits", head = "inversionCount", attributes = [ ( "label", GV.str "sum" ) ] }
+            , { tail = "lehmerDigits", head = "rank", attributes = [ ( "label", GV.str "factorial base" ) ] }
+            ]
+    in
+    { name = Just "Derivations"
+    , directed = True
+    , graphAttributes =
+        [ ( "rankdir", GV.str "TB" )
+        , ( "nodesep", GV.num 0.3 )
+        , ( "ranksep", GV.num 0.4 )
+        ]
+    , nodeAttributes =
+        [ ( "shape", GV.str "box" )
+        , ( "style", GV.str "filled" )
+        , ( "fillcolor", GV.str "#f0f0f0" )
+        , ( "fontsize", GV.num 10 )
+        ]
+    , edgeAttributes =
+        [ ( "fontsize", GV.num 8 )
+        , ( "arrowsize", GV.str "0.5" )
+        , ( "fontcolor", GV.str "#666666" )
+        ]
+    , nodes = nodes
+    , edges = edges
+    , subgraphs = []
+    }
+
+
+{-| Display the derivation graph showing relationships between permutation properties.
+-}
+viewDerivationGraph : Permutation.Permutation -> Html msg
+viewDerivationGraph perm =
+    Html.div
+        [ style "background" "#f5f5f5"
+        , style "padding" "12px"
+        , style "border-radius" "8px"
+        , style "text-align" "center"
+        ]
+        [ GV.graphviz GV.Dot (toDerivationGraph perm) ]
 
 
 {-| Display the graph visualization of a permutation.
