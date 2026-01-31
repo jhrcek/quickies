@@ -25,7 +25,13 @@ type alias Model =
     , page : Page
     , inputMode : PermutationInput.InputMode
     , graphMode : PermutationView.GraphMode
+    , propertiesViewMode : PropertiesViewMode
     }
+
+
+type PropertiesViewMode
+    = PropertiesTable
+    | PropertiesGraph
 
 
 type Page
@@ -72,6 +78,7 @@ type Msg
     | SetResultTab ResultTab
     | SetPermutationListPage Int
     | ToggleGraphMode
+    | SetPropertiesViewMode PropertiesViewMode
       -- Navigation
     | NavigateRank PermId Direction
     | NavigateInvert PermId
@@ -139,6 +146,7 @@ init _ url key =
       , page = page
       , inputMode = PermutationInput.RankMode
       , graphMode = PermutationView.CycleGraphMode
+      , propertiesViewMode = PropertiesGraph
       }
     , Cmd.none
     )
@@ -250,6 +258,9 @@ update msg model =
 
         ToggleGraphMode ->
             ( { model | graphMode = toggleGraphMode model.graphMode }, Cmd.none )
+
+        SetPropertiesViewMode mode ->
+            ( { model | propertiesViewMode = mode }, Cmd.none )
 
         PermutationInputMsg permId inputMsg ->
             case ( permId, model.page ) of
@@ -409,7 +420,7 @@ viewBody model =
                 viewPermutationList state
 
             PermutationSummaryPage summary ->
-                viewPermutationSummary model.graphMode summary
+                viewPermutationSummary model.graphMode model.propertiesViewMode summary
 
             CompositionPage comp ->
                 viewComposition model.graphMode comp
@@ -736,20 +747,61 @@ routeLink =
     ViewHelpers.routeLink []
 
 
-viewPermutationSummary : PermutationView.GraphMode -> PermutationSummaryModel -> Html Msg
-viewPermutationSummary graphMode summary =
-    Html.div
-        [ style "display" "flex"
-        , style "gap" "20px"
-        , style "align-items" "flex-start"
-        ]
-        [ PermutationView.viewPermutation
-            { label = ""
-            , graphMode = graphMode
-            , onToggleGraph = ToggleGraphMode
-            }
-            summary.permutation
-        , PermutationView.viewDerivationGraph summary.permutation
+viewPermutationSummary : PermutationView.GraphMode -> PropertiesViewMode -> PermutationSummaryModel -> Html Msg
+viewPermutationSummary graphMode propertiesViewMode summary =
+    let
+        radioButton mode labelText =
+            Html.label
+                [ style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "4px"
+                , style "cursor" "pointer"
+                ]
+                [ Html.input
+                    [ Attr.type_ "radio"
+                    , Attr.name "propertiesView"
+                    , Attr.checked (propertiesViewMode == mode)
+                    , onClick (SetPropertiesViewMode mode)
+                    ]
+                    []
+                , Html.text labelText
+                ]
+
+        propertiesToggle =
+            Html.div
+                [ style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "12px"
+                , style "margin-bottom" "12px"
+                , style "font-size" "14px"
+                ]
+                [ Html.span [ style "color" "#666" ] [ Html.text "Properties:" ]
+                , radioButton PropertiesGraph "graph"
+                , radioButton PropertiesTable "table"
+                ]
+
+        propertiesView =
+            case propertiesViewMode of
+                PropertiesTable ->
+                    PermutationView.viewCharacteristics summary.permutation
+
+                PropertiesGraph ->
+                    PermutationView.viewDerivationGraph summary.permutation
+    in
+    Html.div []
+        [ propertiesToggle
+        , Html.div
+            [ style "display" "flex"
+            , style "gap" "20px"
+            , style "align-items" "flex-start"
+            ]
+            [ propertiesView
+            , PermutationView.viewGraph
+                { mode = graphMode
+                , onToggle = ToggleGraphMode
+                }
+                summary.permutation
+            ]
         ]
 
 
