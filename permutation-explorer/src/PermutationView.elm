@@ -81,9 +81,17 @@ viewCharacteristics perm =
         cycleTypeStr =
             cycleTypeToString cycleType
 
+        n =
+            Permutation.getSize perm
+
         cycleTypeRoute =
-            Route.Group (Permutation.getSize perm)
-                (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
+            Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
+
+        rank =
+            Permutation.toRank perm
+
+        rankRoute =
+            Route.Group n (Route.Permutations (Route.PermutationDetail rank))
 
         orderStr =
             String.fromInt (Permutation.order perm)
@@ -128,7 +136,7 @@ viewCharacteristics perm =
         , style "flex-direction" "column"
         , style "gap" "4px"
         ]
-        [ textCharacteristic "Rank:" (String.fromInt (Permutation.toRank perm))
+        [ linkCharacteristic "Rank:" rankRoute (String.fromInt rank)
         , textCharacteristic "Lehmer digits:" (lehmerDigitsToString (Permutation.toLehmerDigits perm))
         , textCharacteristic "Inversion count:" (String.fromInt (Permutation.inversionCount perm))
         , textCharacteristic "One-line notation:" (oneLineToString (Permutation.toOneLineNotation perm))
