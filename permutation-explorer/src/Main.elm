@@ -1,6 +1,5 @@
 module Main exposing (main)
 
-import Breadcrumb
 import Browser
 import Browser.Navigation as Navigation
 import Html exposing (Html)
@@ -11,6 +10,7 @@ import PermutationInput
 import PermutationView
 import Random
 import Route exposing (Route)
+import TreeNav
 import Url exposing (Url)
 import ViewHelpers
 
@@ -35,8 +35,7 @@ type PropertiesViewMode
 
 
 type Page
-    = HomePage
-    | GroupSummaryPage Int -- n from S_n
+    = GroupSummaryPage Int -- n from S_n
     | ConjugacyClassSummaryPage Int -- n from S_n
     | ConjugacyClassPage (List Int) -- cycle type
     | PermutationListPage { n : Int, currentPage : Int }
@@ -131,12 +130,17 @@ toggleGraphMode mode =
 -- INIT
 
 
+defaultRoute : Route
+defaultRoute =
+    Route.Group 3 Route.GroupSummary
+
+
 init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
 init _ url key =
     let
         route =
             Route.fromUrl url
-                |> Maybe.withDefault Route.Home
+                |> Maybe.withDefault defaultRoute
 
         page =
             initPageFromRoute route
@@ -155,9 +159,6 @@ init _ url key =
 initPageFromRoute : Route -> Page
 initPageFromRoute route =
     case route of
-        Route.Home ->
-            HomePage
-
         Route.Group n groupPage ->
             case groupPage of
                 Route.GroupSummary ->
@@ -223,7 +224,7 @@ update msg model =
         UrlChanged url ->
             let
                 route =
-                    Route.fromUrl url |> Maybe.withDefault (Route.Group 5 Route.GroupSummary)
+                    Route.fromUrl url |> Maybe.withDefault defaultRoute
 
                 page =
                     initPageFromRoute route
@@ -326,9 +327,6 @@ update msg model =
 
         GenerateRandomRank permId ->
             case model.route of
-                Route.Home ->
-                    ( model, Cmd.none )
-
                 Route.Group n _ ->
                     ( model
                     , Random.generate (GotRandomRank permId) (Random.int 0 (Permutation.factorial n - 1))
@@ -377,70 +375,44 @@ view model =
 
 viewBody : Model -> Html Msg
 viewBody model =
+    let
+        mainContent =
+            case model.page of
+                GroupSummaryPage n ->
+                    viewGroupSummary n
+
+                ConjugacyClassSummaryPage n ->
+                    viewConjugacyClassSummary n
+
+                ConjugacyClassPage cycleType ->
+                    viewConjugacyClass cycleType
+
+                PermutationListPage state ->
+                    viewPermutationList state
+
+                PermutationSummaryPage summary ->
+                    viewPermutationSummary model.inputMode model.graphMode model.propertiesViewMode summary
+
+                CompositionPage comp ->
+                    viewComposition model.inputMode model.graphMode comp
+    in
     Html.div
         [ style "font-family" "sans-serif"
-        , style "padding" "20px"
-        , style "max-width" "1200px"
-        , style "margin" "0 auto"
+        , style "display" "flex"
+        , style "min-height" "100vh"
         ]
-        [ let
-            ( permInput1, permInput2 ) =
-                case model.page of
-                    PermutationSummaryPage summary ->
-                        ( Just (viewPermSummaryInput model.inputMode summary), Nothing )
-
-                    CompositionPage comp ->
-                        ( Just (viewCompositionInputP model.inputMode comp), Just (viewCompositionInputQ model.inputMode comp) )
-
-                    _ ->
-                        ( Nothing, Nothing )
-          in
-          Breadcrumb.view
-            { onNavigate = BreadcrumbNavigate
-            , inputMode = model.inputMode
-            , onToggleInputMode = ToggleInputMode
-            }
+        [ -- Tree navigation sidebar
+          TreeNav.view
+            { onNavigate = BreadcrumbNavigate }
             model.route
-            permInput1
-            permInput2
-        , case model.page of
-            HomePage ->
-                viewHomePage
 
-            GroupSummaryPage n ->
-                viewGroupSummary n
-
-            ConjugacyClassSummaryPage n ->
-                viewConjugacyClassSummary n
-
-            ConjugacyClassPage cycleType ->
-                viewConjugacyClass cycleType
-
-            PermutationListPage state ->
-                viewPermutationList state
-
-            PermutationSummaryPage summary ->
-                viewPermutationSummary model.graphMode model.propertiesViewMode summary
-
-            CompositionPage comp ->
-                viewComposition model.graphMode comp
-        ]
-
-
-viewHomePage : Html Msg
-viewHomePage =
-    Html.div []
-        [ Html.text "Welcome to the Permutation Explorer! Let's explore few small symmetric groups..."
-
-        -- TODO add something more interesting to home
-        , List.range 1 10
-            |> List.map
-                (\n ->
-                    routeLink (Route.Group n Route.GroupSummary)
-                        ("S" ++ Breadcrumb.toSubscript n)
-                )
-            |> List.intersperse (Html.text ", ")
-            |> Html.p []
+        -- Main content area
+        , Html.div
+            [ style "flex" "1"
+            , style "padding" "20px"
+            ]
+            [ mainContent
+            ]
         ]
 
 
@@ -481,11 +453,13 @@ viewGroupSummary n =
                 ]
     in
     Html.div [ style "max-width" "600px" ]
-        [ -- Basic Properties
-          Html.div sectionStyle
+        [ pageTitle "Group Summary"
+
+        -- Basic Properties
+        , Html.div sectionStyle
             [ sectionHeader "Basic Properties"
             , statRow [ Html.text "Order (|S", Html.sub [] [ Html.text "n" ], Html.text "|)" ] "n!" order
-            , statRow [ routeLink (Route.Group n (Route.ConjugacyClasses Route.ConjugacyClassSummary)) "Conjugacy classes" ] "p(n)" conjugacyClassCount
+            , statRow [ Html.text "Conjugacy classes" ] "p(n)" conjugacyClassCount
             ]
 
         -- Element Counts
@@ -497,18 +471,6 @@ viewGroupSummary n =
             , statRow [ Html.text "Involutions" ] "a(n) = a(n-1)+(n-1)·a(n-2)" (Permutation.countInvolutions n)
             , statRow [ Html.text "Derangements" ] "!n" (Permutation.countDerangements n)
             , statRow [ Html.text ("Cyclic (" ++ String.fromInt n ++ "-cycles)") ] "(n-1)!" (Permutation.countCyclicPermutations n)
-            ]
-
-        -- Navigation
-        , let
-            navLink route label =
-                Html.div [ style "padding" "4px 0" ]
-                    [ routeLink route label ]
-          in
-          Html.div sectionStyle
-            [ sectionHeader "Navigation"
-            , navLink (Route.Group n (Route.Permutations Route.PermutationList)) "Browse all permutations"
-            , navLink (Route.Group n (Route.Permutations (Route.PermutationComposition 0 0))) "Composition editor"
             ]
         ]
 
@@ -523,10 +485,11 @@ viewConjugacyClassSummary n =
 viewConjugacyClass : List Int -> Html Msg
 viewConjugacyClass cycleType =
     Html.div []
-        [ Html.p []
+        [ pageTitle ("Conjugacy Class " ++ PermutationView.cycleTypeToString cycleType)
+        , Html.p []
             [ -- TODO more content for conjugacy class - show graphviz graph of a representative,
               -- shared order of each element etc.
-              Html.text ("Cycle type: " ++ PermutationView.cycleTypeToString cycleType)
+              Html.text "More content coming soon..."
             ]
         ]
 
@@ -553,8 +516,9 @@ viewPermutationList { n, currentPage } =
             List.range startRank endRank
                 |> List.filterMap (Permutation.fromRank n)
     in
-    Html.div []
-        [ viewPermutationTable n permutations
+    Html.div [ style "max-width" "800px" ]
+        [ pageTitle "Permutations"
+        , viewPermutationTable n permutations
         , viewPager { currentPage = currentPage, totalPages = totalPages }
         ]
 
@@ -729,10 +693,8 @@ viewConjugacyClassesTable n =
                 ]
     in
     Html.div
-        [ style "margin-top" "20px"
-        , style "max-width" "400px"
-        ]
-        [ Html.h3 [] [ Html.text "Conjugacy Classes" ]
+        [ style "max-width" "400px" ]
+        [ pageTitle "Conjugacy Classes"
         , Html.div
             [ style "border" "1px solid #ddd"
             , style "border-radius" "4px"
@@ -747,8 +709,17 @@ routeLink =
     ViewHelpers.routeLink []
 
 
-viewPermutationSummary : PermutationView.GraphMode -> PropertiesViewMode -> PermutationSummaryModel -> Html Msg
-viewPermutationSummary graphMode propertiesViewMode summary =
+pageTitle : String -> Html msg
+pageTitle title =
+    Html.h3
+        [ style "margin-top" "0"
+        , style "margin-bottom" "16px"
+        ]
+        [ Html.text title ]
+
+
+viewPermutationSummary : PermutationInput.InputMode -> PermutationView.GraphMode -> PropertiesViewMode -> PermutationSummaryModel -> Html Msg
+viewPermutationSummary inputMode graphMode propertiesViewMode summary =
     let
         radioButton mode labelText =
             Html.label
@@ -789,7 +760,9 @@ viewPermutationSummary graphMode propertiesViewMode summary =
                     PermutationView.viewDerivationGraph summary.permutation
     in
     Html.div []
-        [ propertiesToggle
+        [ pageTitle "Permutation"
+        , viewPermutationInputBar inputMode summary
+        , propertiesToggle
         , Html.div
             [ style "display" "flex"
             , style "gap" "20px"
@@ -803,6 +776,47 @@ viewPermutationSummary graphMode propertiesViewMode summary =
                 summary.permutation
             ]
         ]
+
+
+viewPermutationInputBar : PermutationInput.InputMode -> PermutationSummaryModel -> Html Msg
+viewPermutationInputBar inputMode summary =
+    Html.div
+        [ style "display" "flex"
+        , style "align-items" "center"
+        , style "gap" "12px"
+        , style "margin-bottom" "16px"
+        , style "padding" "12px"
+        , style "background" "#f5f5f5"
+        , style "border-radius" "6px"
+        ]
+        [ Html.span [ style "font-weight" "bold" ] [ Html.text "Permutation:" ]
+        , viewPermSummaryInput inputMode summary
+        , viewModeToggleButton inputMode
+        ]
+
+
+viewModeToggleButton : PermutationInput.InputMode -> Html Msg
+viewModeToggleButton inputMode =
+    let
+        ( icon, title ) =
+            case inputMode of
+                PermutationInput.RankMode ->
+                    ( "σ", "Switch to cycle notation" )
+
+                PermutationInput.CycleMode ->
+                    ( "#", "Switch to rank" )
+    in
+    Html.button
+        [ Attr.title title
+        , onClick ToggleInputMode
+        , style "padding" "4px 8px"
+        , style "font-size" "14px"
+        , style "border" "1px solid #ccc"
+        , style "border-radius" "4px"
+        , style "cursor" "pointer"
+        , style "background" "#fff"
+        ]
+        [ Html.text icon ]
 
 
 viewPermInputHelper : PermId -> PermutationInput.InputMode -> Permutation.Permutation -> PermutationInput.Model -> Html Msg
@@ -834,10 +848,12 @@ viewCompositionInputQ inputMode comp =
     viewPermInputHelper Q inputMode comp.permQ comp.inputQ
 
 
-viewComposition : PermutationView.GraphMode -> CompositionModel -> Html Msg
-viewComposition graphMode comp =
+viewComposition : PermutationInput.InputMode -> PermutationView.GraphMode -> CompositionModel -> Html Msg
+viewComposition inputMode graphMode comp =
     Html.div []
-        [ Html.div
+        [ pageTitle "Composition"
+        , viewCompositionInputBar inputMode comp
+        , Html.div
             [ style "display" "flex"
             , style "gap" "20px"
             , style "flex-wrap" "wrap"
@@ -857,6 +873,26 @@ viewComposition graphMode comp =
                 comp.permQ
             , viewResultCard graphMode comp
             ]
+        ]
+
+
+viewCompositionInputBar : PermutationInput.InputMode -> CompositionModel -> Html Msg
+viewCompositionInputBar inputMode comp =
+    Html.div
+        [ style "display" "flex"
+        , style "align-items" "center"
+        , style "gap" "12px"
+        , style "margin-bottom" "16px"
+        , style "padding" "12px"
+        , style "background" "#f5f5f5"
+        , style "border-radius" "6px"
+        , style "flex-wrap" "wrap"
+        ]
+        [ Html.span [ style "font-weight" "bold" ] [ Html.text "P:" ]
+        , viewCompositionInputP inputMode comp
+        , Html.span [ style "font-weight" "bold", style "margin-left" "12px" ] [ Html.text "Q:" ]
+        , viewCompositionInputQ inputMode comp
+        , viewModeToggleButton inputMode
         ]
 
 

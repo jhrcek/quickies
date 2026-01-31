@@ -18,8 +18,7 @@ import Url.Parser as Parser exposing ((</>), Parser)
 
 
 type Route
-    = Home
-    | Group Int GroupPage
+    = Group Int GroupPage
 
 
 type GroupPage
@@ -59,7 +58,7 @@ fromUrl url =
 parser : Parser (Route -> a) a
 parser =
     Parser.oneOf
-        [ Parser.map Home Parser.top
+        [ Parser.map (Group 3 GroupSummary) Parser.top
         , Parser.map Group (Parser.s "group" </> Parser.int </> groupPageParser)
         ]
 
@@ -128,9 +127,6 @@ toString : Route -> String
 toString route =
     "#/"
         ++ (case route of
-                Home ->
-                    ""
-
                 Group n groupPage ->
                     "group/" ++ String.fromInt n ++ "/" ++ groupPageToString groupPage
            )
@@ -177,9 +173,6 @@ permutationPageToString permPage =
 updateRankP : (Int -> Int -> Int) -> Route -> Route
 updateRankP f route =
     case route of
-        Home ->
-            Home
-
         Group n groupPage ->
             Group n <|
                 case groupPage of
@@ -210,9 +203,6 @@ setRankP newRankP route =
 updateRankQ : (Int -> Int -> Int) -> Route -> Route
 updateRankQ f route =
     case route of
-        Home ->
-            Home
-
         Group n groupPage ->
             Group n <|
                 case groupPage of
@@ -244,9 +234,6 @@ setN : Int -> Route -> Route
 setN newN route =
     -- Setting n means we have to potentially resize permutations and other things stored deeper in the route
     case route of
-        Home ->
-            Home
-
         Group oldN groupPage ->
             Group newN <|
                 case groupPage of
