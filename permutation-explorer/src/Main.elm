@@ -132,7 +132,7 @@ toggleGraphMode mode =
 
 defaultRoute : Route
 defaultRoute =
-    Route.Group 3 Route.GroupSummary
+    Route.Group 5 Route.GroupSummary
 
 
 init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
@@ -851,8 +851,15 @@ viewCompositionInputQ inputMode comp =
 viewComposition : PermutationInput.InputMode -> PermutationView.GraphMode -> CompositionModel -> Html Msg
 viewComposition inputMode graphMode comp =
     Html.div []
-        [ pageTitle "Composition"
-        , viewCompositionInputBar inputMode comp
+        [ Html.div
+            [ style "display" "flex"
+            , style "align-items" "center"
+            , style "gap" "12px"
+            , style "margin-bottom" "16px"
+            ]
+            [ Html.h3 [ style "margin" "0" ] [ Html.text "Composition" ]
+            , viewModeToggleButton inputMode
+            ]
         , Html.div
             [ style "display" "flex"
             , style "gap" "20px"
@@ -863,36 +870,18 @@ viewComposition inputMode graphMode comp =
                 { label = "P"
                 , graphMode = graphMode
                 , onToggleGraph = ToggleGraphMode
+                , controls = viewCompositionInputP inputMode comp
                 }
                 comp.permP
             , PermutationView.viewPermutation
                 { label = "Q"
                 , graphMode = graphMode
                 , onToggleGraph = ToggleGraphMode
+                , controls = viewCompositionInputQ inputMode comp
                 }
                 comp.permQ
             , viewResultCard graphMode comp
             ]
-        ]
-
-
-viewCompositionInputBar : PermutationInput.InputMode -> CompositionModel -> Html Msg
-viewCompositionInputBar inputMode comp =
-    Html.div
-        [ style "display" "flex"
-        , style "align-items" "center"
-        , style "gap" "12px"
-        , style "margin-bottom" "16px"
-        , style "padding" "12px"
-        , style "background" "#f5f5f5"
-        , style "border-radius" "6px"
-        , style "flex-wrap" "wrap"
-        ]
-        [ Html.span [ style "font-weight" "bold" ] [ Html.text "P:" ]
-        , viewCompositionInputP inputMode comp
-        , Html.span [ style "font-weight" "bold", style "margin-left" "12px" ] [ Html.text "Q:" ]
-        , viewCompositionInputQ inputMode comp
-        , viewModeToggleButton inputMode
         ]
 
 

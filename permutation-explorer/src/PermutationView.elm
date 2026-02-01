@@ -302,12 +302,25 @@ viewPermutation :
     { label : String
     , graphMode : GraphMode
     , onToggleGraph : msg
+    , controls : Html msg
     }
     -> Permutation.Permutation
     -> Html msg
 viewPermutation config perm =
+    let
+        header =
+            Html.div
+                [ style "display" "flex"
+                , style "align-items" "center"
+                , style "gap" "12px"
+                , style "margin-bottom" "8px"
+                ]
+                [ Html.h2 [ style "margin" "0" ] [ Html.text config.label ]
+                , config.controls
+                ]
+    in
     viewCard
-        [ Html.h2 [ style "margin-top" "0" ] [ Html.text config.label ]
+        [ header
         , viewCharacteristics perm
         , viewGraph
             { mode = config.graphMode
