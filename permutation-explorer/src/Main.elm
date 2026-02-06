@@ -130,17 +130,11 @@ toggleGraphMode mode =
 -- INIT
 
 
-defaultRoute : Route
-defaultRoute =
-    Route.Group 5 Route.GroupSummary
-
-
 init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
 init _ url key =
     let
         route =
             Route.fromUrl url
-                |> Maybe.withDefault defaultRoute
 
         page =
             initPageFromRoute route
@@ -224,7 +218,7 @@ update msg model =
         UrlChanged url ->
             let
                 route =
-                    Route.fromUrl url |> Maybe.withDefault defaultRoute
+                    Route.fromUrl url
 
                 page =
                     initPageFromRoute route

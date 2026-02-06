@@ -44,11 +44,12 @@ type PermutationPage
 
 {-| Parse a URL into a Route (using the hash fragment).
 -}
-fromUrl : Url -> Maybe Route
+fromUrl : Url -> Route
 fromUrl url =
     -- Parse the fragment as a path by creating a modified URL
     { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
         |> Parser.parse parser
+        |> Maybe.withDefault default
 
 
 
@@ -58,7 +59,7 @@ fromUrl url =
 parser : Parser (Route -> a) a
 parser =
     Parser.oneOf
-        [ Parser.map (Group 3 GroupSummary) Parser.top
+        [ Parser.map default Parser.top
         , Parser.map Group (Parser.s "group" </> Parser.int </> groupPageParser)
         ]
 
@@ -267,3 +268,8 @@ setN newN route =
 
                                 PermutationComposition rankP rankQ ->
                                     PermutationComposition (resizeRank rankP) (resizeRank rankQ)
+
+
+default : Route
+default =
+    Group 5 GroupSummary
