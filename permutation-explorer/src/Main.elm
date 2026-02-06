@@ -478,8 +478,7 @@ viewGroupSummary n =
 viewConjugacyClassSummary : Int -> Html Msg
 viewConjugacyClassSummary n =
     Html.div []
-        [ viewConjugacyClassesTable n
-        ]
+        [ viewConjugacyClassesTable n ]
 
 
 viewConjugacyClass : List Int -> Html Msg
@@ -659,48 +658,135 @@ viewPermutationTable n permutations =
 viewConjugacyClassesTable : Int -> Html Msg
 viewConjugacyClassesTable n =
     let
-        classes =
+        sortedClasses =
             Permutation.listConjugacyClasses n
+                |> List.sortBy (\ct -> ( List.length ct, ct ))
+
+        groups :
+            List
+                { cycleCount : Int
+                , totalPerms : Int
+                , entries : List (List Int)
+                }
+        groups =
+            List.foldl
+                (\cycleType acc ->
+                    let
+                        cc =
+                            List.length cycleType
+
+                        size =
+                            Permutation.conjugacyClassSizeFromCycleType n cycleType
+                    in
+                    case acc of
+                        g :: rest ->
+                            if g.cycleCount == cc then
+                                { g | entries = g.entries ++ [ cycleType ], totalPerms = g.totalPerms + size } :: rest
+
+                            else
+                                { cycleCount = cc, entries = [ cycleType ], totalPerms = size } :: g :: rest
+
+                        [] ->
+                            [ { cycleCount = cc, entries = [ cycleType ], totalPerms = size } ]
+                )
+                []
+                sortedClasses
+                |> List.reverse
+
+        cellStyles =
+            [ style "text-align" "right", style "padding" "8px 4px", style "border" "1px solid #ddd" ]
+
+        th label =
+            Html.th (cellStyles ++ [ style "border-bottom" "2px solid #333" ]) [ Html.text label ]
+
+        td attrs content =
+            Html.td (cellStyles ++ attrs) [ Html.text content ]
 
         headerRow =
-            Html.div
-                [ style "display" "flex"
-                , style "font-weight" "bold"
-                , style "border-bottom" "2px solid #333"
-                , style "padding" "8px 0"
-                ]
-                [ Html.div [ style "flex" "1" ] [ Html.text "Cycle Type" ]
-                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Class Size" ]
-                , Html.div [ style "flex" "1", style "text-align" "right" ] [ Html.text "Order of elements" ]
+            Html.thead []
+                [ Html.tr []
+                    [ th "Cycles"
+                    , th "Cycle Type"
+                    , th "Class size"
+                    , Html.th (cellStyles ++ [ style "border-bottom" "2px solid #333" ]) [ Html.text "Total permutations*" ]
+                    , th "Order of permutations"
+                    ]
                 ]
 
-        dataRow cycleType =
+        groupRows isFirstGroup group =
             let
-                classRoute =
-                    Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass cycleType))
+                span =
+                    List.length group.entries
+
+                rowspanCell content =
+                    [ td [ style "vertical-align" "middle", Attr.rowspan span ] content ]
             in
-            Html.div
-                [ style "display" "flex"
-                , style "border-bottom" "1px solid #ddd"
-                , style "padding" "8px 0"
-                ]
-                [ Html.div [ style "flex" "1" ]
-                    [ routeLink classRoute (PermutationView.cycleTypeToString cycleType) ]
-                , Html.div [ style "flex" "1", style "text-align" "right" ]
-                    [ Html.text (String.fromInt (Permutation.conjugacyClassSizeFromCycleType n cycleType)) ]
-                , Html.div [ style "flex" "1", style "text-align" "right" ]
-                    [ Html.text (String.fromInt (Permutation.orderFromCycleType cycleType)) ]
-                ]
+            List.indexedMap
+                (\i ct ->
+                    let
+                        classRoute =
+                            Route.Group n (Route.ConjugacyClasses (Route.ConjugacyClass ct))
+
+                        isFirstInGroup =
+                            i == 0
+
+                        groupBorderStyle =
+                            if isFirstInGroup && not isFirstGroup then
+                                [ style "border-top" "2px solid #999" ]
+
+                            else
+                                []
+
+                        firstInGroupCells =
+                            if isFirstInGroup then
+                                { cycles = rowspanCell (String.fromInt group.cycleCount)
+                                , total = rowspanCell (String.fromInt group.totalPerms)
+                                }
+
+                            else
+                                { cycles = [], total = [] }
+                    in
+                    Html.tr groupBorderStyle
+                        (firstInGroupCells.cycles
+                            ++ [ Html.td cellStyles
+                                    [ routeLink classRoute (PermutationView.cycleTypeToString ct) ]
+                               , td [] (String.fromInt (Permutation.conjugacyClassSizeFromCycleType n ct))
+                               ]
+                            ++ firstInGroupCells.total
+                            ++ [ td [] (String.fromInt (Permutation.orderFromCycleType ct)) ]
+                        )
+                )
+                group.entries
+
+        allRows =
+            List.indexedMap (\i g -> groupRows (i == 0) g) groups
+                |> List.concat
     in
     Html.div
-        [ style "max-width" "400px" ]
+        [ style "max-width" "600px" ]
         [ pageTitle "Conjugacy Classes"
         , Html.div
             [ style "border" "1px solid #ddd"
             , style "border-radius" "4px"
             , style "padding" "12px"
             ]
-            (headerRow :: List.map dataRow classes)
+            [ Html.table
+                [ style "border-collapse" "collapse"
+                , style "width" "100%"
+                ]
+                [ headerRow
+                , Html.tbody [] allRows
+                ]
+            ]
+        , Html.p [ style "font-size" "0.85em", style "color" "#666", style "margin-top" "8px" ]
+            [ Html.text "*Total number of permutations of "
+            , Html.i [] [ Html.text "n" ]
+            , Html.text " elements with "
+            , Html.i [] [ Html.text "k" ]
+            , Html.text " cycles is counted by "
+            , Html.a [ Attr.href "https://en.wikipedia.org/wiki/Stirling_numbers_of_the_first_kind" ] [ Html.text "Stirling numbers of the first kind" ]
+            , Html.text "."
+            ]
         ]
 
 

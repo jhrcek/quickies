@@ -8,6 +8,8 @@
         - [x] order / number of elements linking to permutations page
         - [x] number (list of) conjugacy classes - with count of elements / order of each
     - [ ] Conjugacy classes - table of all conjugacy classes with a pager
+        - [x] sort the table by number of cycles and then by cycle type lexicographically
+        - [x] group them into groups based on same number type and show stirling numbers that count total count over all classes with the same nubmer of cycles
         - [ ] conjugacy class
             - [ ] showing shape as a graph and properties shared by all elements
     - [x] permutations - showing (sortable?) table of all permutations with a pager
