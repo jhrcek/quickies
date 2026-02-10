@@ -63,6 +63,17 @@ viewGroupTree config route =
                     else
                         []
                 }
+            , viewTreeItem
+                { route = Group n (Concepts Route.StirlingNumbers)
+                , label = "Concepts"
+                , isActive = currentCategory == ConceptsCategory
+                , children =
+                    if currentCategory == ConceptsCategory then
+                        viewConceptsChildren n groupPage
+
+                    else
+                        []
+                }
             ]
         ]
 
@@ -71,6 +82,7 @@ type Category
     = SummaryCategory
     | ConjugacyCategory
     | PermutationsCategory
+    | ConceptsCategory
 
 
 getCategory : GroupPage -> Category
@@ -84,6 +96,9 @@ getCategory groupPage =
 
         Permutations _ ->
             PermutationsCategory
+
+        Concepts _ ->
+            ConceptsCategory
 
 
 viewGroupHeader : Config msg -> Route -> Int -> Html msg
@@ -217,6 +232,25 @@ viewPermutationChildren n groupPage =
         { route = compositionRoute
         , label = "Composition"
         , isActive = isOnComposition
+        }
+    ]
+
+
+viewConceptsChildren : Int -> GroupPage -> List (Html msg)
+viewConceptsChildren n groupPage =
+    let
+        isOnStirling =
+            case groupPage of
+                Concepts Route.StirlingNumbers ->
+                    True
+
+                _ ->
+                    False
+    in
+    [ viewChildItem
+        { route = Group n (Concepts Route.StirlingNumbers)
+        , label = "Stirling Numbers"
+        , isActive = isOnStirling
         }
     ]
 

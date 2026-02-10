@@ -10,6 +10,7 @@ import PermutationInput
 import PermutationView
 import Random
 import Route exposing (Route)
+import StirlingGrid
 import TreeNav
 import Url exposing (Url)
 import ViewHelpers
@@ -41,6 +42,7 @@ type Page
     | PermutationListPage { n : Int, currentPage : Int }
     | PermutationSummaryPage PermutationSummaryModel
     | CompositionPage CompositionModel
+    | ConceptsPage Route.ConceptsPage
 
 
 type alias PermutationSummaryModel =
@@ -157,6 +159,9 @@ initPageFromRoute route =
             case groupPage of
                 Route.GroupSummary ->
                     GroupSummaryPage n
+
+                Route.Concepts cp ->
+                    ConceptsPage cp
 
                 Route.ConjugacyClasses classPage ->
                     case classPage of
@@ -374,6 +379,9 @@ viewBody model =
             case model.page of
                 GroupSummaryPage n ->
                     viewGroupSummary n
+
+                ConceptsPage cp ->
+                    viewConcepts cp
 
                 ConjugacyClassSummaryPage n ->
                     viewConjugacyClassSummary n
@@ -778,7 +786,7 @@ viewConjugacyClassesTable n =
             , Html.text " elements with "
             , Html.i [] [ Html.text "k" ]
             , Html.text " cycles is counted by "
-            , Html.a [ Attr.href "https://en.wikipedia.org/wiki/Stirling_numbers_of_the_first_kind" ] [ Html.text "Stirling numbers of the first kind" ]
+            , routeLink (Route.Group n (Route.Concepts Route.StirlingNumbers)) "Stirling numbers of the first kind"
             , Html.text "."
             ]
         ]
@@ -1048,6 +1056,24 @@ viewResultCard graphMode comp =
                 }
                 activeResult
             ]
+        ]
+
+
+viewConcepts : Route.ConceptsPage -> Html Msg
+viewConcepts conceptsPage =
+    case conceptsPage of
+        Route.StirlingNumbers ->
+            viewStirlingNumbers
+
+
+viewStirlingNumbers : Html Msg
+viewStirlingNumbers =
+    Html.div []
+        [ pageTitle "Stirling Numbers of the First Kind"
+        , Html.p [] [ Html.text "The unsigned Stirling number c(n, k) counts the number of permutations of n elements that have exacty k cycles." ]
+        , Html.p [] [ Html.text "Each row sums to n!, and permutations sharing the same cycle type form a conjugacy class." ]
+        , Html.p [] [ Html.text "They satisfy the following recurrence relationship." ]
+        , StirlingGrid.view
         ]
 
 

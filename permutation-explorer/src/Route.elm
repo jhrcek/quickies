@@ -1,5 +1,6 @@
 module Route exposing
-    ( ConjugacyClassPage(..)
+    ( ConceptsPage(..)
+    , ConjugacyClassPage(..)
     , GroupPage(..)
     , PermutationPage(..)
     , Route(..)
@@ -25,6 +26,7 @@ type GroupPage
     = GroupSummary
     | ConjugacyClasses ConjugacyClassPage
     | Permutations PermutationPage
+    | Concepts ConceptsPage
 
 
 type ConjugacyClassPage
@@ -36,6 +38,10 @@ type PermutationPage
     = PermutationList
     | PermutationDetail Int
     | PermutationComposition Int Int
+
+
+type ConceptsPage
+    = StirlingNumbers
 
 
 
@@ -70,6 +76,7 @@ groupPageParser =
         [ Parser.map GroupSummary Parser.top
         , Parser.map ConjugacyClasses (Parser.s "conjugacy-classes" </> conjugacyClassPageParser)
         , Parser.map Permutations (Parser.s "permutations" </> permutationPageParser)
+        , Parser.map Concepts (Parser.s "concepts" </> conceptsPageParser)
         ]
 
 
@@ -78,6 +85,13 @@ conjugacyClassPageParser =
     Parser.oneOf
         [ Parser.map ConjugacyClassSummary Parser.top
         , Parser.map ConjugacyClass cycleTypeParser
+        ]
+
+
+conceptsPageParser : Parser (ConceptsPage -> a) a
+conceptsPageParser =
+    Parser.oneOf
+        [ Parser.map StirlingNumbers (Parser.s "stirling-numbers")
         ]
 
 
@@ -145,6 +159,9 @@ groupPageToString groupPage =
         Permutations permPage ->
             "permutations/" ++ permutationPageToString permPage
 
+        Concepts conceptsPage ->
+            "concepts/" ++ conceptsPageToString conceptsPage
+
 
 conjugacyClassPageToString : ConjugacyClassPage -> String
 conjugacyClassPageToString classPage =
@@ -169,6 +186,13 @@ permutationPageToString permPage =
             String.fromInt rankP ++ "/composition/" ++ String.fromInt rankQ
 
 
+conceptsPageToString : ConceptsPage -> String
+conceptsPageToString conceptsPage =
+    case conceptsPage of
+        StirlingNumbers ->
+            "stirling-numbers"
+
+
 {-| Update the rank of P in the route given the result of a function from n and current rank of P
 -}
 updateRankP : (Int -> Int -> Int) -> Route -> Route
@@ -181,6 +205,9 @@ updateRankP f route =
                         groupPage
 
                     ConjugacyClasses _ ->
+                        groupPage
+
+                    Concepts _ ->
                         groupPage
 
                     Permutations permPage ->
@@ -213,6 +240,9 @@ updateRankQ f route =
                     ConjugacyClasses cs ->
                         ConjugacyClasses cs
 
+                    Concepts c ->
+                        Concepts c
+
                     Permutations permPage ->
                         Permutations <|
                             case permPage of
@@ -240,6 +270,9 @@ setN newN route =
                 case groupPage of
                     GroupSummary ->
                         GroupSummary
+
+                    Concepts conceptsPage ->
+                        Concepts conceptsPage
 
                     ConjugacyClasses conjugacyClassPage ->
                         ConjugacyClasses <|
