@@ -461,7 +461,7 @@ viewGroupSummary n =
         , Html.div sectionStyle
             [ sectionHeader "Basic Properties"
             , statRow [ Html.text "Order (|S", Html.sub [] [ Html.text "n" ], Html.text "|)" ] "n!" order
-            , statRow [ Html.text "Conjugacy classes" ] "p(n)" conjugacyClassCount
+            , statRow [ routeLink (Route.Group n (Route.Concepts Route.PartitionFunction)) "Conjugacy classes" ] "p(n)" conjugacyClassCount
             ]
 
         -- Element Counts
@@ -1065,6 +1065,9 @@ viewConcepts conceptsPage =
         Route.StirlingNumbers ->
             viewStirlingNumbers
 
+        Route.PartitionFunction ->
+            viewPartitionFunction
+
 
 viewStirlingNumbers : Html Msg
 viewStirlingNumbers =
@@ -1074,6 +1077,26 @@ viewStirlingNumbers =
         , Html.p [] [ Html.text "Each row sums to n!, and permutations sharing the same cycle type form a conjugacy class." ]
         , Html.p [] [ Html.text "They satisfy the following recurrence relationship." ]
         , StirlingGrid.view
+        ]
+
+
+viewPartitionFunction : Html Msg
+viewPartitionFunction =
+    Html.div []
+        [ pageTitle "Partition Function"
+        , Html.p []
+            [ Html.text "The partition function p(n) counts the number of ways to write n as a sum of positive integers, regardless of order. In the context of permutation groups, p(n) equals the number of conjugacy classes in the symmetric group Sₙ, since conjugacy classes are determined by cycle types, and cycle types correspond to integer partitions of n."
+            ]
+        , Html.p []
+            [ Html.text "For more information, see "
+            , Html.a
+                [ Attr.href "https://en.wikipedia.org/wiki/Partition_function_(number_theory)"
+                , Attr.target "_blank"
+                , style "color" "#0066cc"
+                ]
+                [ Html.text "Partition function (number theory)" ]
+            , Html.text " on Wikipedia."
+            ]
         ]
 
 

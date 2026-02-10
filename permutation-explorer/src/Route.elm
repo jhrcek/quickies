@@ -42,6 +42,7 @@ type PermutationPage
 
 type ConceptsPage
     = StirlingNumbers
+    | PartitionFunction
 
 
 
@@ -92,6 +93,7 @@ conceptsPageParser : Parser (ConceptsPage -> a) a
 conceptsPageParser =
     Parser.oneOf
         [ Parser.map StirlingNumbers (Parser.s "stirling-numbers")
+        , Parser.map PartitionFunction (Parser.s "partition-function")
         ]
 
 
@@ -191,6 +193,9 @@ conceptsPageToString conceptsPage =
     case conceptsPage of
         StirlingNumbers ->
             "stirling-numbers"
+
+        PartitionFunction ->
+            "partition-function"
 
 
 {-| Update the rank of P in the route given the result of a function from n and current rank of P

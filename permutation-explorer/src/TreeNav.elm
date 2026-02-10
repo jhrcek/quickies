@@ -246,11 +246,24 @@ viewConceptsChildren n groupPage =
 
                 _ ->
                     False
+
+        isOnPartition =
+            case groupPage of
+                Concepts Route.PartitionFunction ->
+                    True
+
+                _ ->
+                    False
     in
     [ viewChildItem
         { route = Group n (Concepts Route.StirlingNumbers)
         , label = "Stirling Numbers"
         , isActive = isOnStirling
+        }
+    , viewChildItem
+        { route = Group n (Concepts Route.PartitionFunction)
+        , label = "Partition Function"
+        , isActive = isOnPartition
         }
     ]
 
