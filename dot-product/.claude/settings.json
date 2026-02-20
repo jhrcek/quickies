@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e '.tool_input.file_path | test(\"\\\\.elm$\")' >/dev/null && make check"
+          }
+        ]
+      }
+    ]
+  }
+}
