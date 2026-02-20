@@ -1,11 +1,11 @@
 module Main exposing (main)
 
 import Browser
-import Html exposing (Html, button, div, h2, p, text)
+import Html exposing (Html, button, div, h2, node, p, text)
 import Html.Attributes as HA
 import Html.Events exposing (onClick, onInput)
 import String
-import Svg exposing (line, path, rect, svg, text_)
+import Svg exposing (line, path, svg, text_)
 import Svg.Attributes as SA
 
 
@@ -115,28 +115,50 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    div [ HA.style "display" "flex" ]
-        [ viewSliders model
-        , viewSvg model
+    div []
+        [ responsiveStyle
+        , div [ HA.class "container" ]
+            [ viewSliders model
+            , viewSvg model
+            ]
+        ]
+
+
+responsiveStyle : Html msg
+responsiveStyle =
+    node "style"
+        []
+        [ text """
+.container { display: flex; flex-wrap: wrap; height: 100vh; overflow: hidden; }
+.controls { flex: 1; min-width: 250px; display: flex; align-items: center; justify-content: center; }
+.graph { flex: 1; min-width: 250px; padding: 10px; box-sizing: border-box; }
+.graph svg { width: 100%; max-height: calc(100vh - 20px);}
+@media (aspect-ratio <= 1) {
+  .container { flex-direction: column; }
+  .graph svg { max-height: calc(50vh - 20px); }
+}
+"""
         ]
 
 
 viewSliders : Model -> Html Msg
 viewSliders model =
-    div [ HA.style "width" "300px", HA.style "margin-right" "20px" ]
-        [ h2 [] [ text "Conic Sliders" ]
-        , viewEquation
-        , slider "A" model.a SetA
-        , slider "B" model.b SetB
-        , slider "C" model.c SetC
-        , slider "D" model.d SetD
-        , slider "E" model.e SetE
-        , slider "F" model.f SetF
-        , div [ HA.style "margin-top" "20px" ]
-            [ button [ onClick ChooseCircle ] [ text "Circle" ]
-            , button [ onClick ChooseEllipse, HA.style "margin-left" "10px" ] [ text "Ellipse" ]
-            , button [ onClick ChooseParabola, HA.style "margin-left" "10px" ] [ text "Parabola" ]
-            , button [ onClick ChooseHyperbola, HA.style "margin-left" "10px" ] [ text "Hyperbola" ]
+    div [ HA.class "controls" ]
+        [ div []
+            [ h2 [] [ text "Conic Sliders" ]
+            , viewEquation
+            , slider "A" model.a SetA
+            , slider "B" model.b SetB
+            , slider "C" model.c SetC
+            , slider "D" model.d SetD
+            , slider "E" model.e SetE
+            , slider "F" model.f SetF
+            , div [ HA.style "margin-top" "20px" ]
+                [ button [ onClick ChooseCircle ] [ text "Circle" ]
+                , button [ onClick ChooseEllipse, HA.style "margin-left" "10px" ] [ text "Ellipse" ]
+                , button [ onClick ChooseParabola, HA.style "margin-left" "10px" ] [ text "Parabola" ]
+                , button [ onClick ChooseHyperbola, HA.style "margin-left" "10px" ] [ text "Hyperbola" ]
+                ]
             ]
         ]
 
@@ -186,51 +208,47 @@ viewSvg model =
         pathStr =
             polylinesToPath polylinesNoGaps
     in
-    svg
-        [ SA.width "600"
-        , SA.height "600"
-        , SA.viewBox "0 0 600 600"
-        , HA.style "border" "1px solid black"
+    div [ HA.class "graph" ]
+        [ svg
+            [ SA.viewBox "0 0 600 600"
+            , HA.style "border" "1px solid black"
+            ]
+            [ line
+                [ SA.x1 "0"
+                , SA.y1 "300"
+                , SA.x2 "600"
+                , SA.y2 "300"
+                , SA.stroke "black"
+                , SA.strokeWidth "1"
+                ]
+                []
+            , line
+                [ SA.x1 "300"
+                , SA.y1 "0"
+                , SA.x2 "300"
+                , SA.y2 "600"
+                , SA.stroke "black"
+                , SA.strokeWidth "1"
+                ]
+                []
+            , path
+                [ SA.d pathStr
+                , SA.fill "none"
+                , SA.stroke "red"
+                , SA.strokeWidth "2"
+                ]
+                []
+            , text_
+                [ SA.x "10", SA.y "20", SA.fill "black" ]
+                [ text "Domain: x, y ∈ [-10,10]" ]
+            ]
         ]
-        [ rect
-            [ SA.x "0"
-            , SA.y "0"
-            , SA.width "600"
-            , SA.height "600"
-            , SA.fill "none"
-            , SA.stroke "#ccc"
-            , SA.strokeWidth "1"
-            ]
-            []
-        , line
-            [ SA.x1 "0"
-            , SA.y1 "300"
-            , SA.x2 "600"
-            , SA.y2 "300"
-            , SA.stroke "black"
-            , SA.strokeWidth "1"
-            ]
-            []
-        , line
-            [ SA.x1 "300"
-            , SA.y1 "0"
-            , SA.x2 "300"
-            , SA.y2 "600"
-            , SA.stroke "black"
-            , SA.strokeWidth "1"
-            ]
-            []
-        , path
-            [ SA.d pathStr
-            , SA.fill "none"
-            , SA.stroke "red"
-            , SA.strokeWidth "2"
-            ]
-            []
-        , text_
-            [ SA.x "10", SA.y "20", SA.fill "black" ]
-            [ text "Domain: x, y ∈ [-10,10]" ]
-        ]
+
+
+{-| Set all six conic coefficients and the seed at once. -}
+setCoeffs : Model -> Int -> { a : Float, b : Float, c : Float, d : Float, e : Float, f : Float } -> Model
+setCoeffs model seed coeffs =
+    { model | a = coeffs.a, b = coeffs.b, c = coeffs.c, d = coeffs.d, e = coeffs.e, f = coeffs.f, seed = seed }
 
 
 {-| Random generation routines for each curve.
@@ -249,15 +267,15 @@ randomCircle model =
         ( r, s3 ) =
             randRange 1 5 s2
     in
-    { model
-        | a = 1
+    setCoeffs model
+        s3
+        { a = 1
         , b = 0
         , c = 1
         , d = round1 <| -2 * h
         , e = round1 <| -2 * k
         , f = round1 <| h ^ 2 + k ^ 2 - r ^ 2
-        , seed = s3
-    }
+        }
 
 
 randomEllipse : Model -> Model
@@ -274,36 +292,18 @@ randomEllipse model =
 
         ( bSemi, s4 ) =
             randRange 1 4 s3
-
-        -- Expand: (x-h)^2/a^2 + (y-k)^2/b^2 = 1
-        -- => b^2 (x-h)^2 + a^2 (y-k)^2 = a^2 b^2
-        a =
-            round1 <| bSemi ^ 2
-
-        b =
-            0
-
-        c =
-            round1 <| aSemi ^ 2
-
-        d =
-            round1 <| -2 * h * (bSemi ^ 2)
-
-        e =
-            round1 <| -2 * k * (aSemi ^ 2)
-
-        f =
-            round1 <| (bSemi ^ 2 * h ^ 2) + (aSemi ^ 2 * k ^ 2) - (aSemi ^ 2 * bSemi ^ 2)
     in
-    { model
-        | a = a
-        , b = b
-        , c = c
-        , d = d
-        , e = e
-        , f = f
-        , seed = s4
-    }
+    -- Expand: (x-h)^2/a^2 + (y-k)^2/b^2 = 1
+    -- => b^2 (x-h)^2 + a^2 (y-k)^2 = a^2 b^2
+    setCoeffs model
+        s4
+        { a = round1 <| bSemi ^ 2
+        , b = 0
+        , c = round1 <| aSemi ^ 2
+        , d = round1 <| -2 * h * (bSemi ^ 2)
+        , e = round1 <| -2 * k * (aSemi ^ 2)
+        , f = round1 <| (bSemi ^ 2 * h ^ 2) + (aSemi ^ 2 * k ^ 2) - (aSemi ^ 2 * bSemi ^ 2)
+        }
 
 
 randomParabola : Model -> Model
@@ -322,52 +322,30 @@ randomParabola model =
         ( signFrac, s4 ) =
             randRange 0 1 s3
 
-        pSign =
-            if signFrac < 0.5 then
+        p =
+            (if signFrac < 0.5 then
                 1
 
-            else
+             else
                 -1
-
-        p =
-            pSign * pBase
-
-        -- (x-h)^2 = 2p (y-k)
-        -- => x^2 -2hx +h^2 -2p y +2p k = 0
-        a =
-            1
-
-        b =
-            0
-
-        c =
-            0
-
-        d =
-            round1 <| -2 * h
-
-        e =
-            round1 <| -2 * p
-
-        f =
-            round1 <| h ^ 2 + 2 * p * k
+            )
+                * pBase
     in
-    { model
-        | a = a
-        , b = b
-        , c = c
-        , d = d
-        , e = e
-        , f = f
-        , seed = s4
-    }
+    -- (x-h)^2 = 2p (y-k)
+    -- => x^2 -2hx +h^2 -2p y +2p k = 0
+    setCoeffs model
+        s4
+        { a = 1
+        , b = 0
+        , c = 0
+        , d = round1 <| -2 * h
+        , e = round1 <| -2 * p
+        , f = round1 <| h ^ 2 + 2 * p * k
+        }
 
 
 randomHyperbola : Model -> Model
 randomHyperbola model =
-    -- We'll do standard forms, picking random orientation:
-    -- Horizontal:  ((x-h)^2 / a^2) - ((y-k)^2 / b^2) = 1
-    -- Vertical:    ((y-k)^2 / a^2) - ((x-h)^2 / b^2) = 1
     let
         ( h, s1 ) =
             randRange -3 3 model.seed
@@ -384,79 +362,30 @@ randomHyperbola model =
         ( orientationFrac, s5 ) =
             randRange 0 1 s4
 
-        ( ( a, b, c ), ( d, e, f ) ) =
+        a2 =
+            aSemi ^ 2
+
+        b2 =
+            bSemi ^ 2
+
+        -- Horizontal: b^2 x^2 - a^2 y^2 + ...  (coeffX positive, coeffY negative)
+        -- Vertical:  -a^2 x^2 + b^2 y^2 + ...  (coeffX negative, coeffY positive)
+        coeffs =
             if orientationFrac < 0.5 then
-                -- HORIZONTAL hyperbola:
-                --   ((x-h)^2 / a^2) - ((y-k)^2 / b^2) = 1
-                --
-                -- multiplied out => b^2 (x-h)^2 - a^2 (y-k)^2 = a^2 b^2
-                let
-                    newA =
-                        bSemi ^ 2
-
-                    -- coefficient of x^2
-                    newB =
-                        0
-
-                    newC =
-                        round1 <| -aSemi ^ 2
-
-                    -- coefficient of y^2
-                    newD =
-                        round1 <| -2 * h * bSemi ^ 2
-
-                    newE =
-                        round1 <| 2 * k * aSemi ^ 2
-
-                    newF =
-                        round1 <|
-                            (bSemi ^ 2 * h ^ 2)
-                                - (aSemi ^ 2 * k ^ 2)
-                                - (aSemi ^ 2 * bSemi ^ 2)
-                in
-                ( ( newA, newB, newC ), ( newD, newE, newF ) )
+                { a = b2, c = -(a2), d = -2 * h * b2, e = 2 * k * a2, f = b2 * h ^ 2 - a2 * k ^ 2 - a2 * b2 }
 
             else
-                -- VERTICAL hyperbola:
-                --   ((y-k)^2 / a^2) - ((x-h)^2 / b^2) = 1
-                --
-                -- => b^2 (y-k)^2 - a^2 (x-h)^2 = a^2 b^2
-                -- => - a^2 x^2 + b^2 y^2 + ...
-                let
-                    newA =
-                        round1 <| -aSemi ^ 2
-
-                    -- coefficient of x^2
-                    newB =
-                        0
-
-                    newC =
-                        round1 <| bSemi ^ 2
-
-                    -- coefficient of y^2
-                    newD =
-                        round1 <| 2 * h * aSemi ^ 2
-
-                    newE =
-                        round1 <| -2 * k * bSemi ^ 2
-
-                    newF =
-                        round1 <|
-                            (bSemi ^ 2 * k ^ 2)
-                                - (aSemi ^ 2 * h ^ 2)
-                                - (aSemi ^ 2 * bSemi ^ 2)
-                in
-                ( ( newA, newB, newC ), ( newD, newE, newF ) )
+                { a = -(a2), c = b2, d = 2 * h * a2, e = -2 * k * b2, f = b2 * k ^ 2 - a2 * h ^ 2 - a2 * b2 }
     in
-    { model
-        | a = a
-        , b = b
-        , c = c
-        , d = d
-        , e = e
-        , f = f
-        , seed = s5
-    }
+    setCoeffs model
+        s5
+        { a = round1 coeffs.a
+        , b = 0
+        , c = round1 coeffs.c
+        , d = round1 coeffs.d
+        , e = round1 coeffs.e
+        , f = round1 coeffs.f
+        }
 
 
 
@@ -514,107 +443,63 @@ randRange low high seed =
 sampleConic : Model -> Int -> List (List ( Float, Float ))
 sampleConic model steps =
     let
+        -- Sweep x, solving for y
         xSweep =
-            sampleSweepX model steps
+            sampleSweep
+                (\x ->
+                    solveQuadratic
+                        model.c
+                        (model.b * x + model.e)
+                        (model.a * (x ^ 2) + model.d * x + model.f)
+                )
+                (\x y -> ( x, y ))
+                steps
 
+        -- Sweep y, solving for x
         ySweep =
-            sampleSweepY model steps
+            sampleSweep
+                (\y ->
+                    solveQuadratic
+                        model.a
+                        (model.b * y + model.d)
+                        (model.c * (y ^ 2) + model.e * y + model.f)
+                )
+                (\y x -> ( x, y ))
+                steps
     in
     xSweep ++ ySweep
 
 
-sampleSweepX : Model -> Int -> List (List ( Float, Float ))
-sampleSweepX model steps =
+sampleSweep : (Float -> List Float) -> (Float -> Float -> ( Float, Float )) -> Int -> List (List ( Float, Float ))
+sampleSweep solve makePoint steps =
     let
         domain i =
             -10 + (20 * toFloat i / toFloat steps)
 
-        xValues =
+        values =
             List.map domain (List.range 0 steps)
 
-        solutionsForX x =
-            solveQuadratic
-                model.c
-                (model.b * x + model.e)
-                (model.a * (x ^ 2) + model.d * x + model.f)
-
-        accumulate ( x, roots ) ( poly1, poly2 ) =
+        accumulate ( t, roots ) ( poly1, poly2 ) =
             case roots of
                 [] ->
                     ( poly1 ++ [ [] ], poly2 ++ [ [] ] )
 
-                [ y1 ] ->
-                    ( appendPoint poly1 ( x, y1 ), poly2 ++ [ [] ] )
+                [ r1 ] ->
+                    ( appendPoint poly1 (makePoint t r1), poly2 ++ [ [] ] )
 
-                [ y1, y2 ] ->
-                    ( appendPoint poly1 ( x, y1 ), appendPoint poly2 ( x, y2 ) )
-
-                _ ->
-                    ( poly1, poly2 )
-
-        initial =
-            ( [ [] ], [ [] ] )
-
-        ( polylines1, polylines2 ) =
-            List.foldl
-                accumulate
-                initial
-                (List.map (\xx -> ( xx, solutionsForX xx )) xValues)
-
-        final1 =
-            cleanup polylines1
-
-        final2 =
-            cleanup polylines2
-    in
-    final1 ++ final2
-
-
-sampleSweepY : Model -> Int -> List (List ( Float, Float ))
-sampleSweepY model steps =
-    let
-        domain i =
-            -10 + (20 * toFloat i / toFloat steps)
-
-        yValues =
-            List.map domain (List.range 0 steps)
-
-        solutionsForY y =
-            solveQuadratic
-                model.a
-                (model.b * y + model.d)
-                (model.c * (y ^ 2) + model.e * y + model.f)
-
-        accumulate ( y, roots ) ( poly1, poly2 ) =
-            case roots of
-                [] ->
-                    ( poly1 ++ [ [] ], poly2 ++ [ [] ] )
-
-                [ x1 ] ->
-                    ( appendPoint poly1 ( x1, y ), poly2 ++ [ [] ] )
-
-                [ x1, x2 ] ->
-                    ( appendPoint poly1 ( x1, y ), appendPoint poly2 ( x2, y ) )
+                [ r1, r2 ] ->
+                    ( appendPoint poly1 (makePoint t r1), appendPoint poly2 (makePoint t r2) )
 
                 _ ->
                     ( poly1, poly2 )
 
-        initial =
-            ( [ [] ], [ [] ] )
-
         ( polylines1, polylines2 ) =
             List.foldl
                 accumulate
-                initial
-                (List.map (\yy -> ( yy, solutionsForY yy )) yValues)
-
-        final1 =
-            cleanup polylines1
-
-        final2 =
-            cleanup polylines2
+                ( [ [] ], [ [] ] )
+                (List.map (\v -> ( v, solve v )) values)
     in
-    final1 ++ final2
+    cleanup polylines1 ++ cleanup polylines2
 
 
 
@@ -725,35 +610,21 @@ polylinesToPath polylines =
 
 polylineToCommands : List ( Float, Float ) -> String
 polylineToCommands points =
+    let
+        svgCmd prefix pt =
+            let
+                ( sx, sy ) =
+                    toSvg pt
+            in
+            prefix ++ String.fromFloat sx ++ " " ++ String.fromFloat sy
+    in
     case points of
         [] ->
             ""
 
-        ( x0, y0 ) :: rest ->
-            let
-                ( sx0, sy0 ) =
-                    toSvg ( x0, y0 )
-
-                startCmd =
-                    "M " ++ String.fromFloat sx0 ++ " " ++ String.fromFloat sy0
-
-                lineCmds =
-                    rest
-                        |> List.map
-                            (\( x, y ) ->
-                                let
-                                    ( sx, sy ) =
-                                        toSvg ( x, y )
-                                in
-                                "L " ++ String.fromFloat sx ++ " " ++ String.fromFloat sy
-                            )
-                        |> String.join " "
-            in
-            if String.isEmpty lineCmds then
-                startCmd
-
-            else
-                startCmd ++ " " ++ lineCmds
+        first :: rest ->
+            (svgCmd "M " first :: List.map (svgCmd "L ") rest)
+                |> String.join " "
 
 
 toSvg : ( Float, Float ) -> ( Float, Float )
