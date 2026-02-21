@@ -190,6 +190,7 @@ viewSvgPanel model =
     Html.div
         [ HA.style "flex" "1"
         , HA.style "display" "flex"
+        , HA.style "flex-direction" "column"
         , HA.style "align-items" "center"
         , HA.style "justify-content" "center"
         , HA.style "background" "#fafafa"
@@ -209,6 +210,12 @@ viewSvgPanel model =
             , viewVector model.a "#e74c3c" "a" DragA
             , viewVector model.b "#2980b9" "b" DragB
             ]
+        , Html.p
+            [ HA.style "margin" "8px 0 0 0"
+            , HA.style "font-size" "13px"
+            , HA.style "color" "#bbb"
+            ]
+            [ Html.text "Drag the arrow tips to modify the vectors" ]
         ]
 
 
