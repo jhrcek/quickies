@@ -162,6 +162,11 @@ xRange =
     3.5
 
 
+gridRange : List Int
+gridRange =
+    List.range (ceiling -xRange) (floor xRange)
+
+
 view : Model -> Html Msg
 view model =
     Html.div
@@ -249,9 +254,6 @@ onSvgMouseMove =
 viewGrid : Svg.Svg Msg
 viewGrid =
     let
-        range =
-            List.range (ceiling -xRange) (floor xRange)
-
         gridLines =
             List.concatMap
                 (\i ->
@@ -279,7 +281,7 @@ viewGrid =
                         []
                     ]
                 )
-                range
+                gridRange
     in
     g [] gridLines
 
@@ -287,9 +289,6 @@ viewGrid =
 viewAxes : Svg.Svg Msg
 viewAxes =
     let
-        range =
-            List.range (ceiling -xRange) (floor xRange)
-
         tickSize =
             0.08
 
@@ -327,7 +326,7 @@ viewAxes =
                             [ Svg.text (String.fromInt i) ]
                         ]
                 )
-                range
+                gridRange
 
         ticksY =
             List.concatMap
@@ -360,7 +359,7 @@ viewAxes =
                             [ Svg.text (String.fromInt i) ]
                         ]
                 )
-                range
+                gridRange
     in
     g []
         ([ -- X axis
@@ -393,7 +392,7 @@ viewVector : Vec2 -> String -> String -> DragTarget -> Svg.Svg Msg
 viewVector vec color name target =
     let
         len =
-            sqrt (vec.x * vec.x + vec.y * vec.y)
+            vecLen vec
 
         -- Arrow head geometry
         headLen =
@@ -507,6 +506,7 @@ viewControlPanel model =
         , viewVectorInputs "b" model.b SetBx SetBy "#2980b9"
         , viewDotProduct model
         , viewLengths model
+        , viewCosineAngle model
         , viewAngle model
         ]
 
@@ -552,7 +552,7 @@ viewDotProduct : Model -> Html Msg
 viewDotProduct model =
     let
         dp =
-            model.a.x * model.b.x + model.a.y * model.b.y
+            dot model.a model.b
     in
     viewAccordion True
         "Dot Product"
@@ -575,14 +575,12 @@ viewDotProduct model =
                 ++ roundToStr 2 model.a.y
                 ++ " × "
                 ++ roundToStr 2 model.b.y
-            )
-        , monoBlock
-            ("= "
+                ++ " = "
                 ++ roundToStr 2 (model.a.x * model.b.x)
                 ++ " + "
                 ++ roundToStr 2 (model.a.y * model.b.y)
             )
-        , resultBlock ("a · b = " ++ roundToStr 4 dp)
+        , resultBlock (" = " ++ roundToStr 4 dp)
         ]
 
 
@@ -590,10 +588,10 @@ viewLengths : Model -> Html Msg
 viewLengths model =
     let
         lenA =
-            sqrt (model.a.x * model.a.x + model.a.y * model.a.y)
+            vecLen model.a
 
         lenB =
-            sqrt (model.b.x * model.b.x + model.b.y * model.b.y)
+            vecLen model.b
     in
     viewAccordion False
         "Vector Lengths"
@@ -615,7 +613,7 @@ viewLengths model =
                 ++ roundToStr 2 (model.a.y * model.a.y)
                 ++ ")"
             )
-        , resultBlock ("|a| = " ++ roundToStr 4 lenA)
+        , resultBlock (" = " ++ roundToStr 4 lenA)
         , Html.p []
             [ Html.text "|b| = √(b · b) = √(b"
             , sub "x"
@@ -634,7 +632,45 @@ viewLengths model =
                 ++ roundToStr 2 (model.b.y * model.b.y)
                 ++ ")"
             )
-        , resultBlock ("|b| = " ++ roundToStr 4 lenB)
+        , resultBlock (" = " ++ roundToStr 4 lenB)
+        ]
+
+
+viewCosineAngle : Model -> Html Msg
+viewCosineAngle model =
+    let
+        dp =
+            dot model.a model.b
+
+        lenA =
+            vecLen model.a
+
+        lenB =
+            vecLen model.b
+
+        product =
+            lenA * lenB
+
+        cosTheta =
+            cosAngle model.a model.b
+    in
+    viewAccordion False
+        "Cosine of the Angle"
+        [ Html.p []
+            [ Html.text "cos(θ) = (a · b) / (|a| × |b|)" ]
+        , monoBlock
+            ("= "
+                ++ roundToStr 4 dp
+                ++ " / ("
+                ++ roundToStr 4 lenA
+                ++ " × "
+                ++ roundToStr 4 lenB
+                ++ ") = "
+                ++ roundToStr 4 dp
+                ++ " / "
+                ++ roundToStr 4 product
+            )
+        , resultBlock (" = " ++ roundToStr 4 cosTheta)
         ]
 
 
@@ -642,23 +678,19 @@ viewAngle : Model -> Html Msg
 viewAngle model =
     let
         dp =
-            model.a.x * model.b.x + model.a.y * model.b.y
+            dot model.a model.b
 
         lenA =
-            sqrt (model.a.x * model.a.x + model.a.y * model.a.y)
+            vecLen model.a
 
         lenB =
-            sqrt (model.b.x * model.b.x + model.b.y * model.b.y)
+            vecLen model.b
 
         product =
             lenA * lenB
 
         cosTheta =
-            if product > 0.0001 then
-                clamp -1 1 (dp / product)
-
-            else
-                0
+            cosAngle model.a model.b
 
         angleRad =
             acos cosTheta
@@ -677,17 +709,15 @@ viewAngle model =
                 ++ roundToStr 4 lenA
                 ++ " × "
                 ++ roundToStr 4 lenB
-                ++ "))"
-            )
-        , monoBlock
-            ("= acos("
+                ++ ")) = acos("
                 ++ roundToStr 4 dp
                 ++ " / "
                 ++ roundToStr 4 product
+                ++ ") = acos("
+                ++ roundToStr 4 cosTheta
                 ++ ")"
             )
-        , monoBlock ("= acos(" ++ roundToStr 4 cosTheta ++ ")")
-        , resultBlock ("θ = " ++ roundToStr 2 angleDeg ++ "°")
+        , resultBlock (" = " ++ roundToStr 2 angleDeg ++ "°")
         ]
 
 
@@ -718,6 +748,29 @@ viewAccordion isOpen title content =
 
 
 -- HELPERS
+
+
+dot : Vec2 -> Vec2 -> Float
+dot u v =
+    u.x * v.x + u.y * v.y
+
+
+vecLen : Vec2 -> Float
+vecLen v =
+    sqrt (dot v v)
+
+
+cosAngle : Vec2 -> Vec2 -> Float
+cosAngle u v =
+    let
+        product =
+            vecLen u * vecLen v
+    in
+    if product > 0.0001 then
+        clamp -1 1 (dot u v / product)
+
+    else
+        0
 
 
 monoBlock : String -> Html Msg
