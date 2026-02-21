@@ -508,6 +508,7 @@ viewControlPanel model =
         , viewLengths model
         , viewCosineAngle model
         , viewAngle model
+        , viewCauchySchwarz model
         ]
 
 
@@ -718,6 +719,58 @@ viewAngle model =
                 ++ ")"
             )
         , resultBlock (" = " ++ roundToStr 2 angleDeg ++ "°")
+        ]
+
+
+viewCauchySchwarz : Model -> Html Msg
+viewCauchySchwarz model =
+    let
+        dp =
+            dot model.a model.b
+
+        lenA =
+            vecLen model.a
+
+        lenB =
+            vecLen model.b
+
+        absDp =
+            abs dp
+
+        product =
+            lenA * lenB
+
+        cosTheta =
+            cosAngle model.a model.b
+
+        isParallel =
+            abs (abs cosTheta - 1) < 0.001
+    in
+    viewAccordion False
+        "Cauchy-Schwarz Inequality"
+        [ Html.p []
+            [ Html.text "|a · b| ≤ |a| × |b|" ]
+        , monoBlock
+            ("|"
+                ++ roundToStr 4 dp
+                ++ "| = "
+                ++ roundToStr 4 absDp
+                ++ " ≤ "
+                ++ roundToStr 4 lenA
+                ++ " × "
+                ++ roundToStr 4 lenB
+                ++ " = "
+                ++ roundToStr 4 product
+            )
+        , Html.p []
+            [ Html.text
+                (if isParallel then
+                    "Equality holds — the vectors are parallel (cos θ = ±1)."
+
+                 else
+                    "Equality holds only when the vectors are parallel."
+                )
+            ]
         ]
 
 
