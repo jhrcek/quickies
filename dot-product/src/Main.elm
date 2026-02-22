@@ -37,6 +37,7 @@ type alias Model =
     , dragging : Maybe DragTarget
     , angleExpanded : Bool
     , cosineExpanded : Bool
+    , normalizationExpanded : Bool
     }
 
 
@@ -52,6 +53,7 @@ init _ =
       , dragging = Nothing
       , angleExpanded = False
       , cosineExpanded = False
+      , normalizationExpanded = False
       }
     , Cmd.none
     )
@@ -71,6 +73,7 @@ type Msg
     | StopDrag
     | ToggleAngle
     | ToggleCosine
+    | ToggleNormalization
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -134,6 +137,9 @@ update msg model =
 
         ToggleCosine ->
             ( { model | cosineExpanded = not model.cosineExpanded }, Cmd.none )
+
+        ToggleNormalization ->
+            ( { model | normalizationExpanded = not model.normalizationExpanded }, Cmd.none )
 
 
 parseFloat : String -> Float -> Float
@@ -229,6 +235,14 @@ viewSvgPanel model =
              ]
                 ++ (if model.angleExpanded || model.cosineExpanded then
                         [ viewAngleArc model.a model.b ]
+
+                    else
+                        []
+                   )
+                ++ (if model.normalizationExpanded then
+                        [ viewUnitVector model.a "#e74c3c" "â"
+                        , viewUnitVector model.b "#2980b9" "b̂"
+                        ]
 
                     else
                         []
@@ -508,6 +522,128 @@ viewVector vec color name target =
         ]
 
 
+viewUnitVector : Vec2 -> String -> String -> Svg.Svg Msg
+viewUnitVector vec color name =
+    let
+        norm =
+            normalize vec
+
+        len =
+            vecLen norm
+
+        headLen =
+            0.15
+
+        headWidth =
+            0.09
+
+        dx =
+            if len > 0.001 then
+                norm.x / len
+
+            else
+                0
+
+        dy =
+            if len > 0.001 then
+                norm.y / len
+
+            else
+                0
+
+        shaftEndX =
+            norm.x - dx * headLen
+
+        shaftEndY =
+            norm.y - dy * headLen
+
+        px =
+            -dy * headWidth
+
+        py =
+            dx * headWidth
+
+        arrowPoints =
+            String.join " "
+                [ String.fromFloat norm.x ++ "," ++ String.fromFloat -norm.y
+                , String.fromFloat (shaftEndX + px) ++ "," ++ String.fromFloat -(shaftEndY + py)
+                , String.fromFloat (shaftEndX - px) ++ "," ++ String.fromFloat -(shaftEndY - py)
+                ]
+
+        -- Place label perpendicular to the vector so it doesn't overlap the shaft
+        perpX =
+            -dy
+
+        perpY =
+            dx
+
+        labelOffset =
+            0.25
+
+        labelX =
+            norm.x * 0.5 + perpX * labelOffset
+
+        labelY =
+            norm.y * 0.5 + perpY * labelOffset
+    in
+    if vecLen vec < 0.001 then
+        g [] []
+
+    else
+        g []
+            [ -- White outline for contrast against the original vector
+              Svg.line
+                [ SA.x1 "0"
+                , SA.y1 "0"
+                , SA.x2 (String.fromFloat shaftEndX)
+                , SA.y2 (String.fromFloat -shaftEndY)
+                , SA.stroke "white"
+                , SA.strokeWidth "0.1"
+                , SA.strokeLinecap "round"
+                ]
+                []
+            , Svg.line
+                [ SA.x1 "0"
+                , SA.y1 "0"
+                , SA.x2 (String.fromFloat shaftEndX)
+                , SA.y2 (String.fromFloat -shaftEndY)
+                , SA.stroke color
+                , SA.strokeWidth "0.05"
+                , SA.strokeLinecap "round"
+                , SA.strokeDasharray "0.04 0.06"
+                ]
+                []
+            , polygon
+                [ SA.points arrowPoints
+                , SA.fill color
+                ]
+                []
+            , -- White text outline for readability
+              Svg.text_
+                [ SA.x (String.fromFloat labelX)
+                , SA.y (String.fromFloat -labelY)
+                , SA.fill "white"
+                , SA.stroke "white"
+                , SA.strokeWidth "0.08"
+                , SA.fontSize "0.25"
+                , SA.fontWeight "bold"
+                , SA.textAnchor "middle"
+                , SA.dominantBaseline "middle"
+                ]
+                [ Svg.text name ]
+            , Svg.text_
+                [ SA.x (String.fromFloat labelX)
+                , SA.y (String.fromFloat -labelY)
+                , SA.fill color
+                , SA.fontSize "0.25"
+                , SA.fontWeight "bold"
+                , SA.textAnchor "middle"
+                , SA.dominantBaseline "middle"
+                ]
+                [ Svg.text name ]
+            ]
+
+
 viewAngleArc : Vec2 -> Vec2 -> Svg.Svg Msg
 viewAngleArc a b =
     let
@@ -656,6 +792,7 @@ viewControlPanel model =
         , viewVectorInputs "b" model.b SetBx SetBy "#2980b9"
         , viewDotProduct model
         , viewLengths model
+        , viewNormalization model
         , viewCosineAngle model.cosineExpanded model
         , viewAngle model.angleExpanded model
         , viewCauchySchwarz model
@@ -874,6 +1011,61 @@ viewAngle isOpen model =
         ]
 
 
+viewNormalization : Model -> Html Msg
+viewNormalization model =
+    let
+        lenA =
+            vecLen model.a
+
+        lenB =
+            vecLen model.b
+
+        normA =
+            normalize model.a
+
+        normB =
+            normalize model.b
+    in
+    viewTrackedAccordion model.normalizationExpanded
+        ToggleNormalization
+        "Normalization"
+        [ Html.p []
+            [ Html.text "â = a / |a|" ]
+        , monoBlock
+            ("= ("
+                ++ roundToStr 2 model.a.x
+                ++ ", "
+                ++ roundToStr 2 model.a.y
+                ++ ") / "
+                ++ roundToStr 4 lenA
+            )
+        , resultBlock
+            ("= ("
+                ++ roundToStr 4 normA.x
+                ++ ", "
+                ++ roundToStr 4 normA.y
+                ++ ")"
+            )
+        , Html.p []
+            [ Html.text "b̂ = b / |b|" ]
+        , monoBlock
+            ("= ("
+                ++ roundToStr 2 model.b.x
+                ++ ", "
+                ++ roundToStr 2 model.b.y
+                ++ ") / "
+                ++ roundToStr 4 lenB
+            )
+        , resultBlock
+            (" = ("
+                ++ roundToStr 4 normB.x
+                ++ ", "
+                ++ roundToStr 4 normB.y
+                ++ ")"
+            )
+        ]
+
+
 viewCauchySchwarz : Model -> Html Msg
 viewCauchySchwarz model =
     let
@@ -999,6 +1191,19 @@ dot u v =
 vecLen : Vec2 -> Float
 vecLen v =
     sqrt (dot v v)
+
+
+normalize : Vec2 -> Vec2
+normalize v =
+    let
+        len =
+            vecLen v
+    in
+    if len > 0.0001 then
+        { x = v.x / len, y = v.y / len }
+
+    else
+        { x = 0, y = 0 }
 
 
 cosAngle : Vec2 -> Vec2 -> Float
