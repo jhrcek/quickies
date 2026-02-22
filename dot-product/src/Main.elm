@@ -421,45 +421,41 @@ viewAxes =
         )
 
 
-viewVector : Vec2 -> String -> String -> DragTarget -> Svg.Svg Msg
-viewVector vec color name target =
+type alias ArrowGeometry =
+    { shaftEndX : Float
+    , shaftEndY : Float
+    , arrowPoints : String
+    , dx : Float
+    , dy : Float
+    }
+
+
+arrowGeometry : Vec2 -> Float -> Float -> ArrowGeometry
+arrowGeometry vec headLen headWidth =
     let
         len =
             vecLen vec
 
-        -- Arrow head geometry
-        headLen =
-            0.2
-
-        headWidth =
-            0.12
-
-        -- In SVG, Y is flipped (positive = down), so we negate y for display
-        -- Actually we'll use transform to flip the whole coordinate system
-        -- For now, we draw in math coords and flip via viewBox or transform
-        -- Direction unit vector
         dx =
-            if len > 0.001 then
+            if len > epsilon then
                 vec.x / len
 
             else
                 0
 
         dy =
-            if len > 0.001 then
+            if len > epsilon then
                 vec.y / len
 
             else
                 0
 
-        -- Point where shaft ends (base of arrowhead)
         shaftEndX =
             vec.x - dx * headLen
 
         shaftEndY =
             vec.y - dy * headLen
 
-        -- Perpendicular for arrowhead width
         px =
             -dy * headWidth
 
@@ -472,34 +468,44 @@ viewVector vec color name target =
                 , String.fromFloat (shaftEndX + px) ++ "," ++ String.fromFloat -(shaftEndY + py)
                 , String.fromFloat (shaftEndX - px) ++ "," ++ String.fromFloat -(shaftEndY - py)
                 ]
+    in
+    { shaftEndX = shaftEndX
+    , shaftEndY = shaftEndY
+    , arrowPoints = arrowPoints
+    , dx = dx
+    , dy = dy
+    }
 
-        -- Label position
+
+viewVector : Vec2 -> String -> String -> DragTarget -> Svg.Svg Msg
+viewVector vec color name target =
+    let
+        geo =
+            arrowGeometry vec 0.2 0.12
+
         labelX =
-            vec.x + dx * 0.3
+            vec.x + geo.dx * 0.3
 
         labelY =
-            vec.y + dy * 0.3
+            vec.y + geo.dy * 0.3
     in
     g []
-        [ -- Shaft
-          Svg.line
+        [ Svg.line
             [ SA.x1 "0"
             , SA.y1 "0"
-            , SA.x2 (String.fromFloat shaftEndX)
-            , SA.y2 (String.fromFloat -shaftEndY)
+            , SA.x2 (String.fromFloat geo.shaftEndX)
+            , SA.y2 (String.fromFloat -geo.shaftEndY)
             , SA.stroke color
             , SA.strokeWidth "0.06"
             , SA.strokeLinecap "round"
             ]
             []
-        , -- Arrowhead
-          polygon
-            [ SA.points arrowPoints
+        , polygon
+            [ SA.points geo.arrowPoints
             , SA.fill color
             ]
             []
-        , -- Label
-          Svg.text_
+        , Svg.text_
             [ SA.x (String.fromFloat labelX)
             , SA.y (String.fromFloat -labelY)
             , SA.fill color
@@ -509,8 +515,7 @@ viewVector vec color name target =
             , SA.dominantBaseline "middle"
             ]
             [ Svg.text name ]
-        , -- Drag handle (invisible larger circle at tip)
-          Svg.circle
+        , Svg.circle
             [ SA.cx (String.fromFloat vec.x)
             , SA.cy (String.fromFloat -vec.y)
             , SA.r "0.25"
@@ -524,79 +529,29 @@ viewVector vec color name target =
 
 viewUnitVector : Vec2 -> String -> String -> Svg.Svg Msg
 viewUnitVector vec color name =
-    let
-        norm =
-            normalize vec
-
-        len =
-            vecLen norm
-
-        headLen =
-            0.15
-
-        headWidth =
-            0.09
-
-        dx =
-            if len > 0.001 then
-                norm.x / len
-
-            else
-                0
-
-        dy =
-            if len > 0.001 then
-                norm.y / len
-
-            else
-                0
-
-        shaftEndX =
-            norm.x - dx * headLen
-
-        shaftEndY =
-            norm.y - dy * headLen
-
-        px =
-            -dy * headWidth
-
-        py =
-            dx * headWidth
-
-        arrowPoints =
-            String.join " "
-                [ String.fromFloat norm.x ++ "," ++ String.fromFloat -norm.y
-                , String.fromFloat (shaftEndX + px) ++ "," ++ String.fromFloat -(shaftEndY + py)
-                , String.fromFloat (shaftEndX - px) ++ "," ++ String.fromFloat -(shaftEndY - py)
-                ]
-
-        -- Place label perpendicular to the vector so it doesn't overlap the shaft
-        perpX =
-            -dy
-
-        perpY =
-            dx
-
-        labelOffset =
-            0.25
-
-        labelX =
-            norm.x * 0.5 + perpX * labelOffset
-
-        labelY =
-            norm.y * 0.5 + perpY * labelOffset
-    in
-    if vecLen vec < 0.001 then
+    if vecLen vec < epsilon then
         g [] []
 
     else
+        let
+            norm =
+                normalize vec
+
+            geo =
+                arrowGeometry norm 0.15 0.09
+
+            labelX =
+                norm.x * 0.5 + -geo.dy * 0.25
+
+            labelY =
+                norm.y * 0.5 + geo.dx * 0.25
+        in
         g []
-            [ -- White outline for contrast against the original vector
-              Svg.line
+            [ Svg.line
                 [ SA.x1 "0"
                 , SA.y1 "0"
-                , SA.x2 (String.fromFloat shaftEndX)
-                , SA.y2 (String.fromFloat -shaftEndY)
+                , SA.x2 (String.fromFloat geo.shaftEndX)
+                , SA.y2 (String.fromFloat -geo.shaftEndY)
                 , SA.stroke "white"
                 , SA.strokeWidth "0.1"
                 , SA.strokeLinecap "round"
@@ -605,8 +560,8 @@ viewUnitVector vec color name =
             , Svg.line
                 [ SA.x1 "0"
                 , SA.y1 "0"
-                , SA.x2 (String.fromFloat shaftEndX)
-                , SA.y2 (String.fromFloat -shaftEndY)
+                , SA.x2 (String.fromFloat geo.shaftEndX)
+                , SA.y2 (String.fromFloat -geo.shaftEndY)
                 , SA.stroke color
                 , SA.strokeWidth "0.05"
                 , SA.strokeLinecap "round"
@@ -614,12 +569,11 @@ viewUnitVector vec color name =
                 ]
                 []
             , polygon
-                [ SA.points arrowPoints
+                [ SA.points geo.arrowPoints
                 , SA.fill color
                 ]
                 []
-            , -- White text outline for readability
-              Svg.text_
+            , Svg.text_
                 [ SA.x (String.fromFloat labelX)
                 , SA.y (String.fromFloat -labelY)
                 , SA.fill "white"
@@ -653,7 +607,7 @@ viewAngleArc a b =
         lenB =
             vecLen b
     in
-    if lenA < 0.001 || lenB < 0.001 then
+    if lenA < epsilon || lenB < epsilon then
         g [] []
 
     else
@@ -874,54 +828,33 @@ viewDotProduct model =
 
 viewLengths : Model -> Html Msg
 viewLengths model =
-    let
-        lenA =
-            vecLen model.a
-
-        lenB =
-            vecLen model.b
-    in
     viewAccordion False
         "Vector Lengths"
-        [ Html.p []
-            [ Html.text "|a| = √(a · a) = √(a"
-            , sub "x"
-            , Html.text "² + a"
-            , sub "y"
-            , Html.text "²)"
-            ]
-        , monoBlock
-            ("= √("
-                ++ roundToStr 2 model.a.x
-                ++ "² + "
-                ++ roundToStr 2 model.a.y
-                ++ "²) = √("
-                ++ roundToStr 2 (model.a.x * model.a.x)
-                ++ " + "
-                ++ roundToStr 2 (model.a.y * model.a.y)
-                ++ ")"
-            )
-        , resultBlock (" = " ++ roundToStr 4 lenA)
-        , Html.p []
-            [ Html.text "|b| = √(b · b) = √(b"
-            , sub "x"
-            , Html.text "² + b"
-            , sub "y"
-            , Html.text "²)"
-            ]
-        , monoBlock
-            ("= √("
-                ++ roundToStr 2 model.b.x
-                ++ "² + "
-                ++ roundToStr 2 model.b.y
-                ++ "²) = √("
-                ++ roundToStr 2 (model.b.x * model.b.x)
-                ++ " + "
-                ++ roundToStr 2 (model.b.y * model.b.y)
-                ++ ")"
-            )
-        , resultBlock (" = " ++ roundToStr 4 lenB)
+        (viewLengthOf "a" model.a ++ viewLengthOf "b" model.b)
+
+
+viewLengthOf : String -> Vec2 -> List (Html Msg)
+viewLengthOf name vec =
+    [ Html.p []
+        [ Html.text ("|" ++ name ++ "| = √(" ++ name ++ " · " ++ name ++ ") = √(" ++ name)
+        , sub "x"
+        , Html.text ("² + " ++ name)
+        , sub "y"
+        , Html.text "²)"
         ]
+    , monoBlock
+        ("= √("
+            ++ roundToStr 2 vec.x
+            ++ "² + "
+            ++ roundToStr 2 vec.y
+            ++ "²) = √("
+            ++ roundToStr 2 (vec.x * vec.x)
+            ++ " + "
+            ++ roundToStr 2 (vec.y * vec.y)
+            ++ ")"
+        )
+    , resultBlock (" = " ++ roundToStr 4 (vecLen vec))
+    ]
 
 
 viewCosineAngle : Bool -> Model -> Html Msg
@@ -1013,57 +946,39 @@ viewAngle isOpen model =
 
 viewNormalization : Model -> Html Msg
 viewNormalization model =
-    let
-        lenA =
-            vecLen model.a
-
-        lenB =
-            vecLen model.b
-
-        normA =
-            normalize model.a
-
-        normB =
-            normalize model.b
-    in
     viewTrackedAccordion model.normalizationExpanded
         ToggleNormalization
         "Normalization"
-        [ Html.p []
-            [ Html.text "â = a / |a|" ]
-        , monoBlock
-            ("= ("
-                ++ roundToStr 2 model.a.x
-                ++ ", "
-                ++ roundToStr 2 model.a.y
-                ++ ") / "
-                ++ roundToStr 4 lenA
-            )
-        , resultBlock
-            ("= ("
-                ++ roundToStr 4 normA.x
-                ++ ", "
-                ++ roundToStr 4 normA.y
-                ++ ")"
-            )
-        , Html.p []
-            [ Html.text "b̂ = b / |b|" ]
-        , monoBlock
-            ("= ("
-                ++ roundToStr 2 model.b.x
-                ++ ", "
-                ++ roundToStr 2 model.b.y
-                ++ ") / "
-                ++ roundToStr 4 lenB
-            )
-        , resultBlock
-            (" = ("
-                ++ roundToStr 4 normB.x
-                ++ ", "
-                ++ roundToStr 4 normB.y
-                ++ ")"
-            )
-        ]
+        (viewNormalizeOf "â" "a" model.a ++ viewNormalizeOf "b̂" "b" model.b)
+
+
+viewNormalizeOf : String -> String -> Vec2 -> List (Html Msg)
+viewNormalizeOf hatName name vec =
+    let
+        len =
+            vecLen vec
+
+        norm =
+            normalize vec
+    in
+    [ Html.p []
+        [ Html.text (hatName ++ " = " ++ name ++ " / |" ++ name ++ "|") ]
+    , monoBlock
+        ("= ("
+            ++ roundToStr 2 vec.x
+            ++ ", "
+            ++ roundToStr 2 vec.y
+            ++ ") / "
+            ++ roundToStr 4 len
+        )
+    , resultBlock
+        ("= ("
+            ++ roundToStr 4 norm.x
+            ++ ", "
+            ++ roundToStr 4 norm.y
+            ++ ")"
+        )
+    ]
 
 
 viewCauchySchwarz : Model -> Html Msg
@@ -1088,7 +1003,7 @@ viewCauchySchwarz model =
             cosAngle model.a model.b
 
         isParallel =
-            abs (abs cosTheta - 1) < 0.001
+            abs (abs cosTheta - 1) < epsilon
     in
     viewAccordion False
         "Cauchy-Schwarz Inequality"
@@ -1120,12 +1035,8 @@ viewCauchySchwarz model =
 
 viewTrackedAccordion : Bool -> Msg -> String -> List (Html Msg) -> Html Msg
 viewTrackedAccordion isOpen toggleMsg title content =
-    Html.details
-        ([ HA.style "margin-top" "16px"
-         , HA.style "border" "1px solid #ddd"
-         , HA.style "border-radius" "4px"
-         , HA.style "padding" "12px"
-         , E.on "toggle"
+    viewAccordionBase isOpen
+        [ E.on "toggle"
             (Decode.at [ "target", "open" ] Decode.bool
                 |> Decode.andThen
                     (\open ->
@@ -1136,32 +1047,25 @@ viewTrackedAccordion isOpen toggleMsg title content =
                             Decode.fail "no change"
                     )
             )
-         ]
-            ++ (if isOpen then
-                    [ HA.attribute "open" "" ]
-
-                else
-                    []
-               )
-        )
-        (Html.summary
-            [ HA.style "cursor" "pointer"
-            , HA.style "font-weight" "bold"
-            , HA.style "font-size" "16px"
-            ]
-            [ Html.text title ]
-            :: content
-        )
+        ]
+        title
+        content
 
 
 viewAccordion : Bool -> String -> List (Html Msg) -> Html Msg
 viewAccordion isOpen title content =
+    viewAccordionBase isOpen [] title content
+
+
+viewAccordionBase : Bool -> List (Html.Attribute Msg) -> String -> List (Html Msg) -> Html Msg
+viewAccordionBase isOpen extraAttrs title content =
     Html.details
         ([ HA.style "margin-top" "16px"
          , HA.style "border" "1px solid #ddd"
          , HA.style "border-radius" "4px"
          , HA.style "padding" "12px"
          ]
+            ++ extraAttrs
             ++ (if isOpen then
                     [ HA.attribute "open" "" ]
 
@@ -1183,6 +1087,11 @@ viewAccordion isOpen title content =
 -- HELPERS
 
 
+epsilon : Float
+epsilon =
+    0.0001
+
+
 dot : Vec2 -> Vec2 -> Float
 dot u v =
     u.x * v.x + u.y * v.y
@@ -1199,7 +1108,7 @@ normalize v =
         len =
             vecLen v
     in
-    if len > 0.0001 then
+    if len > epsilon then
         { x = v.x / len, y = v.y / len }
 
     else
@@ -1212,7 +1121,7 @@ cosAngle u v =
         product =
             vecLen u * vecLen v
     in
-    if product > 0.0001 then
+    if product > epsilon then
         clamp -1 1 (dot u v / product)
 
     else
