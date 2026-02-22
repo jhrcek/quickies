@@ -35,6 +35,8 @@ type alias Model =
     { a : Vec2
     , b : Vec2
     , dragging : Maybe DragTarget
+    , angleExpanded : Bool
+    , cosineExpanded : Bool
     }
 
 
@@ -48,6 +50,8 @@ init _ =
     ( { a = { x = 2, y = 1 }
       , b = { x = 1, y = 2 }
       , dragging = Nothing
+      , angleExpanded = False
+      , cosineExpanded = False
       }
     , Cmd.none
     )
@@ -65,6 +69,8 @@ type Msg
     | StartDrag DragTarget
     | OnMouseMove Float Float
     | StopDrag
+    | ToggleAngle
+    | ToggleCosine
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -122,6 +128,12 @@ update msg model =
 
         StopDrag ->
             ( { model | dragging = Nothing }, Cmd.none )
+
+        ToggleAngle ->
+            ( { model | angleExpanded = not model.angleExpanded }, Cmd.none )
+
+        ToggleCosine ->
+            ( { model | cosineExpanded = not model.cosineExpanded }, Cmd.none )
 
 
 parseFloat : String -> Float -> Float
@@ -210,11 +222,18 @@ viewSvgPanel model =
             , HA.style "user-select" "none"
             , onSvgMouseMove
             ]
-            [ viewGrid
-            , viewAxes
-            , viewVector model.a "#e74c3c" "a" DragA
-            , viewVector model.b "#2980b9" "b" DragB
-            ]
+            ([ viewGrid
+             , viewAxes
+             , viewVector model.a "#e74c3c" "a" DragA
+             , viewVector model.b "#2980b9" "b" DragB
+             ]
+                ++ (if model.angleExpanded || model.cosineExpanded then
+                        [ viewAngleArc model.a model.b ]
+
+                    else
+                        []
+                   )
+            )
         , Html.p
             [ HA.style "margin" "8px 0 0 0"
             , HA.style "font-size" "13px"
@@ -489,6 +508,137 @@ viewVector vec color name target =
         ]
 
 
+viewAngleArc : Vec2 -> Vec2 -> Svg.Svg Msg
+viewAngleArc a b =
+    let
+        lenA =
+            vecLen a
+
+        lenB =
+            vecLen b
+    in
+    if lenA < 0.001 || lenB < 0.001 then
+        g [] []
+
+    else
+        let
+            angleA =
+                atan2 a.y a.x
+
+            angleB =
+                atan2 b.y b.x
+
+            -- Signed angle from a to b (shortest path)
+            diff =
+                angleB - angleA
+
+            -- Normalize to (-pi, pi]
+            normalizedDiff =
+                if diff > pi then
+                    diff - 2 * pi
+
+                else if diff <= -pi then
+                    diff + 2 * pi
+
+                else
+                    diff
+
+            -- We always sweep from the vector with the smaller angle to the larger one
+            -- using the short arc. startAngle is where the arc begins, and we sweep
+            -- in the direction of normalizedDiff.
+            startAngle =
+                if normalizedDiff >= 0 then
+                    angleA
+
+                else
+                    angleB
+
+            sweepAngle =
+                abs normalizedDiff
+
+            -- Arc radius
+            r =
+                0.4
+
+            -- Start and end points of the arc (in math coords)
+            x1 =
+                r * cos startAngle
+
+            y1 =
+                r * sin startAngle
+
+            x2 =
+                r * cos (startAngle + sweepAngle)
+
+            y2 =
+                r * sin (startAngle + sweepAngle)
+
+            -- SVG large-arc-flag: 0 for arcs <= 180 degrees
+            largeArc =
+                if sweepAngle > pi then
+                    "1"
+
+                else
+                    "0"
+
+            -- SVG sweep flag: 1 = clockwise in SVG coords.
+            -- Since SVG Y is flipped, positive math sweep = clockwise SVG = sweep 0
+            sweepFlag =
+                "0"
+
+            pathD =
+                String.join " "
+                    [ "M"
+                    , String.fromFloat x1
+                    , String.fromFloat -y1
+                    , "A"
+                    , String.fromFloat r
+                    , String.fromFloat r
+                    , "0"
+                    , largeArc
+                    , sweepFlag
+                    , String.fromFloat x2
+                    , String.fromFloat -y2
+                    ]
+
+            -- Label position: midpoint of the arc
+            midAngle =
+                startAngle + sweepAngle / 2
+
+            labelR =
+                r + 0.2
+
+            labelX =
+                labelR * cos midAngle
+
+            labelY =
+                labelR * sin midAngle
+
+            color =
+                "#8b5cf6"
+        in
+        g []
+            [ Svg.path
+                [ SA.d pathD
+                , SA.fill "none"
+                , SA.stroke color
+                , SA.strokeWidth "0.03"
+                , SA.strokeDasharray "0.06 0.04"
+                ]
+                []
+            , Svg.text_
+                [ SA.x (String.fromFloat labelX)
+                , SA.y (String.fromFloat -labelY)
+                , SA.fill color
+                , SA.fontSize "0.28"
+                , SA.fontStyle "italic"
+                , SA.textAnchor "middle"
+                , SA.dominantBaseline "middle"
+                ]
+                [ Svg.text "θ" ]
+            ]
+
+
 
 -- RIGHT PANEL
 
@@ -506,8 +656,8 @@ viewControlPanel model =
         , viewVectorInputs "b" model.b SetBx SetBy "#2980b9"
         , viewDotProduct model
         , viewLengths model
-        , viewCosineAngle model
-        , viewAngle model
+        , viewCosineAngle model.cosineExpanded model
+        , viewAngle model.angleExpanded model
         , viewCauchySchwarz model
         ]
 
@@ -637,8 +787,8 @@ viewLengths model =
         ]
 
 
-viewCosineAngle : Model -> Html Msg
-viewCosineAngle model =
+viewCosineAngle : Bool -> Model -> Html Msg
+viewCosineAngle isOpen model =
     let
         dp =
             dot model.a model.b
@@ -655,7 +805,8 @@ viewCosineAngle model =
         cosTheta =
             cosAngle model.a model.b
     in
-    viewAccordion False
+    viewTrackedAccordion isOpen
+        ToggleCosine
         "Cosine of the Angle"
         [ Html.p []
             [ Html.text "cos(θ) = (a · b) / (|a| × |b|)" ]
@@ -675,8 +826,8 @@ viewCosineAngle model =
         ]
 
 
-viewAngle : Model -> Html Msg
-viewAngle model =
+viewAngle : Bool -> Model -> Html Msg
+viewAngle isOpen model =
     let
         dp =
             dot model.a model.b
@@ -699,7 +850,8 @@ viewAngle model =
         angleDeg =
             angleRad * 180 / pi
     in
-    viewAccordion False
+    viewTrackedAccordion isOpen
+        ToggleAngle
         "Angle"
         [ Html.p []
             [ Html.text "θ = acos((a · b) / (|a| × |b|))" ]
@@ -772,6 +924,42 @@ viewCauchySchwarz model =
                 )
             ]
         ]
+
+
+viewTrackedAccordion : Bool -> Msg -> String -> List (Html Msg) -> Html Msg
+viewTrackedAccordion isOpen toggleMsg title content =
+    Html.details
+        ([ HA.style "margin-top" "16px"
+         , HA.style "border" "1px solid #ddd"
+         , HA.style "border-radius" "4px"
+         , HA.style "padding" "12px"
+         , E.on "toggle"
+            (Decode.at [ "target", "open" ] Decode.bool
+                |> Decode.andThen
+                    (\open ->
+                        if open /= isOpen then
+                            Decode.succeed toggleMsg
+
+                        else
+                            Decode.fail "no change"
+                    )
+            )
+         ]
+            ++ (if isOpen then
+                    [ HA.attribute "open" "" ]
+
+                else
+                    []
+               )
+        )
+        (Html.summary
+            [ HA.style "cursor" "pointer"
+            , HA.style "font-weight" "bold"
+            , HA.style "font-size" "16px"
+            ]
+            [ Html.text title ]
+            :: content
+        )
 
 
 viewAccordion : Bool -> String -> List (Html Msg) -> Html Msg
