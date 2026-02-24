@@ -230,19 +230,11 @@ viewSvgPanel model =
             ]
             ([ viewGrid
              , viewAxes
-             , viewVector model.a "#e74c3c" "a" DragA
-             , viewVector model.b "#2980b9" "b" DragB
              ]
+                ++ viewVectorGroup model.a model.b "#e74c3c" "a" "â" DragA model.normalizationExpanded
+                ++ viewVectorGroup model.b model.a "#2980b9" "b" "b̂" DragB model.normalizationExpanded
                 ++ (if model.angleExpanded || model.cosineExpanded then
                         [ viewAngleArc model.a model.b ]
-
-                    else
-                        []
-                   )
-                ++ (if model.normalizationExpanded then
-                        [ viewUnitVector model.a "#e74c3c" "â"
-                        , viewUnitVector model.b "#2980b9" "b̂"
-                        ]
 
                     else
                         []
@@ -477,17 +469,59 @@ arrowGeometry vec headLen headWidth =
     }
 
 
-viewVector : Vec2 -> String -> String -> DragTarget -> Svg.Svg Msg
-viewVector vec color name target =
+viewVectorGroup : Vec2 -> Vec2 -> String -> String -> String -> DragTarget -> Bool -> List (Svg.Svg Msg)
+viewVectorGroup vec otherVec color name hatName target normalizationShown =
+    if normalizationShown then
+        let
+            original =
+                viewVector vec otherVec color name target normalizationShown
+
+            normalized =
+                viewUnitVector vec otherVec color hatName
+        in
+        if vecLen vec <= 1.0 then
+            -- Original is shorter (or equal) → draw it on top
+            [ normalized, original ]
+
+        else
+            -- Normalized is shorter → draw it on top
+            [ original, normalized ]
+
+    else
+        [ viewVector vec otherVec color name target normalizationShown ]
+
+
+viewVector : Vec2 -> Vec2 -> String -> String -> DragTarget -> Bool -> Svg.Svg Msg
+viewVector vec otherVec color name target normalizationShown =
     let
         geo =
             arrowGeometry vec 0.2 0.12
 
-        labelX =
-            vec.x + geo.dx * 0.3
+        len =
+            vecLen vec
 
-        labelY =
-            vec.y + geo.dy * 0.3
+        ( labelX, labelY ) =
+            if normalizationShown && len < 1.0 && len > epsilon then
+                let
+                    -- Place label on the side away from the other vector
+                    side =
+                        if cross vec otherVec > 0 then
+                            -1
+
+                        else
+                            1
+                in
+                -- Vector is shorter than its unit vector: offset the label
+                -- perpendicular to the vector direction so it doesn't sit
+                -- on the normalized vector's shaft/arrowhead
+                ( vec.x + side * -geo.dy * 0.3
+                , vec.y + side * geo.dx * 0.3
+                )
+
+            else
+                ( vec.x + geo.dx * 0.3
+                , vec.y + geo.dy * 0.3
+                )
     in
     g []
         [ Svg.line
@@ -527,8 +561,8 @@ viewVector vec color name target =
         ]
 
 
-viewUnitVector : Vec2 -> String -> String -> Svg.Svg Msg
-viewUnitVector vec color name =
+viewUnitVector : Vec2 -> Vec2 -> String -> String -> Svg.Svg Msg
+viewUnitVector vec otherVec color name =
     if vecLen vec < epsilon then
         g [] []
 
@@ -540,11 +574,19 @@ viewUnitVector vec color name =
             geo =
                 arrowGeometry norm 0.15 0.09
 
+            -- Place label on the side away from the other vector
+            side =
+                if cross vec otherVec > 0 then
+                    -1
+
+                else
+                    1
+
             labelX =
-                norm.x * 0.5 + -geo.dy * 0.25
+                norm.x * 0.5 + side * -geo.dy * 0.25
 
             labelY =
-                norm.y * 0.5 + geo.dx * 0.25
+                norm.y * 0.5 + side * geo.dx * 0.25
         in
         g []
             [ Svg.line
@@ -1159,6 +1201,11 @@ epsilon =
 dot : Vec2 -> Vec2 -> Float
 dot u v =
     u.x * v.x + u.y * v.y
+
+
+cross : Vec2 -> Vec2 -> Float
+cross u v =
+    u.x * v.y - u.y * v.x
 
 
 vecLen : Vec2 -> Float

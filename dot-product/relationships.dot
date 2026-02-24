@@ -1,0 +1,83 @@
+digraph dot_product_relationships {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12];
+    edge [color="#555555", fontname="Helvetica", fontsize=10];
+
+    // Input vectors
+    a [label="Vector a\n(aₓ, aᵧ)", fillcolor="#fce4e4"];
+    b [label="Vector b\n(bₓ, bᵧ)", fillcolor="#d6eaf8"];
+
+    // Dot products
+    dot_ab [label="a · b\nDot Product", fillcolor="#fff3cd"];
+    dot_aa [label="a · a\nLength squared of a", fillcolor="#fff3cd"];
+    dot_bb [label="b · b\nLength squared of b", fillcolor="#fff3cd"];
+
+    // Vector lengths
+    len_a [label="|a|\nLength of a", fillcolor="#fce4e4"];
+    len_b [label="|b|\nLength of b", fillcolor="#d6eaf8"];
+
+    // Normalization
+    unit_a [label="â\nUnit vector of a", fillcolor="#fce4e4"];
+    unit_b [label="b̂\nUnit vector of b", fillcolor="#d6eaf8"];
+
+    // Projection lengths
+    proj_onto_a [label="a·b / (a·a)\nProjection coeff\nof b onto a", fillcolor="#e8daef"];
+    proj_onto_b [label="a·b / (b·b)\nProjection coeff\nof a onto b", fillcolor="#e8daef"];
+
+    // Projection vectors
+    proj_vec_onto_a [label="proj_a(b)\n(a·b / a·a) · a\nProjection of b onto a", fillcolor="#e8daef"];
+    proj_vec_onto_b [label="proj_b(a)\n(a·b / b·b) · b\nProjection of a onto b", fillcolor="#e8daef"];
+
+    // Cosine of the angle
+    cos_theta [label="cos(θ)\nCosine of the Angle", fillcolor="#d5f5e3"];
+
+    // Angle
+    theta [label="θ\nAngle", fillcolor="#d5f5e3"];
+
+    // Cauchy-Schwarz
+    cauchy [label="|a·b| ≤ |a|×|b|\nCauchy-Schwarz", fillcolor="#fdebd0"];
+
+    // Edges: A -> B means "A is used to calculate B"
+
+    // Dot products depend on vectors
+    a -> dot_ab [label="aₓbₓ + aᵧbᵧ"];
+    b -> dot_ab;
+    a -> dot_aa [label="aₓ² + aᵧ²"];
+    b -> dot_bb [label="bₓ² + bᵧ²"];
+
+    // Lengths from length-squared
+    dot_aa -> len_a [label="square root"];
+    dot_bb -> len_b [label="square root"];
+
+    // Unit vectors depend on vector and its length
+    a -> unit_a [label="numerator"];
+    len_a -> unit_a [label="divide by"];
+    b -> unit_b [label="numerator"];
+    len_b -> unit_b [label="divide by"];
+
+    // Projection coefficients
+    dot_ab -> proj_onto_a [label="numerator"];
+    dot_aa -> proj_onto_a [label="divide by"];
+    dot_ab -> proj_onto_b [label="numerator"];
+    dot_bb -> proj_onto_b [label="divide by"];
+
+    // Projection vectors
+    proj_onto_a -> proj_vec_onto_a [label="scale factor"];
+    a -> proj_vec_onto_a [label="scale by"];
+    proj_onto_b -> proj_vec_onto_b [label="scale factor"];
+    b -> proj_vec_onto_b [label="scale by"];
+
+    // Cosine depends on dot product and both lengths
+    dot_ab -> cos_theta [label="numerator"];
+    len_a -> cos_theta [label="multiply for\ndenominator"];
+    len_b -> cos_theta [label="multiply for\ndenominator"];
+
+    // Angle depends on cosine
+    cos_theta -> theta [label="arccosine"];
+
+    // Cauchy-Schwarz depends on dot product, both lengths, and cosine
+    dot_ab -> cauchy [label="absolute value\n(left side)"];
+    len_a -> cauchy [label="multiply for\nright side"];
+    len_b -> cauchy [label="multiply for\nright side"];
+    cos_theta -> cauchy [label="check equality\n(parallel test)"];
+}
