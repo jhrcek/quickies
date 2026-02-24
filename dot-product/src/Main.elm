@@ -747,6 +747,7 @@ viewControlPanel model =
         , viewDotProduct model
         , viewLengths model
         , viewNormalization model
+        , viewProjectionLengths model
         , viewCosineAngle model.cosineExpanded model
         , viewAngle model.angleExpanded model
         , viewCauchySchwarz model
@@ -979,6 +980,69 @@ viewNormalizeOf hatName name vec =
             ++ ")"
         )
     ]
+
+
+viewProjectionLengths : Model -> Html Msg
+viewProjectionLengths model =
+    let
+        dp =
+            dot model.a model.b
+
+        aa =
+            dot model.a model.a
+
+        bb =
+            dot model.b model.b
+
+        projOntoA =
+            if aa > epsilon then
+                dp / aa
+
+            else
+                0
+
+        projOntoB =
+            if bb > epsilon then
+                dp / bb
+
+            else
+                0
+    in
+    viewAccordion False
+        "Projection Lengths"
+        [ Html.p []
+            [ Html.text "Scalar projection coefficient of "
+            , Html.b [] [ Html.text "b" ]
+            , Html.text " onto "
+            , Html.b [] [ Html.text "a" ]
+            , Html.text ":"
+            ]
+        , Html.p []
+            [ Html.text "a · b / (a · a)" ]
+        , monoBlock
+            ("= "
+                ++ roundToStr 4 dp
+                ++ " / "
+                ++ roundToStr 4 aa
+            )
+        , resultBlock (" = " ++ roundToStr 4 projOntoA)
+        , Html.p []
+            [ Html.text "Scalar projection coefficient of "
+            , Html.b [] [ Html.text "a" ]
+            , Html.text " onto "
+            , Html.b [] [ Html.text "b" ]
+            , Html.text ":"
+            ]
+        , Html.p []
+            [ Html.text "a · b / (b · b)" ]
+        , monoBlock
+            ("= "
+                ++ roundToStr 4 dp
+                ++ " / "
+                ++ roundToStr 4 bb
+            )
+        , resultBlock (" = " ++ roundToStr 4 projOntoB)
+        ]
 
 
 viewCauchySchwarz : Model -> Html Msg
