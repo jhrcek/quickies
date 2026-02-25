@@ -38,6 +38,7 @@ type alias Model =
     , angleExpanded : Bool
     , cosineExpanded : Bool
     , normalizationExpanded : Bool
+    , projectionsExpanded : Bool
     }
 
 
@@ -54,6 +55,7 @@ init _ =
       , angleExpanded = False
       , cosineExpanded = False
       , normalizationExpanded = False
+      , projectionsExpanded = False
       }
     , Cmd.none
     )
@@ -74,6 +76,7 @@ type Msg
     | ToggleAngle
     | ToggleCosine
     | ToggleNormalization
+    | ToggleProjections
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -140,6 +143,9 @@ update msg model =
 
         ToggleNormalization ->
             ( { model | normalizationExpanded = not model.normalizationExpanded }, Cmd.none )
+
+        ToggleProjections ->
+            ( { model | projectionsExpanded = not model.projectionsExpanded }, Cmd.none )
 
 
 parseFloat : String -> Float -> Float
@@ -235,6 +241,16 @@ viewSvgPanel model =
                 ++ viewVectorGroup model.b model.a "#2980b9" "b" "b̂" DragB model.normalizationExpanded
                 ++ (if model.angleExpanded || model.cosineExpanded then
                         [ viewAngleArc model.a model.b ]
+
+                    else
+                        []
+                   )
+                ++ (if model.projectionsExpanded then
+                        let
+                            pd =
+                                projectionData model.a model.b
+                        in
+                        viewProjectionSvg pd model
 
                     else
                         []
@@ -503,13 +519,8 @@ viewVector vec otherVec color name target normalizationShown =
         ( labelX, labelY ) =
             if normalizationShown && len < 1.0 && len > epsilon then
                 let
-                    -- Place label on the side away from the other vector
                     side =
-                        if cross vec otherVec > 0 then
-                            -1
-
-                        else
-                            1
+                        labelSide vec otherVec
                 in
                 -- Vector is shorter than its unit vector: offset the label
                 -- perpendicular to the vector direction so it doesn't sit
@@ -574,13 +585,8 @@ viewUnitVector vec otherVec color name =
             geo =
                 arrowGeometry norm 0.15 0.09
 
-            -- Place label on the side away from the other vector
             side =
-                if cross vec otherVec > 0 then
-                    -1
-
-                else
-                    1
+                labelSide vec otherVec
 
             labelX =
                 norm.x * 0.5 + side * -geo.dy * 0.25
@@ -589,7 +595,7 @@ viewUnitVector vec otherVec color name =
                 norm.y * 0.5 + side * geo.dx * 0.25
         in
         g []
-            [ Svg.line
+            ([ Svg.line
                 [ SA.x1 "0"
                 , SA.y1 "0"
                 , SA.x2 (String.fromFloat geo.shaftEndX)
@@ -599,7 +605,7 @@ viewUnitVector vec otherVec color name =
                 , SA.strokeLinecap "round"
                 ]
                 []
-            , Svg.line
+             , Svg.line
                 [ SA.x1 "0"
                 , SA.y1 "0"
                 , SA.x2 (String.fromFloat geo.shaftEndX)
@@ -610,34 +616,14 @@ viewUnitVector vec otherVec color name =
                 , SA.strokeDasharray "0.04 0.06"
                 ]
                 []
-            , polygon
+             , polygon
                 [ SA.points geo.arrowPoints
                 , SA.fill color
                 ]
                 []
-            , Svg.text_
-                [ SA.x (String.fromFloat labelX)
-                , SA.y (String.fromFloat -labelY)
-                , SA.fill "white"
-                , SA.stroke "white"
-                , SA.strokeWidth "0.08"
-                , SA.fontSize "0.25"
-                , SA.fontWeight "bold"
-                , SA.textAnchor "middle"
-                , SA.dominantBaseline "middle"
-                ]
-                [ Svg.text name ]
-            , Svg.text_
-                [ SA.x (String.fromFloat labelX)
-                , SA.y (String.fromFloat -labelY)
-                , SA.fill color
-                , SA.fontSize "0.25"
-                , SA.fontWeight "bold"
-                , SA.textAnchor "middle"
-                , SA.dominantBaseline "middle"
-                ]
-                [ Svg.text name ]
-            ]
+             ]
+                ++ outlinedSvgLabel labelX labelY color name 0.25 [ SA.fontWeight "bold" ]
+            )
 
 
 viewAngleArc : Vec2 -> Vec2 -> Svg.Svg Msg
@@ -771,12 +757,84 @@ viewAngleArc a b =
             ]
 
 
+viewProjectionSvg : ProjectionData -> Model -> List (Svg.Svg Msg)
+viewProjectionSvg pd model =
+    viewProjectionVector pd.projAontoBvec model.a "#e74c3c" "proj"
+        ++ viewProjectionVector pd.projBontoAvec model.b "#2980b9" "proj"
+
+
+viewProjectionVector : Vec2 -> Vec2 -> String -> String -> List (Svg.Svg Msg)
+viewProjectionVector projVec originalVec color label =
+    let
+        projLen =
+            vecLen projVec
+    in
+    if projLen < epsilon then
+        []
+
+    else
+        let
+            geo =
+                arrowGeometry projVec 0.15 0.09
+
+            side =
+                labelSide projVec originalVec
+
+            labelX =
+                projVec.x * 0.5 + side * -geo.dy * 0.25
+
+            labelY =
+                projVec.y * 0.5 + side * geo.dx * 0.25
+        in
+        [ -- Dashed arrow from origin to projection point
+          Svg.line
+            [ SA.x1 "0"
+            , SA.y1 "0"
+            , SA.x2 (String.fromFloat geo.shaftEndX)
+            , SA.y2 (String.fromFloat -geo.shaftEndY)
+            , SA.stroke color
+            , SA.strokeWidth "0.04"
+            , SA.strokeLinecap "round"
+            , SA.strokeDasharray "0.03 0.06"
+            , SA.opacity "0.7"
+            ]
+            []
+        , polygon
+            [ SA.points geo.arrowPoints
+            , SA.fill color
+            , SA.opacity "0.7"
+            ]
+            []
+
+        -- Perpendicular drop line from original vector tip to projection point
+        , Svg.line
+            [ SA.x1 (String.fromFloat originalVec.x)
+            , SA.y1 (String.fromFloat -originalVec.y)
+            , SA.x2 (String.fromFloat projVec.x)
+            , SA.y2 (String.fromFloat -projVec.y)
+            , SA.stroke "#999"
+            , SA.strokeWidth "0.02"
+            , SA.strokeDasharray "0.05 0.04"
+            ]
+            []
+        ]
+            -- Label
+            ++ outlinedSvgLabel labelX labelY color label 0.2 [ SA.fontStyle "italic" ]
+
+
 
 -- RIGHT PANEL
 
 
 viewControlPanel : Model -> Html Msg
 viewControlPanel model =
+    let
+        pd =
+            projectionData model.a model.b
+
+        ad =
+            angleData model.a model.b
+    in
     Html.div
         [ HA.style "flex" "1"
         , HA.style "padding" "24px"
@@ -789,10 +847,11 @@ viewControlPanel model =
         , viewDotProduct model
         , viewLengths model
         , viewNormalization model
-        , viewProjectionLengths model
-        , viewCosineAngle model.cosineExpanded model
-        , viewAngle model.angleExpanded model
-        , viewCauchySchwarz model
+        , viewProjectionLengths pd
+        , viewProjections model.projectionsExpanded pd model
+        , viewCosineAngle model.cosineExpanded ad
+        , viewAngle model.angleExpanded ad
+        , viewCauchySchwarz ad
         ]
 
 
@@ -900,24 +959,8 @@ viewLengthOf name vec =
     ]
 
 
-viewCosineAngle : Bool -> Model -> Html Msg
-viewCosineAngle isOpen model =
-    let
-        dp =
-            dot model.a model.b
-
-        lenA =
-            vecLen model.a
-
-        lenB =
-            vecLen model.b
-
-        product =
-            lenA * lenB
-
-        cosTheta =
-            cosAngle model.a model.b
-    in
+viewCosineAngle : Bool -> AngleData -> Html Msg
+viewCosineAngle isOpen ad =
     viewTrackedAccordion isOpen
         ToggleCosine
         "Cosine of the Angle"
@@ -925,40 +968,25 @@ viewCosineAngle isOpen model =
             [ Html.text "cos(θ) = (a · b) / (|a| × |b|)" ]
         , monoBlock
             ("= "
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 ad.dp
                 ++ " / ("
-                ++ roundToStr 4 lenA
+                ++ roundToStr 4 ad.lenA
                 ++ " × "
-                ++ roundToStr 4 lenB
+                ++ roundToStr 4 ad.lenB
                 ++ ") = "
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 ad.dp
                 ++ " / "
-                ++ roundToStr 4 product
+                ++ roundToStr 4 ad.product
             )
-        , resultBlock (" = " ++ roundToStr 4 cosTheta)
+        , resultBlock (" = " ++ roundToStr 4 ad.cosTheta)
         ]
 
 
-viewAngle : Bool -> Model -> Html Msg
-viewAngle isOpen model =
+viewAngle : Bool -> AngleData -> Html Msg
+viewAngle isOpen ad =
     let
-        dp =
-            dot model.a model.b
-
-        lenA =
-            vecLen model.a
-
-        lenB =
-            vecLen model.b
-
-        product =
-            lenA * lenB
-
-        cosTheta =
-            cosAngle model.a model.b
-
         angleRad =
-            acos cosTheta
+            acos ad.cosTheta
 
         angleDeg =
             angleRad * 180 / pi
@@ -970,17 +998,17 @@ viewAngle isOpen model =
             [ Html.text "θ = acos((a · b) / (|a| × |b|))" ]
         , monoBlock
             ("= acos("
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 ad.dp
                 ++ " / ("
-                ++ roundToStr 4 lenA
+                ++ roundToStr 4 ad.lenA
                 ++ " × "
-                ++ roundToStr 4 lenB
+                ++ roundToStr 4 ad.lenB
                 ++ ")) = acos("
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 ad.dp
                 ++ " / "
-                ++ roundToStr 4 product
+                ++ roundToStr 4 ad.product
                 ++ ") = acos("
-                ++ roundToStr 4 cosTheta
+                ++ roundToStr 4 ad.cosTheta
                 ++ ")"
             )
         , resultBlock (" = " ++ roundToStr 2 angleDeg ++ "°")
@@ -1024,32 +1052,8 @@ viewNormalizeOf hatName name vec =
     ]
 
 
-viewProjectionLengths : Model -> Html Msg
-viewProjectionLengths model =
-    let
-        dp =
-            dot model.a model.b
-
-        aa =
-            dot model.a model.a
-
-        bb =
-            dot model.b model.b
-
-        projOntoA =
-            if aa > epsilon then
-                dp / aa
-
-            else
-                0
-
-        projOntoB =
-            if bb > epsilon then
-                dp / bb
-
-            else
-                0
-    in
+viewProjectionLengths : ProjectionData -> Html Msg
+viewProjectionLengths pd =
     viewAccordion False
         "Projection Lengths"
         [ Html.p []
@@ -1063,11 +1067,11 @@ viewProjectionLengths model =
             [ Html.text "a · b / (a · a)" ]
         , monoBlock
             ("= "
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 pd.dp
                 ++ " / "
-                ++ roundToStr 4 aa
+                ++ roundToStr 4 pd.aa
             )
-        , resultBlock (" = " ++ roundToStr 4 projOntoA)
+        , resultBlock (" = " ++ roundToStr 4 pd.projOntoA)
         , Html.p []
             [ Html.text "Scalar projection coefficient of "
             , Html.b [] [ Html.text "a" ]
@@ -1079,37 +1083,86 @@ viewProjectionLengths model =
             [ Html.text "a · b / (b · b)" ]
         , monoBlock
             ("= "
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 pd.dp
                 ++ " / "
-                ++ roundToStr 4 bb
+                ++ roundToStr 4 pd.bb
             )
-        , resultBlock (" = " ++ roundToStr 4 projOntoB)
+        , resultBlock (" = " ++ roundToStr 4 pd.projOntoB)
         ]
 
 
-viewCauchySchwarz : Model -> Html Msg
-viewCauchySchwarz model =
+viewProjections : Bool -> ProjectionData -> Model -> Html Msg
+viewProjections isOpen pd model =
+    viewTrackedAccordion isOpen
+        ToggleProjections
+        "Projections"
+        [ Html.p []
+            [ Html.text "Projection of "
+            , Html.b [] [ Html.text "a" ]
+            , Html.text " onto "
+            , Html.b [] [ Html.text "b" ]
+            , Html.text ":"
+            ]
+        , Html.p []
+            [ Html.text "proj"
+            , sub "b"
+            , Html.text "(a) = (a · b / b · b) · b"
+            ]
+        , monoBlock
+            ("= "
+                ++ roundToStr 4 pd.projOntoB
+                ++ " · ("
+                ++ roundToStr 2 model.b.x
+                ++ ", "
+                ++ roundToStr 2 model.b.y
+                ++ ")"
+            )
+        , resultBlock
+            ("= ("
+                ++ roundToStr 4 pd.projAontoBvec.x
+                ++ ", "
+                ++ roundToStr 4 pd.projAontoBvec.y
+                ++ ")"
+            )
+        , Html.p []
+            [ Html.text "Projection of "
+            , Html.b [] [ Html.text "b" ]
+            , Html.text " onto "
+            , Html.b [] [ Html.text "a" ]
+            , Html.text ":"
+            ]
+        , Html.p []
+            [ Html.text "proj"
+            , sub "a"
+            , Html.text "(b) = (a · b / a · a) · a"
+            ]
+        , monoBlock
+            ("= "
+                ++ roundToStr 4 pd.projOntoA
+                ++ " · ("
+                ++ roundToStr 2 model.a.x
+                ++ ", "
+                ++ roundToStr 2 model.a.y
+                ++ ")"
+            )
+        , resultBlock
+            ("= ("
+                ++ roundToStr 4 pd.projBontoAvec.x
+                ++ ", "
+                ++ roundToStr 4 pd.projBontoAvec.y
+                ++ ")"
+            )
+        ]
+
+
+viewCauchySchwarz : AngleData -> Html Msg
+viewCauchySchwarz ad =
     let
-        dp =
-            dot model.a model.b
-
-        lenA =
-            vecLen model.a
-
-        lenB =
-            vecLen model.b
-
         absDp =
-            abs dp
-
-        product =
-            lenA * lenB
-
-        cosTheta =
-            cosAngle model.a model.b
+            abs ad.dp
 
         isParallel =
-            abs (abs cosTheta - 1) < epsilon
+            abs (abs ad.cosTheta - 1) < epsilon
     in
     viewAccordion False
         "Cauchy-Schwarz Inequality"
@@ -1117,15 +1170,15 @@ viewCauchySchwarz model =
             [ Html.text "|a · b| ≤ |a| × |b|" ]
         , monoBlock
             ("|"
-                ++ roundToStr 4 dp
+                ++ roundToStr 4 ad.dp
                 ++ "| = "
                 ++ roundToStr 4 absDp
                 ++ " ≤ "
-                ++ roundToStr 4 lenA
+                ++ roundToStr 4 ad.lenA
                 ++ " × "
-                ++ roundToStr 4 lenB
+                ++ roundToStr 4 ad.lenB
                 ++ " = "
-                ++ roundToStr 4 product
+                ++ roundToStr 4 ad.product
             )
         , Html.p []
             [ Html.text
@@ -1226,17 +1279,99 @@ normalize v =
         { x = 0, y = 0 }
 
 
-cosAngle : Vec2 -> Vec2 -> Float
-cosAngle u v =
+type alias ProjectionData =
+    { dp : Float
+    , aa : Float
+    , bb : Float
+    , projOntoA : Float
+    , projOntoB : Float
+    , projAontoBvec : Vec2
+    , projBontoAvec : Vec2
+    }
+
+
+projectionData : Vec2 -> Vec2 -> ProjectionData
+projectionData a b =
     let
-        product =
-            vecLen u * vecLen v
+        dp =
+            dot a b
+
+        aa =
+            dot a a
+
+        bb =
+            dot b b
+
+        projOntoA =
+            if aa > epsilon then
+                dp / aa
+
+            else
+                0
+
+        projOntoB =
+            if bb > epsilon then
+                dp / bb
+
+            else
+                0
     in
-    if product > epsilon then
-        clamp -1 1 (dot u v / product)
+    { dp = dp
+    , aa = aa
+    , bb = bb
+    , projOntoA = projOntoA
+    , projOntoB = projOntoB
+    , projAontoBvec = { x = projOntoB * b.x, y = projOntoB * b.y }
+    , projBontoAvec = { x = projOntoA * a.x, y = projOntoA * a.y }
+    }
+
+
+type alias AngleData =
+    { dp : Float
+    , lenA : Float
+    , lenB : Float
+    , product : Float
+    , cosTheta : Float
+    }
+
+
+angleData : Vec2 -> Vec2 -> AngleData
+angleData a b =
+    let
+        dp =
+            dot a b
+
+        lenA =
+            vecLen a
+
+        lenB =
+            vecLen b
+
+        product =
+            lenA * lenB
+
+        cosTheta =
+            if product > epsilon then
+                clamp -1 1 (dp / product)
+
+            else
+                0
+    in
+    { dp = dp
+    , lenA = lenA
+    , lenB = lenB
+    , product = product
+    , cosTheta = cosTheta
+    }
+
+
+labelSide : Vec2 -> Vec2 -> Float
+labelSide vec otherVec =
+    if cross vec otherVec > 0 then
+        -1
 
     else
-        0
+        1
 
 
 monoBlock : String -> Html Msg
@@ -1257,6 +1392,32 @@ resultBlock s =
         , HA.style "font-weight" "bold"
         ]
         [ Html.text s ]
+
+
+outlinedSvgLabel : Float -> Float -> String -> String -> Float -> List (Svg.Attribute Msg) -> List (Svg.Svg Msg)
+outlinedSvgLabel lx ly color label fontSize extraAttrs =
+    let
+        commonAttrs =
+            [ SA.x (String.fromFloat lx)
+            , SA.y (String.fromFloat -ly)
+            , SA.fontSize (String.fromFloat fontSize)
+            , SA.textAnchor "middle"
+            , SA.dominantBaseline "middle"
+            ]
+                ++ extraAttrs
+    in
+    [ Svg.text_
+        ([ SA.fill "white"
+         , SA.stroke "white"
+         , SA.strokeWidth "0.08"
+         ]
+            ++ commonAttrs
+        )
+        [ Svg.text label ]
+    , Svg.text_
+        (SA.fill color :: commonAttrs)
+        [ Svg.text label ]
+    ]
 
 
 sub : String -> Html Msg
