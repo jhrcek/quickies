@@ -17,6 +17,7 @@ projects=(
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
   ["covariance"]="Covariance intuition builder"
+  ["dot-product"]="Dot product intuition builder"
   ["divisibility-lattice"]="Interactive visualization of divisibility lattice"
   ["eulers-totient"]="Toy game for practicing steps to calculate Euler's totient function"
   ["elm-cube"]="3D cube visualization"
