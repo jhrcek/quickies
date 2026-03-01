@@ -39,6 +39,9 @@ type alias Model =
     , cosineExpanded : Bool
     , normalizationExpanded : Bool
     , projectionsExpanded : Bool
+    , fibresExpanded : Bool
+    , fibreDotA : Bool
+    , fibreDotB : Bool
     }
 
 
@@ -56,6 +59,9 @@ init _ =
       , cosineExpanded = False
       , normalizationExpanded = False
       , projectionsExpanded = False
+      , fibresExpanded = False
+      , fibreDotA = True
+      , fibreDotB = False
       }
     , Cmd.none
     )
@@ -77,6 +83,9 @@ type Msg
     | ToggleCosine
     | ToggleNormalization
     | ToggleProjections
+    | ToggleFibres
+    | ToggleFibreDotA
+    | ToggleFibreDotB
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -146,6 +155,15 @@ update msg model =
 
         ToggleProjections ->
             ( { model | projectionsExpanded = not model.projectionsExpanded }, Cmd.none )
+
+        ToggleFibres ->
+            ( { model | fibresExpanded = not model.fibresExpanded }, Cmd.none )
+
+        ToggleFibreDotA ->
+            ( { model | fibreDotA = not model.fibreDotA }, Cmd.none )
+
+        ToggleFibreDotB ->
+            ( { model | fibreDotB = not model.fibreDotB }, Cmd.none )
 
 
 parseFloat : String -> Float -> Float
@@ -237,6 +255,23 @@ viewSvgPanel model =
             ([ viewGrid
              , viewAxes
              ]
+                ++ (if model.fibresExpanded then
+                        (if model.fibreDotA then
+                            viewFibreLines model.a "#2980b9"
+
+                         else
+                            []
+                        )
+                            ++ (if model.fibreDotB then
+                                    viewFibreLines model.b "#e74c3c"
+
+                                else
+                                    []
+                               )
+
+                    else
+                        []
+                   )
                 ++ viewVectorGroup model.a model.b "#e74c3c" "a" "â" DragA model.normalizationExpanded
                 ++ viewVectorGroup model.b model.a "#2980b9" "b" "b̂" DragB model.normalizationExpanded
                 ++ (if model.angleExpanded || model.cosineExpanded then
@@ -822,6 +857,142 @@ viewProjectionVector projVec originalVec color label =
             ++ outlinedSvgLabel labelX labelY color label 0.2 [ SA.fontStyle "italic" ]
 
 
+viewFibreLines : Vec2 -> String -> List (Svg.Svg Msg)
+viewFibreLines v color =
+    let
+        vx =
+            v.x
+
+        vy =
+            v.y
+
+        maxC =
+            floor (xRange * (abs vx + abs vy))
+
+        minC =
+            ceiling (-xRange * (abs vx + abs vy))
+
+        cValues =
+            List.range minC maxC
+
+        -- Label position: where the fiber intersects the span of v,
+        -- offset slightly perpendicular so it doesn't sit on the line.
+        lenSq =
+            vx * vx + vy * vy
+
+        len =
+            sqrt lenSq
+
+        -- Perpendicular unit vector to v
+        perpX =
+            if len > epsilon then
+                -vy / len
+
+            else
+                0
+
+        perpY =
+            if len > epsilon then
+                vx / len
+
+            else
+                0
+
+        perpOffset =
+            0.12
+
+        fibreLabel fc =
+            if lenSq < epsilon then
+                []
+
+            else
+                let
+                    -- Intersection of fiber c with span of v: t = c / |v|²
+                    t =
+                        fc / lenSq
+
+                    baseX =
+                        t * vx
+
+                    baseY =
+                        t * vy
+
+                    lx =
+                        baseX + perpX * perpOffset
+
+                    ly =
+                        baseY + perpY * perpOffset
+                in
+                if abs lx > xRange || abs ly > xRange then
+                    []
+
+                else
+                    [ Svg.text_
+                        [ SA.x (String.fromFloat lx)
+                        , SA.y (String.fromFloat -ly)
+                        , SA.fill color
+                        , SA.fontSize "0.18"
+                        , SA.opacity "0.6"
+                        , SA.textAnchor "middle"
+                        , SA.dominantBaseline "middle"
+                        ]
+                        [ Svg.text (String.fromInt (round fc)) ]
+                    ]
+
+        fibreLine c =
+            let
+                fc =
+                    toFloat c
+            in
+            if abs vy > epsilon then
+                let
+                    x1 =
+                        -xRange
+
+                    y1 =
+                        (fc - vx * x1) / vy
+
+                    x2 =
+                        xRange
+
+                    y2 =
+                        (fc - vx * x2) / vy
+                in
+                Svg.line
+                    [ SA.x1 (String.fromFloat x1)
+                    , SA.y1 (String.fromFloat -y1)
+                    , SA.x2 (String.fromFloat x2)
+                    , SA.y2 (String.fromFloat -y2)
+                    , SA.stroke color
+                    , SA.strokeWidth "0.02"
+                    , SA.opacity "0.4"
+                    ]
+                    []
+                    :: fibreLabel fc
+
+            else if abs vx > epsilon then
+                let
+                    lineX =
+                        fc / vx
+                in
+                Svg.line
+                    [ SA.x1 (String.fromFloat lineX)
+                    , SA.y1 (String.fromFloat -xRange)
+                    , SA.x2 (String.fromFloat lineX)
+                    , SA.y2 (String.fromFloat xRange)
+                    , SA.stroke color
+                    , SA.strokeWidth "0.02"
+                    , SA.opacity "0.4"
+                    ]
+                    []
+                    :: fibreLabel fc
+
+            else
+                []
+    in
+    List.concatMap fibreLine cValues
+
+
 
 -- RIGHT PANEL
 
@@ -849,6 +1020,7 @@ viewControlPanel model =
         , viewNormalization model
         , viewProjectionLengths pd
         , viewProjections model.projectionsExpanded pd model
+        , viewFibres model
         , viewCosineAngle model.cosineExpanded ad
         , viewAngle model.angleExpanded ad
         , viewCauchySchwarz ad
@@ -1152,6 +1324,30 @@ viewProjections isOpen pd model =
                 ++ roundToStr 4 pd.projBontoAvec.y
                 ++ ")"
             )
+        ]
+
+
+viewFibres : Model -> Html Msg
+viewFibres model =
+    viewTrackedAccordion model.fibresExpanded
+        ToggleFibres
+        "Fibres (level sets)"
+        [ Html.div [ HA.style "margin-top" "8px" ]
+            [ Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "6px", HA.style "cursor" "pointer" ]
+                [ Html.input [ HA.type_ "checkbox", HA.checked model.fibreDotA, E.onCheck (\_ -> ToggleFibreDotA) ] []
+                , Html.text "dot product with a"
+                ]
+            , Html.p [ HA.style "margin" "4px 0 0 24px", HA.style "font-size" "13px", HA.style "color" "#888" ]
+                [ Html.text "Blue lines correspond to vectors whose dot product with a equals a given constant." ]
+            ]
+        , Html.div [ HA.style "margin-top" "6px" ]
+            [ Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "6px", HA.style "cursor" "pointer" ]
+                [ Html.input [ HA.type_ "checkbox", HA.checked model.fibreDotB, E.onCheck (\_ -> ToggleFibreDotB) ] []
+                , Html.text "dot product with b"
+                ]
+            , Html.p [ HA.style "margin" "4px 0 0 24px", HA.style "font-size" "13px", HA.style "color" "#888" ]
+                [ Html.text "Red lines correspond to vectors whose dot product with b equals a given constant." ]
+            ]
         ]
 
 

@@ -7,6 +7,7 @@
 - [x] add section showing unit vectors (normalization): â = a/|a|, b̂ = b/|b|, with the option to draw them as shorter vectors on the SVG
 - [x] add section "Projection lengths" that show how a·b/a·a and a·b/b·b calculations
 - [x] add section about projections of a onto b / b onto a
+- [x] add visualization of level sets (fibers) for both a and b
 - [ ] prevent edits via visual inputs that lead to vectors outside of the viewport area
 - [ ] make it possible to edit just vector length without changing angles
 - [ ] make it possible to edit just the angle without changing the lengths
