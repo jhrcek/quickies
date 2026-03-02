@@ -6,6 +6,7 @@ import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as E
 import Json.Decode as Decode
+import KaTeX as Tex
 import Svg exposing (g, polygon, svg)
 import Svg.Attributes as SA
 import Svg.Events as SE
@@ -1036,67 +1037,70 @@ viewVectorInputs name vec onX onY color =
         , HA.style "background" "#f8f8f8"
         , HA.style "border-radius" "4px"
         ]
-        [ Html.div [ HA.style "font-weight" "bold", HA.style "margin-bottom" "8px", HA.style "color" color ]
-            [ Html.text ("Vector " ++ name) ]
-        , Html.div [ HA.style "display" "flex", HA.style "gap" "12px" ]
-            [ labeledInput "x" (roundToStr 2 vec.x) onX
-            , labeledInput "y" (roundToStr 2 vec.y) onY
+        [ Html.div
+            [ HA.style "display" "flex"
+            , HA.style "align-items" "center"
+            , HA.style "gap" "4px"
+            , HA.style "font-size" "18px"
+            ]
+            [ Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
+                [ Tex.inline ("\\mathbf{" ++ name ++ "} = \\Big(") ]
+            , compactInput (roundToStr 2 vec.x) onX
+            , Html.span [] [ Tex.inline "," ]
+            , compactInput (roundToStr 2 vec.y) onY
+            , Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
+                [ Tex.inline "\\Big)" ]
             ]
         ]
 
 
-labeledInput : String -> String -> (String -> Msg) -> Html Msg
-labeledInput lbl val onMsg =
-    Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "4px" ]
-        [ Html.span [ HA.style "font-size" "14px", HA.style "color" "#666" ] [ Html.text lbl ]
-        , Html.input
-            [ HA.type_ "number"
-            , HA.value val
-            , HA.step "0.1"
-            , HA.style "width" "70px"
-            , HA.style "padding" "4px 6px"
-            , HA.style "border" "1px solid #ccc"
-            , HA.style "border-radius" "3px"
-            , HA.style "font-size" "14px"
-            , E.onInput onMsg
-            ]
-            []
+compactInput : String -> (String -> Msg) -> Html Msg
+compactInput val onMsg =
+    Html.input
+        [ HA.type_ "number"
+        , HA.value val
+        , HA.step "0.1"
+        , HA.style "width" "60px"
+        , HA.style "padding" "4px 6px"
+        , HA.style "border" "1px solid #ccc"
+        , HA.style "border-radius" "3px"
+        , HA.style "font-size" "14px"
+        , HA.style "text-align" "center"
+        , E.onInput onMsg
         ]
+        []
 
 
 viewDotProduct : Model -> Html Msg
 viewDotProduct model =
     let
+        ax =
+            roundToStr 2 model.a.x
+
+        ay =
+            roundToStr 2 model.a.y
+
+        bx =
+            roundToStr 2 model.b.x
+
+        by =
+            roundToStr 2 model.b.y
+
+        axbx =
+            roundToStr 2 (model.a.x * model.b.x)
+
+        ayby =
+            roundToStr 2 (model.a.y * model.b.y)
+
         dp =
-            dot model.a model.b
+            roundToStr 4 (dot model.a model.b)
     in
     viewAccordion True
         "Dot Product"
         [ Html.p []
-            [ Html.text "a · b = a"
-            , sub "x"
-            , Html.text " × b"
-            , sub "x"
-            , Html.text " + a"
-            , sub "y"
-            , Html.text " × b"
-            , sub "y"
+            [ Tex.inline
+                ("\\mathbf{a} \\cdot \\mathbf{b} = a_x b_x + a_y b_y = " ++ ax ++ " \\cdot " ++ bx ++ " + " ++ ay ++ " \\cdot " ++ by ++ " = " ++ axbx ++ " + " ++ ayby ++ " = " ++ dp)
             ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 2 model.a.x
-                ++ " × "
-                ++ roundToStr 2 model.b.x
-                ++ " + "
-                ++ roundToStr 2 model.a.y
-                ++ " × "
-                ++ roundToStr 2 model.b.y
-                ++ " = "
-                ++ roundToStr 2 (model.a.x * model.b.x)
-                ++ " + "
-                ++ roundToStr 2 (model.a.y * model.b.y)
-            )
-        , resultBlock (" = " ++ roundToStr 4 dp)
         ]
 
 
@@ -1109,81 +1113,88 @@ viewLengths model =
 
 viewLengthOf : String -> Vec2 -> List (Html Msg)
 viewLengthOf name vec =
+    let
+        n =
+            name
+
+        x =
+            roundToStr 2 vec.x
+
+        y =
+            roundToStr 2 vec.y
+
+        x2 =
+            roundToStr 2 (vec.x * vec.x)
+
+        y2 =
+            roundToStr 2 (vec.y * vec.y)
+
+        len =
+            roundToStr 4 (vecLen vec)
+    in
     [ Html.p []
-        [ Html.text ("|" ++ name ++ "| = √(" ++ name ++ " · " ++ name ++ ") = √(" ++ name)
-        , sub "x"
-        , Html.text ("² + " ++ name)
-        , sub "y"
-        , Html.text "²)"
+        [ Tex.inline
+            ("|\\mathbf{" ++ n ++ "}| = \\sqrt{\\mathbf{" ++ n ++ "} \\cdot \\mathbf{" ++ n ++ "}} = \\sqrt{" ++ n ++ "_x^2 + " ++ n ++ "_y^2} = \\sqrt{" ++ x ++ "^2 + " ++ y ++ "^2} = \\sqrt{" ++ x2 ++ " + " ++ y2 ++ "} = " ++ len)
         ]
-    , monoBlock
-        ("= √("
-            ++ roundToStr 2 vec.x
-            ++ "² + "
-            ++ roundToStr 2 vec.y
-            ++ "²) = √("
-            ++ roundToStr 2 (vec.x * vec.x)
-            ++ " + "
-            ++ roundToStr 2 (vec.y * vec.y)
-            ++ ")"
-        )
-    , resultBlock (" = " ++ roundToStr 4 (vecLen vec))
     ]
 
 
 viewCosineAngle : Bool -> AngleData -> Html Msg
 viewCosineAngle isOpen ad =
+    let
+        dp =
+            roundToStr 4 ad.dp
+
+        lenA =
+            roundToStr 4 ad.lenA
+
+        lenB =
+            roundToStr 4 ad.lenB
+
+        prod =
+            roundToStr 4 ad.product
+
+        cosT =
+            roundToStr 4 ad.cosTheta
+    in
     viewTrackedAccordion isOpen
         ToggleCosine
         "Cosine of the Angle"
         [ Html.p []
-            [ Html.text "cos(θ) = (a · b) / (|a| × |b|)" ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 4 ad.dp
-                ++ " / ("
-                ++ roundToStr 4 ad.lenA
-                ++ " × "
-                ++ roundToStr 4 ad.lenB
-                ++ ") = "
-                ++ roundToStr 4 ad.dp
-                ++ " / "
-                ++ roundToStr 4 ad.product
-            )
-        , resultBlock (" = " ++ roundToStr 4 ad.cosTheta)
+            [ Tex.inline
+                ("\\cos(\\theta) = \\frac{\\mathbf{a} \\cdot \\mathbf{b}}{|\\mathbf{a}| \\cdot |\\mathbf{b}|} = \\frac{" ++ dp ++ "}{" ++ lenA ++ " \\cdot " ++ lenB ++ "} = \\frac{" ++ dp ++ "}{" ++ prod ++ "} = " ++ cosT)
+            ]
         ]
 
 
 viewAngle : Bool -> AngleData -> Html Msg
 viewAngle isOpen ad =
     let
-        angleRad =
-            acos ad.cosTheta
+        dp =
+            roundToStr 4 ad.dp
 
-        angleDeg =
-            angleRad * 180 / pi
+        lenA =
+            roundToStr 4 ad.lenA
+
+        lenB =
+            roundToStr 4 ad.lenB
+
+        prod =
+            roundToStr 4 ad.product
+
+        cosT =
+            roundToStr 4 ad.cosTheta
+
+        deg =
+            roundToStr 2 (acos ad.cosTheta * 180 / pi)
     in
     viewTrackedAccordion isOpen
         ToggleAngle
         "Angle"
         [ Html.p []
-            [ Html.text "θ = acos((a · b) / (|a| × |b|))" ]
-        , monoBlock
-            ("= acos("
-                ++ roundToStr 4 ad.dp
-                ++ " / ("
-                ++ roundToStr 4 ad.lenA
-                ++ " × "
-                ++ roundToStr 4 ad.lenB
-                ++ ")) = acos("
-                ++ roundToStr 4 ad.dp
-                ++ " / "
-                ++ roundToStr 4 ad.product
-                ++ ") = acos("
-                ++ roundToStr 4 ad.cosTheta
-                ++ ")"
-            )
-        , resultBlock (" = " ++ roundToStr 2 angleDeg ++ "°")
+            [ Tex.inline
+                ("\\theta = \\arccos\\!\\left(\\frac{\\mathbf{a} \\cdot \\mathbf{b}}{|\\mathbf{a}| \\cdot |\\mathbf{b}|}\\right) = \\arccos\\!\\left(\\frac{" ++ dp ++ "}{" ++ lenA ++ " \\cdot " ++ lenB ++ "}\\right) = \\arccos\\!\\left(\\frac{" ++ dp ++ "}{" ++ prod ++ "}\\right) = \\arccos(" ++ cosT ++ ") = " ++ deg ++ "°")
+            ]
         ]
 
 
@@ -1192,138 +1203,143 @@ viewNormalization model =
     viewTrackedAccordion model.normalizationExpanded
         ToggleNormalization
         "Normalization"
-        (viewNormalizeOf "â" "a" model.a ++ viewNormalizeOf "b̂" "b" model.b)
+        (viewNormalizeOf "a" model.a ++ viewNormalizeOf "b" model.b)
 
 
-viewNormalizeOf : String -> String -> Vec2 -> List (Html Msg)
-viewNormalizeOf hatName name vec =
+viewNormalizeOf : String -> Vec2 -> List (Html Msg)
+viewNormalizeOf name vec =
     let
-        len =
-            vecLen vec
+        n =
+            name
+
+        l =
+            roundToStr 4 (vecLen vec)
 
         norm =
             normalize vec
+
+        x =
+            roundToStr 2 vec.x
+
+        y =
+            roundToStr 2 vec.y
+
+        nx =
+            roundToStr 4 norm.x
+
+        ny =
+            roundToStr 4 norm.y
     in
     [ Html.p []
-        [ Html.text (hatName ++ " = " ++ name ++ " / |" ++ name ++ "|") ]
-    , monoBlock
-        ("= ("
-            ++ roundToStr 2 vec.x
-            ++ ", "
-            ++ roundToStr 2 vec.y
-            ++ ") / "
-            ++ roundToStr 4 len
-        )
-    , resultBlock
-        ("= ("
-            ++ roundToStr 4 norm.x
-            ++ ", "
-            ++ roundToStr 4 norm.y
-            ++ ")"
-        )
+        [ Tex.inline
+            ("\\hat{\\mathbf{" ++ n ++ "}} = \\frac{\\mathbf{" ++ n ++ "}}{|\\mathbf{" ++ n ++ "}|} = \\frac{(" ++ x ++ ",\\," ++ y ++ ")}{" ++ l ++ "} = (" ++ nx ++ ",\\," ++ ny ++ ")")
+        ]
     ]
 
 
 viewProjectionLengths : ProjectionData -> Html Msg
 viewProjectionLengths pd =
+    let
+        dp =
+            roundToStr 4 pd.dp
+
+        aa =
+            roundToStr 4 pd.aa
+
+        bb =
+            roundToStr 4 pd.bb
+
+        projA =
+            roundToStr 4 pd.projOntoA
+
+        projB =
+            roundToStr 4 pd.projOntoB
+    in
     viewAccordion False
         "Projection Lengths"
         [ Html.p []
             [ Html.text "Scalar projection coefficient of "
-            , Html.b [] [ Html.text "b" ]
+            , Tex.inline "\\mathbf{b}"
             , Html.text " onto "
-            , Html.b [] [ Html.text "a" ]
+            , Tex.inline "\\mathbf{a}"
             , Html.text ":"
             ]
         , Html.p []
-            [ Html.text "a · b / (a · a)" ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 4 pd.dp
-                ++ " / "
-                ++ roundToStr 4 pd.aa
-            )
-        , resultBlock (" = " ++ roundToStr 4 pd.projOntoA)
+            [ Tex.inline
+                ("\\frac{\\mathbf{a} \\cdot \\mathbf{b}}{\\mathbf{a} \\cdot \\mathbf{a}} = \\frac{" ++ dp ++ "}{" ++ aa ++ "} = " ++ projA)
+            ]
         , Html.p []
             [ Html.text "Scalar projection coefficient of "
-            , Html.b [] [ Html.text "a" ]
+            , Tex.inline "\\mathbf{a}"
             , Html.text " onto "
-            , Html.b [] [ Html.text "b" ]
+            , Tex.inline "\\mathbf{b}"
             , Html.text ":"
             ]
         , Html.p []
-            [ Html.text "a · b / (b · b)" ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 4 pd.dp
-                ++ " / "
-                ++ roundToStr 4 pd.bb
-            )
-        , resultBlock (" = " ++ roundToStr 4 pd.projOntoB)
+            [ Tex.inline
+                ("\\frac{\\mathbf{a} \\cdot \\mathbf{b}}{\\mathbf{b} \\cdot \\mathbf{b}} = \\frac{" ++ dp ++ "}{" ++ bb ++ "} = " ++ projB)
+            ]
         ]
 
 
 viewProjections : Bool -> ProjectionData -> Model -> Html Msg
 viewProjections isOpen pd model =
+    let
+        projB =
+            roundToStr 4 pd.projOntoB
+
+        projA =
+            roundToStr 4 pd.projOntoA
+
+        bx =
+            roundToStr 2 model.b.x
+
+        by =
+            roundToStr 2 model.b.y
+
+        ax =
+            roundToStr 2 model.a.x
+
+        ay =
+            roundToStr 2 model.a.y
+
+        pabx =
+            roundToStr 4 pd.projAontoBvec.x
+
+        paby =
+            roundToStr 4 pd.projAontoBvec.y
+
+        pbax =
+            roundToStr 4 pd.projBontoAvec.x
+
+        pbay =
+            roundToStr 4 pd.projBontoAvec.y
+    in
     viewTrackedAccordion isOpen
         ToggleProjections
         "Projections"
         [ Html.p []
             [ Html.text "Projection of "
-            , Html.b [] [ Html.text "a" ]
+            , Tex.inline "\\mathbf{a}"
             , Html.text " onto "
-            , Html.b [] [ Html.text "b" ]
+            , Tex.inline "\\mathbf{b}"
             , Html.text ":"
             ]
         , Html.p []
-            [ Html.text "proj"
-            , sub "b"
-            , Html.text "(a) = (a · b / b · b) · b"
+            [ Tex.inline
+                ("\\text{proj}_{\\mathbf{b}}(\\mathbf{a}) = \\frac{\\mathbf{a} \\cdot \\mathbf{b}}{\\mathbf{b} \\cdot \\mathbf{b}} \\cdot \\mathbf{b} = " ++ projB ++ " \\cdot (" ++ bx ++ ",\\," ++ by ++ ") = (" ++ pabx ++ ",\\," ++ paby ++ ")")
             ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 4 pd.projOntoB
-                ++ " · ("
-                ++ roundToStr 2 model.b.x
-                ++ ", "
-                ++ roundToStr 2 model.b.y
-                ++ ")"
-            )
-        , resultBlock
-            ("= ("
-                ++ roundToStr 4 pd.projAontoBvec.x
-                ++ ", "
-                ++ roundToStr 4 pd.projAontoBvec.y
-                ++ ")"
-            )
         , Html.p []
             [ Html.text "Projection of "
-            , Html.b [] [ Html.text "b" ]
+            , Tex.inline "\\mathbf{b}"
             , Html.text " onto "
-            , Html.b [] [ Html.text "a" ]
+            , Tex.inline "\\mathbf{a}"
             , Html.text ":"
             ]
         , Html.p []
-            [ Html.text "proj"
-            , sub "a"
-            , Html.text "(b) = (a · b / a · a) · a"
+            [ Tex.inline
+                ("\\text{proj}_{\\mathbf{a}}(\\mathbf{b}) = \\frac{\\mathbf{a} \\cdot \\mathbf{b}}{\\mathbf{a} \\cdot \\mathbf{a}} \\cdot \\mathbf{a} = " ++ projA ++ " \\cdot (" ++ ax ++ ",\\," ++ ay ++ ") = (" ++ pbax ++ ",\\," ++ pbay ++ ")")
             ]
-        , monoBlock
-            ("= "
-                ++ roundToStr 4 pd.projOntoA
-                ++ " · ("
-                ++ roundToStr 2 model.a.x
-                ++ ", "
-                ++ roundToStr 2 model.a.y
-                ++ ")"
-            )
-        , resultBlock
-            ("= ("
-                ++ roundToStr 4 pd.projBontoAvec.x
-                ++ ", "
-                ++ roundToStr 4 pd.projBontoAvec.y
-                ++ ")"
-            )
         ]
 
 
@@ -1335,18 +1351,26 @@ viewFibres model =
         [ Html.div [ HA.style "margin-top" "8px" ]
             [ Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "6px", HA.style "cursor" "pointer" ]
                 [ Html.input [ HA.type_ "checkbox", HA.checked model.fibreDotA, E.onCheck (\_ -> ToggleFibreDotA) ] []
-                , Html.text "dot product with a"
+                , Html.text "dot product with "
+                , Tex.inline "\\mathbf{a}"
                 ]
             , Html.p [ HA.style "margin" "4px 0 0 24px", HA.style "font-size" "13px", HA.style "color" "#888" ]
-                [ Html.text "Blue lines correspond to vectors whose dot product with a equals a given constant." ]
+                [ Html.text "Blue lines correspond to vectors whose dot product with "
+                , Tex.inline "\\mathbf{a}"
+                , Html.text " equals a given constant."
+                ]
             ]
         , Html.div [ HA.style "margin-top" "6px" ]
             [ Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "6px", HA.style "cursor" "pointer" ]
                 [ Html.input [ HA.type_ "checkbox", HA.checked model.fibreDotB, E.onCheck (\_ -> ToggleFibreDotB) ] []
-                , Html.text "dot product with b"
+                , Html.text "dot product with "
+                , Tex.inline "\\mathbf{b}"
                 ]
             , Html.p [ HA.style "margin" "4px 0 0 24px", HA.style "font-size" "13px", HA.style "color" "#888" ]
-                [ Html.text "Red lines correspond to vectors whose dot product with b equals a given constant." ]
+                [ Html.text "Red lines correspond to vectors whose dot product with "
+                , Tex.inline "\\mathbf{b}"
+                , Html.text " equals a given constant."
+                ]
             ]
         ]
 
@@ -1354,8 +1378,20 @@ viewFibres model =
 viewCauchySchwarz : AngleData -> Html Msg
 viewCauchySchwarz ad =
     let
+        dp =
+            roundToStr 4 ad.dp
+
         absDp =
-            abs ad.dp
+            roundToStr 4 (abs ad.dp)
+
+        lenA =
+            roundToStr 4 ad.lenA
+
+        lenB =
+            roundToStr 4 ad.lenB
+
+        prod =
+            roundToStr 4 ad.product
 
         isParallel =
             abs (abs ad.cosTheta - 1) < epsilon
@@ -1363,28 +1399,19 @@ viewCauchySchwarz ad =
     viewAccordion False
         "Cauchy-Schwarz Inequality"
         [ Html.p []
-            [ Html.text "|a · b| ≤ |a| × |b|" ]
-        , monoBlock
-            ("|"
-                ++ roundToStr 4 ad.dp
-                ++ "| = "
-                ++ roundToStr 4 absDp
-                ++ " ≤ "
-                ++ roundToStr 4 ad.lenA
-                ++ " × "
-                ++ roundToStr 4 ad.lenB
-                ++ " = "
-                ++ roundToStr 4 ad.product
-            )
-        , Html.p []
-            [ Html.text
-                (if isParallel then
-                    "Equality holds — the vectors are parallel (cos θ = ±1)."
-
-                 else
-                    "Equality holds only when the vectors are parallel."
-                )
+            [ Tex.inline
+                ("|\\mathbf{a} \\cdot \\mathbf{b}| \\leq |\\mathbf{a}| \\cdot |\\mathbf{b}| \\;\\Rightarrow\\; |" ++ dp ++ "| = " ++ absDp ++ " \\leq " ++ lenA ++ " \\cdot " ++ lenB ++ " = " ++ prod)
             ]
+        , Html.p []
+            (if isParallel then
+                [ Html.text "Equality holds — the vectors are parallel ("
+                , Tex.inline "\\cos \\theta = \\pm 1"
+                , Html.text ")."
+                ]
+
+             else
+                [ Html.text "Equality holds only when the vectors are parallel." ]
+            )
         ]
 
 
@@ -1570,26 +1597,6 @@ labelSide vec otherVec =
         1
 
 
-monoBlock : String -> Html Msg
-monoBlock s =
-    Html.p
-        [ HA.style "font-family" "monospace"
-        , HA.style "background" "#f0f0f0"
-        , HA.style "padding" "8px"
-        , HA.style "border-radius" "4px"
-        ]
-        [ Html.text s ]
-
-
-resultBlock : String -> Html Msg
-resultBlock s =
-    Html.p
-        [ HA.style "font-size" "18px"
-        , HA.style "font-weight" "bold"
-        ]
-        [ Html.text s ]
-
-
 outlinedSvgLabel : Float -> Float -> String -> String -> Float -> List (Svg.Attribute Msg) -> List (Svg.Svg Msg)
 outlinedSvgLabel lx ly color label fontSize extraAttrs =
     let
@@ -1614,11 +1621,6 @@ outlinedSvgLabel lx ly color label fontSize extraAttrs =
         (SA.fill color :: commonAttrs)
         [ Svg.text label ]
     ]
-
-
-sub : String -> Html Msg
-sub s =
-    Html.sub [] [ Html.text s ]
 
 
 roundToStr : Int -> Float -> String
