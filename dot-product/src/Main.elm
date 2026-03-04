@@ -40,6 +40,7 @@ type alias Model =
     , cosineExpanded : Bool
     , normalizationExpanded : Bool
     , projectionsExpanded : Bool
+    , projectionMatricesExpanded : Bool
     , fibresExpanded : Bool
     , fibreDotA : Bool
     , fibreDotB : Bool
@@ -60,6 +61,7 @@ init _ =
       , cosineExpanded = False
       , normalizationExpanded = False
       , projectionsExpanded = False
+      , projectionMatricesExpanded = False
       , fibresExpanded = False
       , fibreDotA = True
       , fibreDotB = False
@@ -84,6 +86,7 @@ type Msg
     | ToggleCosine
     | ToggleNormalization
     | ToggleProjections
+    | ToggleProjectionMatrices
     | ToggleFibres
     | ToggleFibreDotA
     | ToggleFibreDotB
@@ -156,6 +159,9 @@ update msg model =
 
         ToggleProjections ->
             ( { model | projectionsExpanded = not model.projectionsExpanded }, Cmd.none )
+
+        ToggleProjectionMatrices ->
+            ( { model | projectionMatricesExpanded = not model.projectionMatricesExpanded }, Cmd.none )
 
         ToggleFibres ->
             ( { model | fibresExpanded = not model.fibresExpanded }, Cmd.none )
@@ -1021,6 +1027,7 @@ viewControlPanel model =
         , viewNormalization model
         , viewProjectionLengths pd
         , viewProjections model.projectionsExpanded pd model
+        , viewProjectionMatrices model.projectionMatricesExpanded model
         , viewFibres model
         , viewCosineAngle model.cosineExpanded ad
         , viewAngle model.angleExpanded ad
@@ -1341,6 +1348,79 @@ viewProjections isOpen pd model =
                 ("\\text{proj}_{\\mathbf{a}}(\\mathbf{b}) = \\frac{\\mathbf{a} \\cdot \\mathbf{b}}{\\mathbf{a} \\cdot \\mathbf{a}} \\cdot \\mathbf{a} = " ++ projA ++ " \\cdot (" ++ ax ++ ",\\," ++ ay ++ ") = (" ++ pbax ++ ",\\," ++ pbay ++ ")")
             ]
         ]
+
+
+viewProjectionMatrices : Bool -> Model -> Html Msg
+viewProjectionMatrices isOpen { a, b } =
+    let
+        projMatrixRow : String -> String -> Vec2 -> List (Html Msg)
+        projMatrixRow name texName v =
+            let
+                vv =
+                    dot v v
+
+                vxS =
+                    roundToStr 2 v.x
+
+                vyS =
+                    roundToStr 2 v.y
+
+                vvS =
+                    roundToStr 4 vv
+
+                outerXX =
+                    roundToStr 4 (v.x * v.x)
+
+                outerXY =
+                    roundToStr 4 (v.x * v.y)
+
+                outerYY =
+                    roundToStr 4 (v.y * v.y)
+
+                safe denom num =
+                    if denom > epsilon then
+                        roundToStr 4 (num / denom)
+
+                    else
+                        "0"
+
+                p00 =
+                    safe vv (v.x * v.x)
+
+                p01 =
+                    safe vv (v.x * v.y)
+
+                p11 =
+                    safe vv (v.y * v.y)
+            in
+            [ Html.p [ HA.style "font-weight" "bold", HA.style "margin-top" "16px" ]
+                [ Html.text ("Projection matrix onto " ++ name ++ ":")
+                ]
+            , Html.p []
+                [ Tex.inline
+                    ("P_{" ++ texName ++ "} = \\frac{" ++ texName ++ texName ++ "^\\top}{" ++ texName ++ " \\cdot " ++ texName ++ "} = \\frac{1}{" ++ vvS ++ "} \\begin{pmatrix} " ++ vxS ++ " \\\\ " ++ vyS ++ " \\end{pmatrix} \\begin{pmatrix} " ++ vxS ++ " & " ++ vyS ++ " \\end{pmatrix} = \\frac{1}{" ++ vvS ++ "} \\begin{pmatrix} " ++ outerXX ++ " & " ++ outerXY ++ " \\\\ " ++ outerXY ++ " & " ++ outerYY ++ " \\end{pmatrix} = \\begin{pmatrix} " ++ p00 ++ " & " ++ p01 ++ " \\\\ " ++ p01 ++ " & " ++ p11 ++ " \\end{pmatrix}")
+                ]
+            ]
+    in
+    viewTrackedAccordion isOpen
+        ToggleProjectionMatrices
+        "Projection Matrices"
+        ([ Html.p []
+            [ Html.text "The projection matrix onto the span of a vector "
+            , Tex.inline "\\mathbf{v}"
+            , Html.text " is:"
+            ]
+         , Html.p []
+            [ Tex.inline "P_{\\mathbf{v}} = \\frac{\\mathbf{v}\\mathbf{v}^\\top}{\\mathbf{v}^\\top \\mathbf{v}} = \\frac{\\mathbf{v}\\mathbf{v}^\\top}{\\mathbf{v} \\cdot \\mathbf{v}}" ]
+         , Html.p []
+            [ Html.text "This matrix orthogonally projects any 2D vector onto the line spanned by "
+            , Tex.inline "\\mathbf{v}"
+            , Html.text "."
+            ]
+         ]
+            ++ projMatrixRow "a" "\\mathbf{a}" a
+            ++ projMatrixRow "b" "\\mathbf{b}" b
+        )
 
 
 viewFibres : Model -> Html Msg
