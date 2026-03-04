@@ -7,6 +7,7 @@ import Html.Attributes as HA
 import Html.Events as E
 import Json.Decode as Decode
 import KaTeX as Tex
+import Set exposing (Set)
 import Svg exposing (g, polygon, svg)
 import Svg.Attributes as SA
 import Svg.Events as SE
@@ -36,12 +37,7 @@ type alias Model =
     { a : Vec2
     , b : Vec2
     , dragging : Maybe DragTarget
-    , angleExpanded : Bool
-    , cosineExpanded : Bool
-    , normalizationExpanded : Bool
-    , projectionsExpanded : Bool
-    , projectionMatricesExpanded : Bool
-    , fibresExpanded : Bool
+    , expandedSections : Set Int
     , fibreDotA : Bool
     , fibreDotB : Bool
     }
@@ -52,17 +48,64 @@ type DragTarget
     | DragB
 
 
+type Section
+    = DotProductSection
+    | LengthsSection
+    | NormalizationSection
+    | ProjectionLengthsSection
+    | ProjectionsSection
+    | ProjectionMatricesSection
+    | FibresSection
+    | CosineSection
+    | AngleSection
+    | CauchySchwarzSection
+
+
+sectionToInt : Section -> Int
+sectionToInt section =
+    case section of
+        DotProductSection ->
+            0
+
+        LengthsSection ->
+            1
+
+        NormalizationSection ->
+            2
+
+        ProjectionLengthsSection ->
+            3
+
+        ProjectionsSection ->
+            4
+
+        ProjectionMatricesSection ->
+            5
+
+        FibresSection ->
+            6
+
+        CosineSection ->
+            7
+
+        AngleSection ->
+            8
+
+        CauchySchwarzSection ->
+            9
+
+
+isExpanded : Section -> Model -> Bool
+isExpanded section model =
+    Set.member (sectionToInt section) model.expandedSections
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { a = { x = 2, y = 1 }
       , b = { x = 1, y = 2 }
       , dragging = Nothing
-      , angleExpanded = False
-      , cosineExpanded = False
-      , normalizationExpanded = False
-      , projectionsExpanded = False
-      , projectionMatricesExpanded = False
-      , fibresExpanded = False
+      , expandedSections = Set.singleton (sectionToInt DotProductSection)
       , fibreDotA = True
       , fibreDotB = False
       }
@@ -82,12 +125,7 @@ type Msg
     | StartDrag DragTarget
     | OnMouseMove Float Float
     | StopDrag
-    | ToggleAngle
-    | ToggleCosine
-    | ToggleNormalization
-    | ToggleProjections
-    | ToggleProjectionMatrices
-    | ToggleFibres
+    | ToggleSection Section
     | ToggleFibreDotA
     | ToggleFibreDotB
 
@@ -148,23 +186,19 @@ update msg model =
         StopDrag ->
             ( { model | dragging = Nothing }, Cmd.none )
 
-        ToggleAngle ->
-            ( { model | angleExpanded = not model.angleExpanded }, Cmd.none )
+        ToggleSection section ->
+            let
+                key =
+                    sectionToInt section
 
-        ToggleCosine ->
-            ( { model | cosineExpanded = not model.cosineExpanded }, Cmd.none )
+                newSections =
+                    if Set.member key model.expandedSections then
+                        Set.remove key model.expandedSections
 
-        ToggleNormalization ->
-            ( { model | normalizationExpanded = not model.normalizationExpanded }, Cmd.none )
-
-        ToggleProjections ->
-            ( { model | projectionsExpanded = not model.projectionsExpanded }, Cmd.none )
-
-        ToggleProjectionMatrices ->
-            ( { model | projectionMatricesExpanded = not model.projectionMatricesExpanded }, Cmd.none )
-
-        ToggleFibres ->
-            ( { model | fibresExpanded = not model.fibresExpanded }, Cmd.none )
+                    else
+                        Set.insert key model.expandedSections
+            in
+            ( { model | expandedSections = newSections }, Cmd.none )
 
         ToggleFibreDotA ->
             ( { model | fibreDotA = not model.fibreDotA }, Cmd.none )
@@ -262,7 +296,7 @@ viewSvgPanel model =
             ([ viewGrid
              , viewAxes
              ]
-                ++ (if model.fibresExpanded then
+                ++ (if isExpanded FibresSection model then
                         (if model.fibreDotA then
                             viewFibreLines model.a "#2980b9"
 
@@ -279,15 +313,15 @@ viewSvgPanel model =
                     else
                         []
                    )
-                ++ viewVectorGroup model.a model.b "#e74c3c" "a" "â" DragA model.normalizationExpanded
-                ++ viewVectorGroup model.b model.a "#2980b9" "b" "b̂" DragB model.normalizationExpanded
-                ++ (if model.angleExpanded || model.cosineExpanded then
+                ++ viewVectorGroup model.a model.b "#e74c3c" "a" "â" DragA (isExpanded NormalizationSection model)
+                ++ viewVectorGroup model.b model.a "#2980b9" "b" "b̂" DragB (isExpanded NormalizationSection model)
+                ++ (if isExpanded AngleSection model || isExpanded CosineSection model then
                         [ viewAngleArc model.a model.b ]
 
                     else
                         []
                    )
-                ++ (if model.projectionsExpanded then
+                ++ (if isExpanded ProjectionsSection model then
                         let
                             pd =
                                 projectionData model.a model.b
@@ -1025,13 +1059,13 @@ viewControlPanel model =
         , viewDotProduct model
         , viewLengths model
         , viewNormalization model
-        , viewProjectionLengths pd
-        , viewProjections model.projectionsExpanded pd model
-        , viewProjectionMatrices model.projectionMatricesExpanded model
+        , viewProjectionLengths model pd
+        , viewProjections (isExpanded ProjectionsSection model) pd model
+        , viewProjectionMatrices (isExpanded ProjectionMatricesSection model) model
         , viewFibres model
-        , viewCosineAngle model.cosineExpanded ad
-        , viewAngle model.angleExpanded ad
-        , viewCauchySchwarz ad
+        , viewCosineAngle (isExpanded CosineSection model) ad
+        , viewAngle (isExpanded AngleSection model) ad
+        , viewCauchySchwarz model ad
         ]
 
 
@@ -1102,7 +1136,8 @@ viewDotProduct model =
         dp =
             roundToStr 4 (dot model.a model.b)
     in
-    viewAccordion True
+    viewAccordion (isExpanded DotProductSection model)
+        (ToggleSection DotProductSection)
         "Dot Product"
         [ Html.p []
             [ Tex.inline
@@ -1113,7 +1148,8 @@ viewDotProduct model =
 
 viewLengths : Model -> Html Msg
 viewLengths model =
-    viewAccordion False
+    viewAccordion (isExpanded LengthsSection model)
+        (ToggleSection LengthsSection)
         "Vector Lengths"
         (viewLengthOf "a" model.a ++ viewLengthOf "b" model.b)
 
@@ -1164,8 +1200,8 @@ viewCosineAngle isOpen ad =
         cosT =
             roundToStr 4 ad.cosTheta
     in
-    viewTrackedAccordion isOpen
-        ToggleCosine
+    viewAccordion isOpen
+        (ToggleSection CosineSection)
         "Cosine of the Angle"
         [ Html.p []
             [ Tex.inline
@@ -1195,8 +1231,8 @@ viewAngle isOpen ad =
         deg =
             roundToStr 2 (acos ad.cosTheta * 180 / pi)
     in
-    viewTrackedAccordion isOpen
-        ToggleAngle
+    viewAccordion isOpen
+        (ToggleSection AngleSection)
         "Angle"
         [ Html.p []
             [ Tex.inline
@@ -1207,8 +1243,8 @@ viewAngle isOpen ad =
 
 viewNormalization : Model -> Html Msg
 viewNormalization model =
-    viewTrackedAccordion model.normalizationExpanded
-        ToggleNormalization
+    viewAccordion (isExpanded NormalizationSection model)
+        (ToggleSection NormalizationSection)
         "Normalization"
         (viewNormalizeOf "a" model.a ++ viewNormalizeOf "b" model.b)
 
@@ -1244,8 +1280,8 @@ viewNormalizeOf name vec =
     ]
 
 
-viewProjectionLengths : ProjectionData -> Html Msg
-viewProjectionLengths pd =
+viewProjectionLengths : Model -> ProjectionData -> Html Msg
+viewProjectionLengths model pd =
     let
         dp =
             roundToStr 4 pd.dp
@@ -1262,7 +1298,8 @@ viewProjectionLengths pd =
         projB =
             roundToStr 4 pd.projOntoB
     in
-    viewAccordion False
+    viewAccordion (isExpanded ProjectionLengthsSection model)
+        (ToggleSection ProjectionLengthsSection)
         "Projection Lengths"
         [ Html.p []
             [ Html.text "Scalar projection coefficient of "
@@ -1322,8 +1359,8 @@ viewProjections isOpen pd model =
         pbay =
             roundToStr 4 pd.projBontoAvec.y
     in
-    viewTrackedAccordion isOpen
-        ToggleProjections
+    viewAccordion isOpen
+        (ToggleSection ProjectionsSection)
         "Projections"
         [ Html.p []
             [ Html.text "Projection of "
@@ -1402,8 +1439,8 @@ viewProjectionMatrices isOpen { a, b } =
                 ]
             ]
     in
-    viewTrackedAccordion isOpen
-        ToggleProjectionMatrices
+    viewAccordion isOpen
+        (ToggleSection ProjectionMatricesSection)
         "Projection Matrices"
         ([ Html.p []
             [ Html.text "The projection matrix onto the span of a vector "
@@ -1425,8 +1462,8 @@ viewProjectionMatrices isOpen { a, b } =
 
 viewFibres : Model -> Html Msg
 viewFibres model =
-    viewTrackedAccordion model.fibresExpanded
-        ToggleFibres
+    viewAccordion (isExpanded FibresSection model)
+        (ToggleSection FibresSection)
         "Fibres (level sets)"
         [ Html.div [ HA.style "margin-top" "8px" ]
             [ Html.label [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "6px", HA.style "cursor" "pointer" ]
@@ -1455,8 +1492,8 @@ viewFibres model =
         ]
 
 
-viewCauchySchwarz : AngleData -> Html Msg
-viewCauchySchwarz ad =
+viewCauchySchwarz : Model -> AngleData -> Html Msg
+viewCauchySchwarz model ad =
     let
         dp =
             roundToStr 4 ad.dp
@@ -1476,7 +1513,8 @@ viewCauchySchwarz ad =
         isParallel =
             abs (abs ad.cosTheta - 1) < epsilon
     in
-    viewAccordion False
+    viewAccordion (isExpanded CauchySchwarzSection model)
+        (ToggleSection CauchySchwarzSection)
         "Cauchy-Schwarz Inequality"
         [ Html.p []
             [ Tex.inline
@@ -1495,10 +1533,14 @@ viewCauchySchwarz ad =
         ]
 
 
-viewTrackedAccordion : Bool -> Msg -> String -> List (Html Msg) -> Html Msg
-viewTrackedAccordion isOpen toggleMsg title content =
-    viewAccordionBase isOpen
-        [ E.on "toggle"
+viewAccordion : Bool -> Msg -> String -> List (Html Msg) -> Html Msg
+viewAccordion isOpen toggleMsg title content =
+    Html.details
+        ([ HA.style "margin-top" "16px"
+         , HA.style "border" "1px solid #ddd"
+         , HA.style "border-radius" "4px"
+         , HA.style "padding" "12px"
+         , E.on "toggle"
             (Decode.at [ "target", "open" ] Decode.bool
                 |> Decode.andThen
                     (\open ->
@@ -1509,25 +1551,7 @@ viewTrackedAccordion isOpen toggleMsg title content =
                             Decode.fail "no change"
                     )
             )
-        ]
-        title
-        content
-
-
-viewAccordion : Bool -> String -> List (Html Msg) -> Html Msg
-viewAccordion isOpen title content =
-    viewAccordionBase isOpen [] title content
-
-
-viewAccordionBase : Bool -> List (Html.Attribute Msg) -> String -> List (Html Msg) -> Html Msg
-viewAccordionBase isOpen extraAttrs title content =
-    Html.details
-        ([ HA.style "margin-top" "16px"
-         , HA.style "border" "1px solid #ddd"
-         , HA.style "border-radius" "4px"
-         , HA.style "padding" "12px"
          ]
-            ++ extraAttrs
             ++ (if isOpen then
                     [ HA.attribute "open" "" ]
 
