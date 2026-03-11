@@ -122,6 +122,10 @@ type Msg
     | SetAy String
     | SetBx String
     | SetBy String
+    | SetArho String
+    | SetAphi String
+    | SetBrho String
+    | SetBphi String
     | StartDrag DragTarget
     | OnMouseMove Float Float
     | StopDrag
@@ -160,6 +164,46 @@ update msg model =
                     model.b
             in
             ( { model | b = { b | y = parseFloat s b.y } }, Cmd.none )
+
+        SetArho s ->
+            let
+                polar =
+                    toPolar model.a
+
+                rho =
+                    parseFloat s polar.rho
+            in
+            ( { model | a = fromPolar rho polar.phi }, Cmd.none )
+
+        SetAphi s ->
+            let
+                polar =
+                    toPolar model.a
+
+                phi =
+                    degToRad (parseFloat s (radToDeg polar.phi))
+            in
+            ( { model | a = fromPolar polar.rho phi }, Cmd.none )
+
+        SetBrho s ->
+            let
+                polar =
+                    toPolar model.b
+
+                rho =
+                    parseFloat s polar.rho
+            in
+            ( { model | b = fromPolar rho polar.phi }, Cmd.none )
+
+        SetBphi s ->
+            let
+                polar =
+                    toPolar model.b
+
+                phi =
+                    degToRad (parseFloat s (radToDeg polar.phi))
+            in
+            ( { model | b = fromPolar polar.rho phi }, Cmd.none )
 
         StartDrag target ->
             ( { model | dragging = Just target }, Cmd.none )
@@ -1054,8 +1098,7 @@ viewControlPanel model =
         , HA.style "max-width" "50%"
         ]
         [ Html.h3 [ HA.style "margin-top" "0" ] [ Html.text "Vectors" ]
-        , viewVectorInputs "a" model.a SetAx SetAy "#e74c3c"
-        , viewVectorInputs "b" model.b SetBx SetBy "#2980b9"
+        , viewVectorInputsGrid model
         , viewDotProduct model
         , viewLengths model
         , viewNormalization model
@@ -1069,39 +1112,101 @@ viewControlPanel model =
         ]
 
 
-viewVectorInputs : String -> Vec2 -> (String -> Msg) -> (String -> Msg) -> String -> Html Msg
-viewVectorInputs name vec onX onY color =
+viewVectorInputsGrid : Model -> Html Msg
+viewVectorInputsGrid model =
+    let
+        polarA =
+            toPolar model.a
+
+        polarB =
+            toPolar model.b
+
+        vectorRow name onC1 onC2 color =
+            Html.div
+                [ HA.style "display" "flex"
+                , HA.style "align-items" "center"
+                , HA.style "gap" "4px"
+                , HA.style "padding" "8px 10px"
+                , HA.style "border-left" ("3px solid " ++ color)
+                , HA.style "font-size" "18px"
+                ]
+                [ Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
+                    [ Tex.inline ("\\mathbf{" ++ name ++ "} = \\Big(") ]
+                , onC1
+                , Html.span [] [ Tex.inline "," ]
+                , onC2
+                , Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
+                    [ Tex.inline "\\Big)" ]
+                ]
+
+        fieldset legendTex contents =
+            Html.node "fieldset"
+                [ HA.style "border" "1px solid #ddd"
+                , HA.style "border-radius" "4px"
+                , HA.style "padding" "0"
+                , HA.style "margin" "0"
+                , HA.style "background" "#f8f8f8"
+                ]
+                (Html.node "legend"
+                    [ HA.style "font-size" "13px"
+                    , HA.style "color" "#888"
+                    , HA.style "padding" "0 6px"
+                    , HA.style "margin-left" "8px"
+                    ]
+                    [ Tex.inline legendTex ]
+                    :: contents
+                )
+
+        separator =
+            Html.div
+                [ HA.style "border-top" "1px solid #e0e0e0"
+                , HA.style "margin" "0 10px"
+                ]
+                []
+
+        degreeInput val onMsg =
+            Html.span [ HA.style "display" "flex", HA.style "align-items" "center", HA.style "gap" "2px" ]
+                [ compactInputWith "1" "70px" val onMsg
+                , Html.span [ HA.style "font-size" "14px", HA.style "color" "#888" ] [ Html.text "°" ]
+                ]
+
+        cartesianRow name vec onX onY color =
+            vectorRow name
+                (compactInput (roundToStr 2 vec.x) onX)
+                (compactInput (roundToStr 2 vec.y) onY)
+                color
+
+        polarRow name polar onRho onPhi color =
+            vectorRow name
+                (compactInputWith "0.1" "60px" (roundToStr 2 polar.rho) onRho)
+                (degreeInput (roundToStr 1 (radToDeg polar.phi)) onPhi)
+                color
+    in
     Html.div
-        [ HA.style "margin-bottom" "16px"
-        , HA.style "padding" "12px"
-        , HA.style "border-left" ("3px solid " ++ color)
-        , HA.style "background" "#f8f8f8"
-        , HA.style "border-radius" "4px"
+        [ HA.style "display" "flex"
+        , HA.style "gap" "12px"
+        , HA.style "margin-bottom" "16px"
         ]
-        [ Html.div
-            [ HA.style "display" "flex"
-            , HA.style "align-items" "center"
-            , HA.style "gap" "4px"
-            , HA.style "font-size" "18px"
+        [ fieldset "\\text{cartesian}\\;(x,\\, y)"
+            [ cartesianRow "a" model.a SetAx SetAy "#e74c3c"
+            , separator
+            , cartesianRow "b" model.b SetBx SetBy "#2980b9"
             ]
-            [ Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
-                [ Tex.inline ("\\mathbf{" ++ name ++ "} = \\Big(") ]
-            , compactInput (roundToStr 2 vec.x) onX
-            , Html.span [] [ Tex.inline "," ]
-            , compactInput (roundToStr 2 vec.y) onY
-            , Html.span [ HA.style "color" color, HA.style "font-weight" "bold" ]
-                [ Tex.inline "\\Big)" ]
+        , fieldset "\\text{polar}\\;(\\rho,\\, \\varphi)"
+            [ polarRow "a" polarA SetArho SetAphi "#e74c3c"
+            , separator
+            , polarRow "b" polarB SetBrho SetBphi "#2980b9"
             ]
         ]
 
 
-compactInput : String -> (String -> Msg) -> Html Msg
-compactInput val onMsg =
+compactInputWith : String -> String -> String -> (String -> Msg) -> Html Msg
+compactInputWith step width val onMsg =
     Html.input
         [ HA.type_ "number"
         , HA.value val
-        , HA.step "0.1"
-        , HA.style "width" "60px"
+        , HA.step step
+        , HA.style "width" width
         , HA.style "padding" "4px 6px"
         , HA.style "border" "1px solid #ccc"
         , HA.style "border-radius" "3px"
@@ -1110,6 +1215,11 @@ compactInput val onMsg =
         , E.onInput onMsg
         ]
         []
+
+
+compactInput : String -> (String -> Msg) -> Html Msg
+compactInput =
+    compactInputWith "0.1" "60px"
 
 
 viewDotProduct : Model -> Html Msg
@@ -1604,6 +1714,30 @@ normalize v =
 
     else
         { x = 0, y = 0 }
+
+
+toPolar : Vec2 -> { rho : Float, phi : Float }
+toPolar v =
+    { rho = vecLen v
+    , phi = atan2 v.y v.x
+    }
+
+
+fromPolar : Float -> Float -> Vec2
+fromPolar rho phi =
+    { x = rho * cos phi
+    , y = rho * sin phi
+    }
+
+
+radToDeg : Float -> Float
+radToDeg rad =
+    rad * 180 / pi
+
+
+degToRad : Float -> Float
+degToRad deg =
+    deg * pi / 180
 
 
 type alias ProjectionData =
