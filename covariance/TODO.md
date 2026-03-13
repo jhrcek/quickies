@@ -1,0 +1,6 @@
+- [ ] show how means are calculated
+- [ ] show the calculation steps of covariance in more step-by step manner that makes it easier to relate point coordinates to things within the equation
+- [ ] show how sigmas are calculated
+- [ ] show calculation steps of pearson correlation coefficient
+- [ ] add the ability to specify target covariance in advance and from it generate a random set of points, that have that variance
+- [ ] only render means guiding lines when means section is open

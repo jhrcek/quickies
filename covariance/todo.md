@@ -1,1 +1,0 @@
-- add the ability to specify target covariance in advance and from it generate a random set of points, that have that variance
