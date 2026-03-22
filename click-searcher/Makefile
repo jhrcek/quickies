@@ -1,6 +1,6 @@
 .PHONY: live
 live:
-	elm-live src/Main.elm --open --start-page=index.html -- --output=elm.js --debug
+	elm-live src/Main.elm --open --start-page=index.html -- --output=elm.min.js --debug
 
 .PHONY: check
 check:
