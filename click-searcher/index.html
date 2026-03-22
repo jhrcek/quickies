@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Click Searcher</title>
+</head>
+
+<body>
+  <div id="elm"></div>
+  <script src="elm.js"></script>
+  <script>
+    var app = Elm.Main.init({ node: document.getElementById("elm") });
+    document.addEventListener("mouseup", function (e) {
+      var readingText = document.getElementById("reading-text");
+      if (readingText && readingText.contains(e.target)) {
+        var selection = window.getSelection().toString();
+        app.ports.textSelected.send(selection);
+      }
+    });
+  </script>
+</body>
+
+</html>
