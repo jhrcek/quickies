@@ -1,6 +1,6 @@
 #!/usr/bin/env stack
 {- stack script
---resolver lts-22.43
+--resolver lts-22.44
 --package brick
 --package vty
 --package vty-crossplatform
