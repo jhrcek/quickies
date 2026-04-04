@@ -106,6 +106,7 @@ type alias Model =
     , drag : Maybe DragState
     , svgOffset : { x : Float, y : Float }
     , transition : Maybe Transition
+    , simulationPaused : Bool
     }
 
 
@@ -193,6 +194,7 @@ type Msg
     | MouseUp ( Float, Float )
     | RandomizeFunctions
     | GotSvgElement (Result Browser.Dom.Error Browser.Dom.Element)
+    | ToggleSimulationPaused Bool
 
 
 
@@ -223,6 +225,7 @@ init () =
       , drag = Nothing
       , svgOffset = { x = 0, y = 0 }
       , transition = Nothing
+      , simulationPaused = False
       }
     , Cmd.batch
         [ Random.generate GotRandomFunctions (randomFunctionPair sizeA sizeB1 sizeB2)
@@ -310,36 +313,206 @@ mergeClasses ( a, b ) classes =
 -- ENTITY + FORCE
 
 
+
+{-| Compute orderings for A, B1, B2 sorted by equivalence class.
+Each diagonal goes from outer corner → center. Larger equivalence classes are placed
+near the outer corners. Ties broken by lexicographic order of sorted class members.
+Within each class, elements are sorted alphabetically by label.
+-}
+computeEquivClassOrderings : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> { aOrder : List Int, b1Order : List Int, b2Order : List Int }
+computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses =
+    let
+        -- Sort each class's members and compute class sort key:
+        -- (negate size for descending, then lexicographic sorted members)
+        sortedClasses : List (List String)
+        sortedClasses =
+            equivClasses
+                |> List.map List.sort
+                |> List.sortWith
+                    (\a b ->
+                        -- Larger classes first (descending by size)
+                        case compare (List.length b) (List.length a) of
+                            EQ ->
+                                -- Tie-break: lexicographic order of sorted members
+                                compare a b
+
+                            ord ->
+                                ord
+                    )
+
+        -- Map each member id to its class's rank in the sorted order
+        classRank : Dict String Int
+        classRank =
+            sortedClasses
+                |> List.indexedMap
+                    (\ci cls ->
+                        List.map (\memberId -> ( memberId, ci )) cls
+                    )
+                |> List.concat
+                |> Dict.fromList
+
+        -- For a B1 node j, find the rank of the equiv class containing pb1_j
+        b1ClassRank : Int -> Int
+        b1ClassRank j =
+            Dict.get ("pb1_" ++ String.fromInt j) classRank |> Maybe.withDefault 9999
+
+        -- For a B2 node k, find the rank of the equiv class containing pb2_k
+        b2ClassRank : Int -> Int
+        b2ClassRank k =
+            Dict.get ("pb2_" ++ String.fromInt k) classRank |> Maybe.withDefault 9999
+
+        -- Compute A ordering first, then derive B1/B2 from it
+        aOrder =
+            List.range 0 (sizeA - 1)
+                |> List.sortBy
+                    (\i ->
+                        let
+                            fi =
+                                List.head (List.drop i funcF) |> Maybe.withDefault 0
+
+                            gi =
+                                List.head (List.drop i funcG) |> Maybe.withDefault 0
+                        in
+                        ( b1ClassRank fi, b2ClassRank gi, i )
+                    )
+
+        -- Build a rank map for A: original index → rank in aOrder
+        aRankOf : Dict Int Int
+        aRankOf =
+            aOrder
+                |> List.indexedMap (\rank origIdx -> ( origIdx, rank ))
+                |> Dict.fromList
+
+        -- For each B1 node j, its sort key is the minimum A-rank among all A nodes
+        -- that map to j via funcF. This makes B1 follow the A ordering.
+        b1MinARank : Int -> Int
+        b1MinARank j =
+            funcF
+                |> List.indexedMap Tuple.pair
+                |> List.filterMap
+                    (\( ai, fi ) ->
+                        if fi == j then
+                            Dict.get ai aRankOf
+
+                        else
+                            Nothing
+                    )
+                |> List.minimum
+                |> Maybe.withDefault 9999
+
+        b1Order =
+            List.range 0 (sizeB1 - 1)
+                |> List.sortBy (\j -> ( b1MinARank j, j ))
+
+        -- Same for B2: sort by minimum A-rank of preimage under funcG
+        b2MinARank : Int -> Int
+        b2MinARank k =
+            funcG
+                |> List.indexedMap Tuple.pair
+                |> List.filterMap
+                    (\( ai, gi ) ->
+                        if gi == k then
+                            Dict.get ai aRankOf
+
+                        else
+                            Nothing
+                    )
+                |> List.minimum
+                |> Maybe.withDefault 9999
+
+        b2Order =
+            List.range 0 (sizeB2 - 1)
+                |> List.sortBy (\k -> ( b2MinARank k, k ))
+    in
+    { aOrder = aOrder, b1Order = b1Order, b2Order = b2Order }
+
+
+{-| Compute structured positions for A, B1, B2 nodes based on equivalence class orderings.
+A nodes along top-left → bottom-right diagonal.
+B1 nodes along bottom-left → top-right diagonal (anti-diagonal).
+B2 nodes along bottom-left → top-right diagonal (anti-diagonal).
+-}
+computeStructuredPositions : { aOrder : List Int, b1Order : List Int, b2Order : List Int } -> Int -> Int -> Int -> Dict String { x : Float, y : Float }
+computeStructuredPositions orderings sizeA sizeB1 sizeB2 =
+    let
+        paramT size rank =
+            if size <= 1 then
+                0.5
+
+            else
+                (toFloat rank + 0.5) / toFloat size
+
+        -- A nodes along top-left → bottom-right diagonal within A quadrant
+        aPositions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeA rank
+                    in
+                    ( "a_" ++ String.fromInt origIdx
+                    , { x = 50 + t * 300, y = 40 + t * 220 }
+                    )
+                )
+                orderings.aOrder
+
+        -- B1 nodes along top-right (outer) → bottom-left (center) anti-diagonal
+        b1Positions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeB1 rank
+                    in
+                    ( "b1_" ++ String.fromInt origIdx
+                    , { x = 770 - t * 340, y = 40 + t * 220 }
+                    )
+                )
+                orderings.b1Order
+
+        -- B2 nodes along bottom-left → top-right diagonal within B2 quadrant
+        b2Positions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeB2 rank
+                    in
+                    ( "b2_" ++ String.fromInt origIdx
+                    , { x = 50 + t * 300, y = 570 - t * 220 }
+                    )
+                )
+                orderings.b2Order
+    in
+    Dict.fromList (aPositions ++ b1Positions ++ b2Positions)
+
+
 makeEntity : String -> Float -> Float -> EntityGroup -> String -> ForceEntity
 makeEntity id x y group label =
     { x = x, y = y, vx = 0, vy = 0, id = id, value = { group = group, label = label } }
 
 
-buildEntities : Int -> Int -> Int -> List (List String) -> ViewMode -> List ForceEntity
-buildEntities sizeA sizeB1 sizeB2 equivClasses viewMode =
+buildEntities : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> ViewMode -> List ForceEntity
+buildEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode =
     let
-        spreadRadius =
-            50
+        orderings =
+            computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses
 
-        spiralPos center i total =
-            let
-                angle =
-                    toFloat i * 2.3998632
+        structuredPos =
+            computeStructuredPositions orderings sizeA sizeB1 sizeB2
 
-                -- golden angle
-                r =
-                    spreadRadius * sqrt (toFloat (i + 1) / toFloat (max total 1))
-            in
-            ( center.x + r * cos angle, center.y + r * sin angle )
+        lookupPos prefix i default =
+            Dict.get (prefix ++ String.fromInt i) structuredPos
+                |> Maybe.withDefault default
 
         aEntities =
             List.map
                 (\i ->
                     let
-                        ( x, y ) =
-                            spiralPos quadA i sizeA
+                        pos =
+                            lookupPos "a_" i quadA
                     in
-                    makeEntity ("a_" ++ String.fromInt i) x y GroupA (String.fromInt (i + 1))
+                    makeEntity ("a_" ++ String.fromInt i) pos.x pos.y GroupA (String.fromInt (i + 1))
                 )
                 (List.range 0 (sizeA - 1))
 
@@ -347,10 +520,10 @@ buildEntities sizeA sizeB1 sizeB2 equivClasses viewMode =
             List.map
                 (\j ->
                     let
-                        ( x, y ) =
-                            spiralPos quadB1 j sizeB1
+                        pos =
+                            lookupPos "b1_" j quadB1
                     in
-                    makeEntity ("b1_" ++ String.fromInt j) x y GroupB1 (lowercaseLetter j)
+                    makeEntity ("b1_" ++ String.fromInt j) pos.x pos.y GroupB1 (lowercaseLetter j)
                 )
                 (List.range 0 (sizeB1 - 1))
 
@@ -358,10 +531,10 @@ buildEntities sizeA sizeB1 sizeB2 equivClasses viewMode =
             List.map
                 (\k ->
                     let
-                        ( x, y ) =
-                            spiralPos quadB2 k sizeB2
+                        pos =
+                            lookupPos "b2_" k quadB2
                     in
-                    makeEntity ("b2_" ++ String.fromInt k) x y GroupB2 (uppercaseLetter k)
+                    makeEntity ("b2_" ++ String.fromInt k) pos.x pos.y GroupB2 (uppercaseLetter k)
                 )
                 (List.range 0 (sizeB2 - 1))
 
@@ -422,54 +595,101 @@ computeBlobCenters viewMode classes =
         n =
             List.length classes
 
-        center =
-            case viewMode of
-                FourQuadrant ->
-                    quadP
+        -- Sort classes same as computeEquivClassOrderings: descending size, then lex
+        sortedClasses =
+            classes
+                |> List.map (\cls -> ( List.sort cls, cls ))
+                |> List.sortWith
+                    (\( sa, _ ) ( sb, _ ) ->
+                        case compare (List.length sb) (List.length sa) of
+                            EQ ->
+                                compare sa sb
 
-                ZoomedPushout ->
+                            ord ->
+                                ord
+                    )
+                |> List.map Tuple.second
+    in
+    case viewMode of
+        FourQuadrant ->
+            -- Arrange blobs along bottom-right (outer) → top-left (center) diagonal
+            sortedClasses
+                |> List.indexedMap
+                    (\i cls ->
+                        let
+                            t =
+                                if n <= 1 then
+                                    0.5
+
+                                else
+                                    (toFloat i + 0.5) / toFloat n
+
+                            cx =
+                                770 - t * 340
+
+                            cy =
+                                560 - t * 220
+                        in
+                        ( blobKey cls, { x = cx, y = cy } )
+                    )
+                |> Dict.fromList
+
+        ZoomedPushout ->
+            let
+                center =
                     { x = canvasW / 2, y = canvasH / 2 }
 
-        radius =
-            case viewMode of
-                FourQuadrant ->
-                    min 120 (40 * sqrt (toFloat (max n 1)))
-
-                ZoomedPushout ->
+                radius =
                     min 220 (60 * sqrt (toFloat (max n 1)))
-    in
-    classes
-        |> List.indexedMap
-            (\i cls ->
-                let
-                    angle =
-                        if n <= 1 then
-                            0
+            in
+            classes
+                |> List.indexedMap
+                    (\i cls ->
+                        let
+                            angle =
+                                if n <= 1 then
+                                    0
 
-                        else
-                            toFloat i * 2 * pi / toFloat n
+                                else
+                                    toFloat i * 2 * pi / toFloat n
 
-                    r =
-                        if n <= 1 then
-                            0
+                            r =
+                                if n <= 1 then
+                                    0
 
-                        else
-                            radius
+                                else
+                                    radius
 
-                    cx =
-                        center.x + r * cos angle
+                            cx =
+                                center.x + r * cos angle
 
-                    cy =
-                        center.y + r * sin angle
-                in
-                ( blobKey cls, { x = cx, y = cy } )
-            )
-        |> Dict.fromList
+                            cy =
+                                center.y + r * sin angle
+                        in
+                        ( blobKey cls, { x = cx, y = cy } )
+                    )
+                |> Dict.fromList
 
 
 buildForces : ViewMode -> List Int -> List Int -> List (List String) -> List ForceEntity -> List (Force.Force String)
 buildForces viewMode funcF funcG equivClasses entities =
     let
+        sizeA =
+            List.length (List.filter (\e -> e.value.group == GroupA) entities)
+
+        sizeB1 =
+            List.length (List.filter (\e -> e.value.group == GroupB1) entities)
+
+        sizeB2 =
+            List.length (List.filter (\e -> e.value.group == GroupB2) entities)
+
+        structuredPos =
+            computeStructuredPositions
+                (computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses)
+                sizeA
+                sizeB1
+                sizeB2
+
         allIds =
             List.map .id entities
 
@@ -541,14 +761,22 @@ buildForces viewMode funcF funcG equivClasses entities =
         posStrength =
             case viewMode of
                 FourQuadrant ->
-                    0.04
+                    0.3
 
                 ZoomedPushout ->
                     0.03
 
+        manyBodyStr =
+            case viewMode of
+                FourQuadrant ->
+                    -10
+
+                ZoomedPushout ->
+                    -40
+
         -- Per-entity position targets
         posTargets =
-            List.filterMap (entityPosTarget viewMode funcF funcG equivClasses blobCenters posStrength) entities
+            List.filterMap (entityPosTarget viewMode funcF funcG equivClasses blobCenters structuredPos posStrength) entities
 
         xTargets =
             List.map (\{ node, strength, target } -> { node = node, strength = strength, target = target.x }) posTargets
@@ -559,19 +787,22 @@ buildForces viewMode funcF funcG equivClasses entities =
     [ Force.towardsX xTargets
     , Force.towardsY yTargets
     , Force.collision 20 allIds
-    , Force.manyBodyStrength -40 allIds
+    , Force.manyBodyStrength manyBodyStr allIds
     ]
         ++ linkForce
 
 
-entityPosTarget : ViewMode -> List Int -> List Int -> List (List String) -> Dict String { x : Float, y : Float } -> Float -> ForceEntity -> Maybe { node : String, strength : Float, target : { x : Float, y : Float } }
-entityPosTarget viewMode funcF funcG equivClasses blobCenters strength ent =
+entityPosTarget : ViewMode -> List Int -> List Int -> List (List String) -> Dict String { x : Float, y : Float } -> Dict String { x : Float, y : Float } -> Float -> ForceEntity -> Maybe { node : String, strength : Float, target : { x : Float, y : Float } }
+entityPosTarget viewMode funcF funcG equivClasses blobCenters structuredPos strength ent =
     let
         id =
             ent.id
 
         simple target =
             Just { node = id, strength = strength, target = target }
+
+        structuredTarget default =
+            simple (Dict.get id structuredPos |> Maybe.withDefault default)
 
         pbPos =
             pbTarget blobCenters equivClasses id
@@ -580,13 +811,13 @@ entityPosTarget viewMode funcF funcG equivClasses blobCenters strength ent =
         FourQuadrant ->
             case ent.value.group of
                 GroupA ->
-                    simple quadA
+                    structuredTarget quadA
 
                 GroupB1 ->
-                    simple quadB1
+                    structuredTarget quadB1
 
                 GroupB2 ->
-                    simple quadB2
+                    structuredTarget quadB2
 
                 GroupPB1 ->
                     simple pbPos
@@ -658,7 +889,7 @@ rebuildSimulation viewMode model =
             computeEquivClasses model.sizeB1 model.sizeB2 model.funcF model.funcG
 
         entities =
-            ensureEntities model.sizeA model.sizeB1 model.sizeB2 equivClasses viewMode model.entities
+            ensureEntities model.sizeA model.sizeB1 model.sizeB2 model.funcF model.funcG equivClasses viewMode model.entities
 
         forces =
             buildForces viewMode model.funcF model.funcG equivClasses entities
@@ -679,7 +910,7 @@ transitionToView viewMode model =
 
         -- Build forces for the new view but keep current entity positions
         newEntities =
-            ensureEntities model.sizeA model.sizeB1 model.sizeB2 equivClasses viewMode model.entities
+            ensureEntities model.sizeA model.sizeB1 model.sizeB2 model.funcF model.funcG equivClasses viewMode model.entities
 
         forces =
             buildForces viewMode model.funcF model.funcG equivClasses newEntities
@@ -782,14 +1013,14 @@ runSimulationToCompletion state entities =
 {-| Ensure all needed entities exist, preserving positions of existing ones.
 New entities get default positions.
 -}
-ensureEntities : Int -> Int -> Int -> List (List String) -> ViewMode -> List ForceEntity -> List ForceEntity
-ensureEntities sizeA sizeB1 sizeB2 equivClasses viewMode oldEntities =
+ensureEntities : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> ViewMode -> List ForceEntity -> List ForceEntity
+ensureEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode oldEntities =
     let
         oldDict =
             List.foldl (\e d -> Dict.insert e.id e d) Dict.empty oldEntities
 
         freshEntities =
-            buildEntities sizeA sizeB1 sizeB2 equivClasses viewMode
+            buildEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode
     in
     List.map
         (\fresh ->
@@ -880,7 +1111,7 @@ update msg model =
                         )
 
                 Nothing ->
-                    if Force.isCompleted model.forceState then
+                    if model.simulationPaused || Force.isCompleted model.forceState then
                         ( model, Cmd.none )
 
                     else
@@ -1073,6 +1304,8 @@ update msg model =
                 Err _ ->
                     ( model, Cmd.none )
 
+        ToggleSimulationPaused paused ->
+            ( { model | simulationPaused = paused }, Cmd.none )
 
 
 updateMapping : WhichFunc -> Int -> Int -> Model -> Model
@@ -1108,7 +1341,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     let
         animSub =
-            if model.transition /= Nothing || not (Force.isCompleted model.forceState) then
+            if model.transition /= Nothing || (not model.simulationPaused && not (Force.isCompleted model.forceState)) then
                 Browser.Events.onAnimationFrameDelta Tick
 
             else
@@ -1200,6 +1433,13 @@ viewControls model =
                 )
             ]
             [ Html.text "Randomize f,g" ]
+        , Html.div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "gap" "6px" ]
+            [ Html.span [ Attr.style "font-size" "12px" ] [ Html.text "Auto layout" ]
+            , Html.div [ Attr.style "display" "flex" ]
+                [ viewOnOffButton "Enabled" False model.simulationPaused "4px 0 0 4px"
+                , viewOnOffButton "Disabled" True model.simulationPaused "0 4px 4px 0"
+                ]
+            ]
         ]
 
 
@@ -1257,6 +1497,38 @@ viewToggleButton label targetView currentView transitioning borderRadius =
              else
                 "1"
             )
+        ]
+        [ Html.text label ]
+
+
+viewOnOffButton : String -> Bool -> Bool -> String -> Html Msg
+viewOnOffButton label targetPaused currentPaused borderRadius =
+    let
+        isActive =
+            targetPaused == currentPaused
+    in
+    Html.button
+        [ Html.Events.onClick (ToggleSimulationPaused targetPaused)
+        , Attr.style "padding" "5px 12px"
+        , Attr.style "font-family" "monospace"
+        , Attr.style "font-size" "12px"
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background"
+            (if isActive then
+                "#ddeeff"
+
+             else
+                "#fff"
+            )
+        , Attr.style "border"
+            (if isActive then
+                "2px solid #4488cc"
+
+             else
+                "1px solid #ccc"
+            )
+        , Attr.style "border-radius" borderRadius
+        , Attr.style "margin-left" "-1px"
         ]
         [ Html.text label ]
 
@@ -1770,11 +2042,6 @@ viewLegend model =
         , legendItem colorPB1 "B1 in P"
         , legendItem colorPB2 "B2 in P"
         , Html.span [] [ Html.text "| Drag arrowheads to edit f,g" ]
-        , if not (Force.isCompleted model.forceState) then
-            Html.span [ Attr.style "color" "#ff8800" ] [ Html.text "| simulating..." ]
-
-          else
-            Html.text ""
         ]
 
 
