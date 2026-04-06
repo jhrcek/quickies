@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import Array
 import Browser
 import Browser.Dom
 import Browser.Events
@@ -107,6 +108,7 @@ type alias Model =
     , svgOffset : { x : Float, y : Float }
     , transition : Maybe Transition
     , simulationPaused : Bool
+    , colorMode : ColorMode
     }
 
 
@@ -163,6 +165,11 @@ type ViewMode
     | ZoomedPushout
 
 
+type ColorMode
+    = ColorBySet
+    | ColorByEquivClass
+
+
 type DragState
     = DraggingArrow { func : WhichFunc, aIndex : Int, mousePos : ( Float, Float ) }
     | DraggingNode { entityId : String, offset : ( Float, Float ) }
@@ -195,6 +202,7 @@ type Msg
     | RandomizeFunctions
     | GotSvgElement (Result Browser.Dom.Error Browser.Dom.Element)
     | ToggleSimulationPaused Bool
+    | SetColorMode ColorMode
 
 
 
@@ -226,6 +234,7 @@ init () =
       , svgOffset = { x = 0, y = 0 }
       , transition = Nothing
       , simulationPaused = False
+      , colorMode = ColorBySet
       }
     , Cmd.batch
         [ Random.generate GotRandomFunctions (randomFunctionPair sizeA sizeB1 sizeB2)
@@ -311,7 +320,6 @@ mergeClasses ( a, b ) classes =
 
 
 -- ENTITY + FORCE
-
 
 
 {-| Compute orderings for A, B1, B2 sorted by equivalence class.
@@ -1307,6 +1315,9 @@ update msg model =
         ToggleSimulationPaused paused ->
             ( { model | simulationPaused = paused }, Cmd.none )
 
+        SetColorMode mode ->
+            ( { model | colorMode = mode }, Cmd.none )
+
 
 updateMapping : WhichFunc -> Int -> Int -> Model -> Model
 updateMapping func aIndex targetIdx model =
@@ -1384,7 +1395,7 @@ view model =
         [ Html.h2 [ Attr.style "margin" "0 0 10px" ] [ Html.text "Pushout Construction: B1 <- A -> B2" ]
         , viewControls model
         , viewCanvas model
-        , viewLegend model
+        , viewLegend
         ]
 
 
@@ -1438,6 +1449,13 @@ viewControls model =
             , Html.div [ Attr.style "display" "flex" ]
                 [ viewOnOffButton "Enabled" False model.simulationPaused "4px 0 0 4px"
                 , viewOnOffButton "Disabled" True model.simulationPaused "0 4px 4px 0"
+                ]
+            ]
+        , Html.div [ Attr.style "display" "flex", Attr.style "align-items" "center", Attr.style "gap" "6px" ]
+            [ Html.span [ Attr.style "font-size" "12px" ] [ Html.text "Color by" ]
+            , Html.div [ Attr.style "display" "flex" ]
+                [ viewColorModeButton "Set" ColorBySet model.colorMode "4px 0 0 4px"
+                , viewColorModeButton "Equiv class" ColorByEquivClass model.colorMode "0 4px 4px 0"
                 ]
             ]
         ]
@@ -1509,6 +1527,38 @@ viewOnOffButton label targetPaused currentPaused borderRadius =
     in
     Html.button
         [ Html.Events.onClick (ToggleSimulationPaused targetPaused)
+        , Attr.style "padding" "5px 12px"
+        , Attr.style "font-family" "monospace"
+        , Attr.style "font-size" "12px"
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background"
+            (if isActive then
+                "#ddeeff"
+
+             else
+                "#fff"
+            )
+        , Attr.style "border"
+            (if isActive then
+                "2px solid #4488cc"
+
+             else
+                "1px solid #ccc"
+            )
+        , Attr.style "border-radius" borderRadius
+        , Attr.style "margin-left" "-1px"
+        ]
+        [ Html.text label ]
+
+
+viewColorModeButton : String -> ColorMode -> ColorMode -> String -> Html Msg
+viewColorModeButton label targetMode currentMode borderRadius =
+    let
+        isActive =
+            targetMode == currentMode
+    in
+    Html.button
+        [ Html.Events.onClick (SetColorMode targetMode)
         , Attr.style "padding" "5px 12px"
         , Attr.style "font-family" "monospace"
         , Attr.style "font-size" "12px"
@@ -1952,14 +2002,27 @@ viewEntitiesLayer model =
                     )
                     model.entities
     in
-    List.map viewEntity visible
+    let
+        colorFn =
+            case model.colorMode of
+                ColorBySet ->
+                    \e -> groupColor e.value.group
+
+                ColorByEquivClass ->
+                    let
+                        colorMap =
+                            equivClassColorMap model.funcF model.equivClasses
+                    in
+                    \e -> Dict.get e.id colorMap |> Maybe.withDefault (groupColor e.value.group)
+    in
+    List.map (viewEntity colorFn) visible
 
 
-viewEntity : ForceEntity -> Svg Msg
-viewEntity ent =
+viewEntity : (ForceEntity -> String) -> ForceEntity -> Svg Msg
+viewEntity colorFn ent =
     let
         color =
-            groupColor ent.value.group
+            colorFn ent
 
         r =
             case ent.value.group of
@@ -2022,12 +2085,125 @@ groupColor group =
             colorPB2
 
 
+equivClassPalette : Array.Array String
+equivClassPalette =
+    Array.fromList
+        [ "#e6194b"
+        , "#3cb44b"
+        , "#4363d8"
+        , "#f58231"
+        , "#911eb4"
+        , "#42d4f4"
+        , "#f032e6"
+        , "#bfef45"
+        , "#fabed4"
+        , "#469990"
+        , "#dcbeff"
+        , "#9A6324"
+        , "#800000"
+        , "#aaffc3"
+        , "#808000"
+        , "#000075"
+        , "#a9a9a9"
+        , "#e6beff"
+        , "#fffac8"
+        , "#ffd8b1"
+        ]
+
+
+equivClassColorMap : List Int -> List (List String) -> Dict String String
+equivClassColorMap funcF equivClasses =
+    let
+        paletteSize =
+            Array.length equivClassPalette
+
+        classColor classIndex =
+            Array.get (modBy paletteSize classIndex) equivClassPalette
+                |> Maybe.withDefault "#888"
+
+        -- Map each pb entity to its class index
+        pbColors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.map (\memberId -> ( memberId, classColor classIndex )) cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map b1_j -> same color as pb1_j
+        b1Colors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.filterMap
+                        (\memberId ->
+                            if String.startsWith "pb1_" memberId then
+                                let
+                                    suffix =
+                                        String.dropLeft 4 memberId
+                                in
+                                Just ( "b1_" ++ suffix, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map b2_k -> same color as pb2_k
+        b2Colors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.filterMap
+                        (\memberId ->
+                            if String.startsWith "pb2_" memberId then
+                                let
+                                    suffix =
+                                        String.dropLeft 4 memberId
+                                in
+                                Just ( "b2_" ++ suffix, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map a_i -> class of pb1_{f(i)}
+        aColors =
+            List.indexedMap
+                (\i fi ->
+                    let
+                        pb1Id =
+                            "pb1_" ++ String.fromInt fi
+                    in
+                    List.indexedMap
+                        (\classIndex cls ->
+                            if List.member pb1Id cls then
+                                Just ( "a_" ++ String.fromInt i, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        equivClasses
+                        |> List.filterMap identity
+                        |> List.head
+                )
+                funcF
+                |> List.filterMap identity
+    in
+    Dict.fromList (pbColors ++ b1Colors ++ b2Colors ++ aColors)
+
+
 
 -- LEGEND
 
 
-viewLegend : Model -> Html Msg
-viewLegend model =
+viewLegend : Html Msg
+viewLegend =
     Html.div
         [ Attr.style "margin-top" "8px"
         , Attr.style "font-size" "12px"
