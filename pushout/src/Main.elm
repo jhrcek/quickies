@@ -1,0 +1,2445 @@
+module Main exposing (..)
+
+import Array
+import Browser
+import Browser.Dom
+import Browser.Events
+import Dict exposing (Dict)
+import Force
+import Html exposing (Html)
+import Html.Attributes as Attr
+import Html.Events
+import Json.Decode as Decode
+import Random
+import Svg exposing (Svg)
+import Svg.Attributes as SA
+import Svg.Events
+import Task
+
+
+
+-- MAIN
+
+
+main : Program () Model Msg
+main =
+    Browser.element
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        , view = view
+        }
+
+
+
+-- CONSTANTS
+
+
+canvasW : Float
+canvasW =
+    800
+
+
+canvasH : Float
+canvasH =
+    600
+
+
+quadA : { x : Float, y : Float }
+quadA =
+    { x = 200, y = 150 }
+
+
+quadB1 : { x : Float, y : Float }
+quadB1 =
+    { x = 600, y = 150 }
+
+
+quadB2 : { x : Float, y : Float }
+quadB2 =
+    { x = 200, y = 450 }
+
+
+quadP : { x : Float, y : Float }
+quadP =
+    { x = 600, y = 450 }
+
+
+colorA : String
+colorA =
+    "#44aa44"
+
+
+colorB1 : String
+colorB1 =
+    "#4488cc"
+
+
+colorB2 : String
+colorB2 =
+    "#cc4444"
+
+
+colorPB1 : String
+colorPB1 =
+    "#7ab8f0"
+
+
+colorPB2 : String
+colorPB2 =
+    "#e88888"
+
+
+{-| Convert client (mouse) coordinates to SVG viewBox coordinates,
+accounting for the SVG element's position, uniform scaling, and
+letterboxing from preserveAspectRatio (default xMidYMid meet).
+-}
+clientToSvg : { a | svgOffset : { x : Float, y : Float, width : Float, height : Float } } -> ( Float, Float ) -> ( Float, Float )
+clientToSvg model ( cx, cy ) =
+    let
+        -- The SVG uses uniform scaling (preserveAspectRatio meet),
+        -- so the scale factor is determined by the tighter dimension.
+        scaleX =
+            model.svgOffset.width / canvasW
+
+        scaleY =
+            model.svgOffset.height / canvasH
+
+        scale =
+            min scaleX scaleY
+
+        -- The rendered content size in client pixels
+        renderedW =
+            canvasW * scale
+
+        renderedH =
+            canvasH * scale
+
+        -- Letterboxing offsets (content is centered within the SVG element)
+        padX =
+            (model.svgOffset.width - renderedW) / 2
+
+        padY =
+            (model.svgOffset.height - renderedH) / 2
+    in
+    ( (cx - model.svgOffset.x - padX) / scale
+    , (cy - model.svgOffset.y - padY) / scale
+    )
+
+
+
+-- MODEL
+
+
+{-| Maps node IDs to their SVG coordinates.
+-}
+type alias NodePositions =
+    Dict String { x : Float, y : Float }
+
+
+type alias Model =
+    { sizeA : Int
+    , sizeB1 : Int
+    , sizeB2 : Int
+    , funcF : List Int
+    , funcG : List Int
+    , equivClasses : List (List String)
+    , entities : List ForceEntity
+    , forceState : Force.State String
+    , currentView : ViewMode
+    , drag : Maybe DragState
+    , svgOffset : { x : Float, y : Float, width : Float, height : Float }
+    , transition : Maybe Transition
+    , simulationPaused : Bool
+    , colorMode : ColorMode
+    }
+
+
+type alias Transition =
+    { startPositions : NodePositions
+    , targetPositions : NodePositions
+    , progress : Float -- 0.0 to 1.0
+    , phase : TransitionPhase
+    }
+
+
+{-| During a merge phase, B1/B2 are visible and FQ-style arrows are shown.
+During a rearrange phase, B1/B2 are hidden and ZP-style arrows are shown.
+-}
+type TransitionPhase
+    = MergePhase { nextTargets : NodePositions }
+    | RearrangePhase { nextTargets : NodePositions }
+    | FinalPhase
+
+
+phaseNextTargets : TransitionPhase -> Maybe NodePositions
+phaseNextTargets phase =
+    case phase of
+        MergePhase { nextTargets } ->
+            Just nextTargets
+
+        RearrangePhase { nextTargets } ->
+            Just nextTargets
+
+        FinalPhase ->
+            Nothing
+
+
+type alias ForceEntity =
+    Force.Entity String { value : EntityData }
+
+
+type alias EntityData =
+    { group : EntityGroup
+    , label : String
+    }
+
+
+type EntityGroup
+    = GroupA
+    | GroupB1
+    | GroupB2
+    | GroupPB1
+    | GroupPB2
+
+
+type ViewMode
+    = FourQuadrant
+    | ZoomedPushout
+
+
+type ColorMode
+    = ColorBySet
+    | ColorByEquivClass
+
+
+type DragState
+    = DraggingArrow { func : WhichFunc, aIndex : Int, mousePos : ( Float, Float ) }
+    | DraggingNode { entityId : String, offset : ( Float, Float ) }
+
+
+type WhichFunc
+    = FuncF
+    | FuncG
+
+
+type WhichSet
+    = SetA
+    | SetB1
+    | SetB2
+
+
+
+-- MSG
+
+
+type Msg
+    = Tick Float
+    | SetSize WhichSet String
+    | GotRandomFunctions ( List Int, List Int )
+    | SwitchView ViewMode
+    | ArrowDragStart WhichFunc Int ( Float, Float )
+    | NodeDragStart String ( Float, Float )
+    | MouseMove ( Float, Float )
+    | MouseUp ( Float, Float )
+    | RandomizeFunctions
+    | GotSvgElement (Result Browser.Dom.Error Browser.Dom.Element)
+    | ToggleSimulationPaused Bool
+    | SetColorMode ColorMode
+    | WindowResized
+
+
+
+-- INIT
+
+
+init : () -> ( Model, Cmd Msg )
+init () =
+    let
+        sizeA =
+            3
+
+        sizeB1 =
+            4
+
+        sizeB2 =
+            4
+    in
+    ( { sizeA = sizeA
+      , sizeB1 = sizeB1
+      , sizeB2 = sizeB2
+      , funcF = []
+      , funcG = []
+      , equivClasses = []
+      , entities = []
+      , forceState = Force.simulation []
+      , currentView = FourQuadrant
+      , drag = Nothing
+      , svgOffset = { x = 0, y = 0, width = canvasW, height = canvasH }
+      , transition = Nothing
+      , simulationPaused = False
+      , colorMode = ColorBySet
+      }
+    , Cmd.batch
+        [ Random.generate GotRandomFunctions (randomFunctionPair sizeA sizeB1 sizeB2)
+        , Browser.Dom.getElement svgId |> Task.attempt GotSvgElement
+        ]
+    )
+
+
+
+-- RANDOM
+
+
+randomFunctionPair : Int -> Int -> Int -> Random.Generator ( List Int, List Int )
+randomFunctionPair sizeA sizeB1 sizeB2 =
+    Random.map2 Tuple.pair
+        (if sizeB1 > 0 && sizeA > 0 then
+            Random.list sizeA (Random.int 0 (sizeB1 - 1))
+
+         else
+            Random.constant []
+        )
+        (if sizeB2 > 0 && sizeA > 0 then
+            Random.list sizeA (Random.int 0 (sizeB2 - 1))
+
+         else
+            Random.constant []
+        )
+
+
+
+-- PUSHOUT
+
+
+computeEquivClasses : Int -> Int -> List Int -> List Int -> List (List String)
+computeEquivClasses sizeB1 sizeB2 funcF funcG =
+    let
+        -- Start with singleton classes for each pb1_j and pb2_k
+        initial =
+            List.map (\j -> [ "pb1_" ++ String.fromInt j ]) (List.range 0 (sizeB1 - 1))
+                ++ List.map (\k -> [ "pb2_" ++ String.fromInt k ]) (List.range 0 (sizeB2 - 1))
+
+        -- For each a_i, merge class of pb1_{f(i)} with class of pb2_{g(i)}
+        identifications =
+            List.map2
+                (\fi gi ->
+                    ( "pb1_" ++ String.fromInt fi
+                    , "pb2_" ++ String.fromInt gi
+                    )
+                )
+                funcF
+                funcG
+    in
+    List.foldl mergeClasses initial identifications
+
+
+mergeClasses : ( String, String ) -> List (List String) -> List (List String)
+mergeClasses ( a, b ) classes =
+    let
+        classOfA =
+            List.filter (List.member a) classes |> List.head
+
+        classOfB =
+            List.filter (List.member b) classes |> List.head
+    in
+    case ( classOfA, classOfB ) of
+        ( Just cA, Just cB ) ->
+            if cA == cB then
+                classes
+
+            else
+                let
+                    merged =
+                        cA ++ cB
+
+                    remaining =
+                        List.filter (\c -> c /= cA && c /= cB) classes
+                in
+                merged :: remaining
+
+        _ ->
+            classes
+
+
+
+-- ENTITY + FORCE
+
+
+{-| Compute orderings for A, B1, B2 sorted by equivalence class.
+Each diagonal goes from outer corner → center. Larger equivalence classes are placed
+near the outer corners. Ties broken by lexicographic order of sorted class members.
+Within each class, elements are sorted alphabetically by label.
+-}
+computeEquivClassOrderings : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> { aOrder : List Int, b1Order : List Int, b2Order : List Int }
+computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses =
+    let
+        -- Phase 1: Equivalence class ranking (unchanged)
+        sortedClasses : List (List String)
+        sortedClasses =
+            equivClasses
+                |> List.map List.sort
+                |> List.sortWith
+                    (\a b ->
+                        case compare (List.length b) (List.length a) of
+                            EQ ->
+                                compare a b
+
+                            ord ->
+                                ord
+                    )
+
+        classRank : Dict String Int
+        classRank =
+            sortedClasses
+                |> List.indexedMap
+                    (\ci cls ->
+                        List.map (\memberId -> ( memberId, ci )) cls
+                    )
+                |> List.concat
+                |> Dict.fromList
+
+        b1ClassRank : Int -> Int
+        b1ClassRank j =
+            Dict.get ("pb1_" ++ String.fromInt j) classRank |> Maybe.withDefault 9999
+
+        b2ClassRank : Int -> Int
+        b2ClassRank k =
+            Dict.get ("pb2_" ++ String.fromInt k) classRank |> Maybe.withDefault 9999
+
+        lookupF i =
+            List.head (List.drop i funcF) |> Maybe.withDefault 0
+
+        lookupG i =
+            List.head (List.drop i funcG) |> Maybe.withDefault 0
+
+        -- Helper: build rank map from an ordering list
+        buildRankMap : List Int -> Dict Int Int
+        buildRankMap order =
+            order
+                |> List.indexedMap (\rank origIdx -> ( origIdx, rank ))
+                |> Dict.fromList
+
+        -- Helper: compute barycenter (mean A-rank) for a B node's preimage
+        barycenter : List Int -> Dict Int Int -> Int -> Float
+        barycenter func aRanks targetIdx =
+            let
+                ranks =
+                    func
+                        |> List.indexedMap Tuple.pair
+                        |> List.filterMap
+                            (\( ai, fi ) ->
+                                if fi == targetIdx then
+                                    Dict.get ai aRanks
+
+                                else
+                                    Nothing
+                            )
+            in
+            case ranks of
+                [] ->
+                    9999
+
+                _ ->
+                    toFloat (List.sum ranks) / toFloat (List.length ranks)
+
+        -- Phase 2: Initial A ordering (same primary sort as before)
+        aOrder0 =
+            List.range 0 (sizeA - 1)
+                |> List.sortBy
+                    (\i -> ( b1ClassRank (lookupF i), b2ClassRank (lookupG i), i ))
+
+        aRanks0 =
+            buildRankMap aOrder0
+
+        -- Phase 3 & 4: B1 and B2 ordering via barycenter
+        b1Order0 =
+            List.range 0 (sizeB1 - 1)
+                |> List.sortBy (\j -> ( b1ClassRank j, barycenter funcF aRanks0 j ))
+
+        b2Order0 =
+            List.range 0 (sizeB2 - 1)
+                |> List.sortBy (\k -> ( b2ClassRank k, barycenter funcG aRanks0 k ))
+
+        -- Phase 5: Refine A ordering using B1+B2 target ranks
+        b1Ranks0 =
+            buildRankMap b1Order0
+
+        b2Ranks0 =
+            buildRankMap b2Order0
+
+        aOrder1 =
+            List.range 0 (sizeA - 1)
+                |> List.sortBy
+                    (\i ->
+                        let
+                            fi =
+                                lookupF i
+
+                            gi =
+                                lookupG i
+
+                            combinedScore =
+                                toFloat (Maybe.withDefault 9999 (Dict.get fi b1Ranks0))
+                                    + toFloat (Maybe.withDefault 9999 (Dict.get gi b2Ranks0))
+                        in
+                        ( b1ClassRank fi, b2ClassRank gi, combinedScore )
+                    )
+
+        -- Phase 6: Second iteration of B1 and B2
+        aRanks1 =
+            buildRankMap aOrder1
+
+        b1Order1 =
+            List.range 0 (sizeB1 - 1)
+                |> List.sortBy (\j -> ( b1ClassRank j, barycenter funcF aRanks1 j ))
+
+        b2Order1 =
+            List.range 0 (sizeB2 - 1)
+                |> List.sortBy (\k -> ( b2ClassRank k, barycenter funcG aRanks1 k ))
+    in
+    { aOrder = aOrder1, b1Order = b1Order1, b2Order = b2Order1 }
+
+
+{-| Compute structured positions for A, B1, B2 nodes based on equivalence class orderings.
+A nodes along top-left → bottom-right diagonal.
+B1 nodes along bottom-left → top-right diagonal (anti-diagonal).
+B2 nodes along bottom-left → top-right diagonal (anti-diagonal).
+-}
+computeStructuredPositions : { aOrder : List Int, b1Order : List Int, b2Order : List Int } -> Int -> Int -> Int -> NodePositions
+computeStructuredPositions orderings sizeA sizeB1 sizeB2 =
+    let
+        paramT size rank =
+            if size <= 1 then
+                0.5
+
+            else
+                (toFloat rank + 0.5) / toFloat size
+
+        -- A nodes along top-left → bottom-right diagonal within A quadrant
+        aPositions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeA rank
+                    in
+                    ( "a_" ++ String.fromInt origIdx
+                    , { x = 50 + t * 300, y = 40 + t * 220 }
+                    )
+                )
+                orderings.aOrder
+
+        -- B1 nodes along top-right (outer) → bottom-left (center) anti-diagonal
+        b1Positions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeB1 rank
+                    in
+                    ( "b1_" ++ String.fromInt origIdx
+                    , { x = 770 - t * 340, y = 40 + t * 220 }
+                    )
+                )
+                orderings.b1Order
+
+        -- B2 nodes along bottom-left → top-right diagonal within B2 quadrant
+        b2Positions =
+            List.indexedMap
+                (\rank origIdx ->
+                    let
+                        t =
+                            paramT sizeB2 rank
+                    in
+                    ( "b2_" ++ String.fromInt origIdx
+                    , { x = 50 + t * 300, y = 570 - t * 220 }
+                    )
+                )
+                orderings.b2Order
+    in
+    Dict.fromList (aPositions ++ b1Positions ++ b2Positions)
+
+
+makeEntity : String -> Float -> Float -> EntityGroup -> String -> ForceEntity
+makeEntity id x y group label =
+    { x = x, y = y, vx = 0, vy = 0, id = id, value = { group = group, label = label } }
+
+
+buildEntities : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> ViewMode -> List ForceEntity
+buildEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode =
+    let
+        orderings =
+            computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses
+
+        structuredPos =
+            computeStructuredPositions orderings sizeA sizeB1 sizeB2
+
+        lookupPos prefix i default =
+            Dict.get (prefix ++ String.fromInt i) structuredPos
+                |> Maybe.withDefault default
+
+        aEntities =
+            List.map
+                (\i ->
+                    let
+                        pos =
+                            lookupPos "a_" i quadA
+                    in
+                    makeEntity ("a_" ++ String.fromInt i) pos.x pos.y GroupA (String.fromInt (i + 1))
+                )
+                (List.range 0 (sizeA - 1))
+
+        b1Entities =
+            List.map
+                (\j ->
+                    let
+                        pos =
+                            lookupPos "b1_" j quadB1
+                    in
+                    makeEntity ("b1_" ++ String.fromInt j) pos.x pos.y GroupB1 (lowercaseLetter j)
+                )
+                (List.range 0 (sizeB1 - 1))
+
+        b2Entities =
+            List.map
+                (\k ->
+                    let
+                        pos =
+                            lookupPos "b2_" k quadB2
+                    in
+                    makeEntity ("b2_" ++ String.fromInt k) pos.x pos.y GroupB2 (uppercaseLetter k)
+                )
+                (List.range 0 (sizeB2 - 1))
+
+        -- Pushout entities: place blob members near blob centers
+        blobCenters =
+            computeBlobCenters viewMode equivClasses
+
+        pbEntities =
+            List.concatMap
+                (\cls ->
+                    let
+                        blobCenter =
+                            Dict.get (blobKey cls) blobCenters
+                                |> Maybe.withDefault quadP
+
+                        members =
+                            List.indexedMap Tuple.pair cls
+                    in
+                    List.map
+                        (\( mi, memberId ) ->
+                            let
+                                angle =
+                                    toFloat mi * 2.3998632
+
+                                r =
+                                    12 * sqrt (toFloat (mi + 1) / toFloat (max (List.length cls) 1))
+
+                                x =
+                                    blobCenter.x + r * cos angle
+
+                                y =
+                                    blobCenter.y + r * sin angle
+
+                                group =
+                                    if String.startsWith "pb1_" memberId then
+                                        GroupPB1
+
+                                    else
+                                        GroupPB2
+                            in
+                            makeEntity memberId x y group (labelForId memberId)
+                        )
+                        members
+                )
+                equivClasses
+    in
+    aEntities ++ b1Entities ++ b2Entities ++ pbEntities
+
+
+blobKey : List String -> String
+blobKey cls =
+    List.sort cls |> String.join ","
+
+
+computeBlobCenters : ViewMode -> List (List String) -> NodePositions
+computeBlobCenters viewMode classes =
+    let
+        n =
+            List.length classes
+
+        -- Sort classes same as computeEquivClassOrderings: descending size, then lex
+        sortedClasses =
+            classes
+                |> List.map (\cls -> ( List.sort cls, cls ))
+                |> List.sortWith
+                    (\( sa, _ ) ( sb, _ ) ->
+                        case compare (List.length sb) (List.length sa) of
+                            EQ ->
+                                compare sa sb
+
+                            ord ->
+                                ord
+                    )
+                |> List.map Tuple.second
+    in
+    case viewMode of
+        FourQuadrant ->
+            -- Arrange blobs along bottom-right (outer) → top-left (center) diagonal
+            sortedClasses
+                |> List.indexedMap
+                    (\i cls ->
+                        let
+                            t =
+                                if n <= 1 then
+                                    0.5
+
+                                else
+                                    (toFloat i + 0.5) / toFloat n
+
+                            cx =
+                                770 - t * 340
+
+                            cy =
+                                560 - t * 220
+                        in
+                        ( blobKey cls, { x = cx, y = cy } )
+                    )
+                |> Dict.fromList
+
+        ZoomedPushout ->
+            let
+                center =
+                    { x = canvasW / 2, y = canvasH / 2 }
+
+                radius =
+                    min 220 (60 * sqrt (toFloat (max n 1)))
+            in
+            classes
+                |> List.indexedMap
+                    (\i cls ->
+                        let
+                            angle =
+                                if n <= 1 then
+                                    0
+
+                                else
+                                    toFloat i * 2 * pi / toFloat n
+
+                            r =
+                                if n <= 1 then
+                                    0
+
+                                else
+                                    radius
+
+                            cx =
+                                center.x + r * cos angle
+
+                            cy =
+                                center.y + r * sin angle
+                        in
+                        ( blobKey cls, { x = cx, y = cy } )
+                    )
+                |> Dict.fromList
+
+
+buildForces : ViewMode -> List Int -> List Int -> List (List String) -> List ForceEntity -> List (Force.Force String)
+buildForces viewMode funcF funcG equivClasses entities =
+    let
+        sizeA =
+            List.length (List.filter (\e -> e.value.group == GroupA) entities)
+
+        sizeB1 =
+            List.length (List.filter (\e -> e.value.group == GroupB1) entities)
+
+        sizeB2 =
+            List.length (List.filter (\e -> e.value.group == GroupB2) entities)
+
+        structuredPos =
+            computeStructuredPositions
+                (computeEquivClassOrderings sizeA sizeB1 sizeB2 funcF funcG equivClasses)
+                sizeA
+                sizeB1
+                sizeB2
+
+        allIds =
+            List.map .id entities
+
+        blobCenters =
+            computeBlobCenters viewMode equivClasses
+
+        -- Intra-blob links
+        blobLinks =
+            List.concatMap
+                (\cls ->
+                    case cls of
+                        [] ->
+                            []
+
+                        first :: rest ->
+                            List.map (\other -> ( first, other )) rest
+                )
+                equivClasses
+
+        blobLinkDistance =
+            case viewMode of
+                FourQuadrant ->
+                    20
+
+                ZoomedPushout ->
+                    30
+
+        -- In View 2, link A nodes to their pb targets so they're pulled into blobs
+        aToBlobLinks =
+            case viewMode of
+                FourQuadrant ->
+                    []
+
+                ZoomedPushout ->
+                    List.indexedMap
+                        (\i fi ->
+                            { source = "a_" ++ String.fromInt i
+                            , target = "pb1_" ++ String.fromInt fi
+                            , distance = 10
+                            , strength = Just 0.8
+                            }
+                        )
+                        funcF
+                        ++ List.indexedMap
+                            (\i gi ->
+                                { source = "a_" ++ String.fromInt i
+                                , target = "pb2_" ++ String.fromInt gi
+                                , distance = 10
+                                , strength = Just 0.8
+                                }
+                            )
+                            funcG
+
+        allLinkConfigs =
+            List.map
+                (\( s, t ) ->
+                    { source = s, target = t, distance = blobLinkDistance, strength = Just 0.4 }
+                )
+                blobLinks
+                ++ aToBlobLinks
+
+        linkForce =
+            if List.isEmpty allLinkConfigs then
+                []
+
+            else
+                [ Force.customLinks 1 allLinkConfigs ]
+
+        posStrength =
+            case viewMode of
+                FourQuadrant ->
+                    0.3
+
+                ZoomedPushout ->
+                    0.03
+
+        manyBodyStr =
+            case viewMode of
+                FourQuadrant ->
+                    -10
+
+                ZoomedPushout ->
+                    -40
+
+        -- Per-entity position targets
+        posTargets =
+            List.filterMap (entityPosTarget viewMode funcF funcG equivClasses blobCenters structuredPos posStrength) entities
+
+        xTargets =
+            List.map (\{ node, strength, target } -> { node = node, strength = strength, target = target.x }) posTargets
+
+        yTargets =
+            List.map (\{ node, strength, target } -> { node = node, strength = strength, target = target.y }) posTargets
+    in
+    [ Force.towardsX xTargets
+    , Force.towardsY yTargets
+    , Force.collision 20 allIds
+    , Force.manyBodyStrength manyBodyStr allIds
+    ]
+        ++ linkForce
+
+
+entityPosTarget : ViewMode -> List Int -> List Int -> List (List String) -> NodePositions -> NodePositions -> Float -> ForceEntity -> Maybe { node : String, strength : Float, target : { x : Float, y : Float } }
+entityPosTarget viewMode funcF funcG equivClasses blobCenters structuredPos strength ent =
+    let
+        id =
+            ent.id
+
+        simple target =
+            Just { node = id, strength = strength, target = target }
+
+        structuredTarget default =
+            simple (Dict.get id structuredPos |> Maybe.withDefault default)
+
+        pbPos =
+            pbTarget blobCenters equivClasses id
+    in
+    case viewMode of
+        FourQuadrant ->
+            case ent.value.group of
+                GroupA ->
+                    structuredTarget quadA
+
+                GroupB1 ->
+                    structuredTarget quadB1
+
+                GroupB2 ->
+                    structuredTarget quadB2
+
+                GroupPB1 ->
+                    simple pbPos
+
+                GroupPB2 ->
+                    simple pbPos
+
+        ZoomedPushout ->
+            case ent.value.group of
+                GroupA ->
+                    Just { node = id, strength = strength * 3, target = aTargetInView2 funcF funcG equivClasses blobCenters id }
+
+                GroupB1 ->
+                    Just { node = id, strength = strength * 1.5, target = pbTarget blobCenters equivClasses ("p" ++ id) }
+
+                GroupB2 ->
+                    Just { node = id, strength = strength * 1.5, target = pbTarget blobCenters equivClasses ("p" ++ id) }
+
+                GroupPB1 ->
+                    simple pbPos
+
+                GroupPB2 ->
+                    simple pbPos
+
+
+pbTarget : NodePositions -> List (List String) -> String -> { x : Float, y : Float }
+pbTarget blobCenters equivClasses id =
+    let
+        cls =
+            List.filter (List.member id) equivClasses |> List.head |> Maybe.withDefault [ id ]
+    in
+    Dict.get (blobKey cls) blobCenters |> Maybe.withDefault quadP
+
+
+aTargetInView2 : List Int -> List Int -> List (List String) -> NodePositions -> String -> { x : Float, y : Float }
+aTargetInView2 funcF funcG equivClasses blobCenters aId =
+    let
+        idx =
+            String.dropLeft 2 aId |> String.toInt |> Maybe.withDefault 0
+
+        maybePb1 =
+            List.head (List.drop idx funcF)
+                |> Maybe.map (\fi -> "pb1_" ++ String.fromInt fi)
+
+        maybePb2 =
+            List.head (List.drop idx funcG)
+                |> Maybe.map (\gi -> "pb2_" ++ String.fromInt gi)
+
+        maybeTargetId =
+            case maybePb1 of
+                Just _ ->
+                    maybePb1
+
+                Nothing ->
+                    maybePb2
+    in
+    case maybeTargetId of
+        Just targetId ->
+            pbTarget blobCenters equivClasses targetId
+
+        Nothing ->
+            { x = canvasW / 2, y = canvasH / 2 }
+
+
+rebuildSimulation : ViewMode -> Model -> Model
+rebuildSimulation viewMode model =
+    let
+        equivClasses =
+            computeEquivClasses model.sizeB1 model.sizeB2 model.funcF model.funcG
+
+        entities =
+            ensureEntities model.sizeA model.sizeB1 model.sizeB2 model.funcF model.funcG equivClasses viewMode model.entities
+
+        forces =
+            buildForces viewMode model.funcF model.funcG equivClasses entities
+    in
+    { model
+        | equivClasses = equivClasses
+        , entities = entities
+        , forceState = Force.simulation forces |> Force.iterations 800
+        , currentView = viewMode
+    }
+
+
+transitionToView : ViewMode -> Model -> Model
+transitionToView viewMode model =
+    let
+        equivClasses =
+            computeEquivClasses model.sizeB1 model.sizeB2 model.funcF model.funcG
+
+        -- Build forces for the new view but keep current entity positions
+        newEntities =
+            ensureEntities model.sizeA model.sizeB1 model.sizeB2 model.funcF model.funcG equivClasses viewMode model.entities
+
+        forces =
+            buildForces viewMode model.funcF model.funcG equivClasses newEntities
+
+        -- Run simulation to completion to get final target positions
+        targetEntities =
+            runSimulationToCompletion
+                (Force.simulation forces |> Force.iterations 800)
+                newEntities
+
+        startPositions =
+            entitiesToPositions newEntities
+
+        finalPositions =
+            entitiesToPositions targetEntities
+
+        -- Compute mid-positions: the FQ layout but with B1/B2 at their pb positions
+        -- This is the boundary between merge and rearrange phases
+        midPositions =
+            computeMidPositions viewMode startPositions finalPositions
+
+        ( phase1Targets, phase1Phase ) =
+            case viewMode of
+                ZoomedPushout ->
+                    -- FQ -> ZP: first merge B1/B2 into pb, then rearrange
+                    ( midPositions
+                    , MergePhase { nextTargets = finalPositions }
+                    )
+
+                FourQuadrant ->
+                    -- ZP -> FQ: first rearrange to FQ layout (B1/B2 at pb), then split
+                    ( midPositions
+                    , RearrangePhase { nextTargets = finalPositions }
+                    )
+    in
+    { model
+        | equivClasses = equivClasses
+        , entities = newEntities
+        , forceState = Force.simulation []
+        , currentView = viewMode
+        , transition =
+            Just
+                { startPositions = startPositions
+                , targetPositions = phase1Targets
+                , progress = 0
+                , phase = phase1Phase
+                }
+    }
+
+
+entitiesToPositions : List ForceEntity -> NodePositions
+entitiesToPositions entities =
+    List.foldl (\e -> Dict.insert e.id { x = e.x, y = e.y }) Dict.empty entities
+
+
+{-| Compute intermediate positions where B1/B2 are at their pb counterpart positions.
+For FQ->ZP: start from current positions, override B1/B2 to pb current positions.
+For ZP->FQ: start from final FQ positions, override B1/B2 to pb final positions.
+-}
+computeMidPositions : ViewMode -> NodePositions -> NodePositions -> NodePositions
+computeMidPositions targetView startPositions finalPositions =
+    let
+        -- The base positions to start from
+        basePositions =
+            case targetView of
+                ZoomedPushout ->
+                    -- Phase 1 is merge: only B1/B2 move, everything else stays
+                    startPositions
+
+                FourQuadrant ->
+                    -- Phase 1 is rearrange: use final FQ positions but B1/B2 at pb spots
+                    finalPositions
+
+        -- Override B1/B2 positions with their corresponding pb positions
+        overrideB1B2 id pos =
+            if String.startsWith "b1_" id || String.startsWith "b2_" id then
+                Dict.get ("p" ++ id) basePositions |> Maybe.withDefault pos
+
+            else
+                pos
+    in
+    Dict.map overrideB1B2 basePositions
+
+
+{-| Run the force simulation until it completes, returning final entity positions.
+-}
+runSimulationToCompletion : Force.State String -> List ForceEntity -> List ForceEntity
+runSimulationToCompletion state entities =
+    if Force.isCompleted state then
+        entities
+
+    else
+        let
+            ( newState, newEntities ) =
+                Force.tick state entities
+        in
+        runSimulationToCompletion newState newEntities
+
+
+{-| Ensure all needed entities exist, preserving positions of existing ones.
+New entities get default positions.
+-}
+ensureEntities : Int -> Int -> Int -> List Int -> List Int -> List (List String) -> ViewMode -> List ForceEntity -> List ForceEntity
+ensureEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode oldEntities =
+    let
+        oldDict =
+            List.foldl (\e d -> Dict.insert e.id e d) Dict.empty oldEntities
+
+        freshEntities =
+            buildEntities sizeA sizeB1 sizeB2 funcF funcG equivClasses viewMode
+    in
+    List.map
+        (\fresh ->
+            case Dict.get fresh.id oldDict of
+                Just old ->
+                    -- Preserve position and velocity, update group info
+                    { old | value = fresh.value }
+
+                Nothing ->
+                    fresh
+        )
+        freshEntities
+
+
+
+-- UPDATE
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        Tick dt ->
+            case model.transition of
+                Just t ->
+                    let
+                        -- Each phase takes ~1500ms (3s total for two phases)
+                        newProgress =
+                            min 1.0 (t.progress + dt / 1500)
+
+                        eased =
+                            smoothStep newProgress
+
+                        interpolatedEntities =
+                            List.map
+                                (\e ->
+                                    let
+                                        start =
+                                            Dict.get e.id t.startPositions
+                                                |> Maybe.withDefault { x = e.x, y = e.y }
+
+                                        target =
+                                            Dict.get e.id t.targetPositions
+                                                |> Maybe.withDefault { x = e.x, y = e.y }
+                                    in
+                                    { e
+                                        | x = start.x + (target.x - start.x) * eased
+                                        , y = start.y + (target.y - start.y) * eased
+                                    }
+                                )
+                                model.entities
+                    in
+                    if newProgress >= 1.0 then
+                        case phaseNextTargets t.phase of
+                            Just nextTargets ->
+                                ( { model
+                                    | entities = interpolatedEntities
+                                    , transition =
+                                        Just
+                                            { startPositions = t.targetPositions
+                                            , targetPositions = nextTargets
+                                            , progress = 0
+                                            , phase = FinalPhase
+                                            }
+                                  }
+                                , Cmd.none
+                                )
+
+                            Nothing ->
+                                -- FinalPhase: all done, resume force simulation
+                                let
+                                    forces =
+                                        buildForces model.currentView model.funcF model.funcG model.equivClasses interpolatedEntities
+                                in
+                                ( { model
+                                    | entities = interpolatedEntities
+                                    , transition = Nothing
+                                    , forceState = Force.simulation forces |> Force.iterations 300
+                                  }
+                                , Cmd.none
+                                )
+
+                    else
+                        ( { model
+                            | entities = interpolatedEntities
+                            , transition = Just { t | progress = newProgress }
+                          }
+                        , Cmd.none
+                        )
+
+                Nothing ->
+                    if model.simulationPaused || Force.isCompleted model.forceState then
+                        ( model, Cmd.none )
+
+                    else
+                        let
+                            ( newState, newEntities ) =
+                                Force.tick model.forceState model.entities
+                        in
+                        ( { model | forceState = newState, entities = newEntities }, Cmd.none )
+
+        SetSize which str ->
+            let
+                fallback =
+                    case which of
+                        SetA ->
+                            model.sizeA
+
+                        SetB1 ->
+                            model.sizeB1
+
+                        SetB2 ->
+                            model.sizeB2
+
+                size =
+                    String.toInt str |> Maybe.withDefault fallback
+
+                newModel =
+                    case which of
+                        SetA ->
+                            { model | sizeA = size }
+
+                        SetB1 ->
+                            { model | sizeB1 = size }
+
+                        SetB2 ->
+                            { model | sizeB2 = size }
+            in
+            ( newModel
+            , Random.generate GotRandomFunctions (randomFunctionPair newModel.sizeA newModel.sizeB1 newModel.sizeB2)
+            )
+
+        GotRandomFunctions ( f, g ) ->
+            let
+                newModel =
+                    rebuildSimulation model.currentView { model | funcF = f, funcG = g }
+            in
+            ( newModel, Cmd.none )
+
+        RandomizeFunctions ->
+            ( model
+            , Random.generate GotRandomFunctions (randomFunctionPair model.sizeA model.sizeB1 model.sizeB2)
+            )
+
+        SwitchView viewMode ->
+            if viewMode == model.currentView then
+                ( model, Cmd.none )
+
+            else
+                ( transitionToView viewMode model, Cmd.none )
+
+        ArrowDragStart func aIndex pos ->
+            ( { model | drag = Just (DraggingArrow { func = func, aIndex = aIndex, mousePos = pos }) }
+            , Cmd.none
+            )
+
+        NodeDragStart entityId clientPos ->
+            let
+                ( svgX, svgY ) =
+                    clientToSvg model clientPos
+
+                -- Compute offset between mouse and entity center so drag feels natural
+                maybeEnt =
+                    List.filter (\e -> e.id == entityId) model.entities |> List.head
+
+                offsetXY =
+                    case maybeEnt of
+                        Just ent ->
+                            ( svgX - ent.x, svgY - ent.y )
+
+                        Nothing ->
+                            ( 0, 0 )
+            in
+            ( { model | drag = Just (DraggingNode { entityId = entityId, offset = offsetXY }) }
+            , Cmd.none
+            )
+
+        MouseMove clientPos ->
+            case model.drag of
+                Just (DraggingArrow ds) ->
+                    ( { model | drag = Just (DraggingArrow { ds | mousePos = clientPos }) }, Cmd.none )
+
+                Just (DraggingNode ds) ->
+                    let
+                        ( rawSvgX, rawSvgY ) =
+                            clientToSvg model clientPos
+
+                        svgX =
+                            rawSvgX - Tuple.first ds.offset
+
+                        svgY =
+                            rawSvgY - Tuple.second ds.offset
+
+                        -- Find the entity to get its group for clamping
+                        maybeEnt =
+                            List.filter (\e -> e.id == ds.entityId) model.entities |> List.head
+
+                        ( clampedX, clampedY ) =
+                            case maybeEnt of
+                                Just ent ->
+                                    clampToSet model.currentView ent.value.group svgX svgY
+
+                                Nothing ->
+                                    ( svgX, svgY )
+
+                        newEntities =
+                            List.map
+                                (\e ->
+                                    if e.id == ds.entityId then
+                                        { e | x = clampedX, y = clampedY, vx = 0, vy = 0 }
+
+                                    else
+                                        e
+                                )
+                                model.entities
+                    in
+                    ( { model
+                        | entities = newEntities
+                        , forceState = Force.reheat model.forceState
+                      }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        MouseUp clientPos ->
+            case model.drag of
+                Just (DraggingArrow ds) ->
+                    let
+                        ( svgX, svgY ) =
+                            clientToSvg model clientPos
+
+                        -- Find nearest valid target
+                        validTargets =
+                            List.filter (\e -> e.value.group == dropTargetGroup model.currentView ds.func) model.entities
+
+                        nearest =
+                            validTargets
+                                |> List.map (\e -> ( sqrt ((e.x - svgX) ^ 2 + (e.y - svgY) ^ 2), e ))
+                                |> List.sortBy Tuple.first
+                                |> List.head
+
+                        updatedModel =
+                            case nearest of
+                                Just ( dist, target ) ->
+                                    if dist < 30 then
+                                        let
+                                            targetIdx =
+                                                String.split "_" target.id
+                                                    |> List.drop 1
+                                                    |> List.head
+                                                    |> Maybe.andThen String.toInt
+                                                    |> Maybe.withDefault 0
+                                        in
+                                        updateMapping ds.func ds.aIndex targetIdx model
+
+                                    else
+                                        model
+
+                                Nothing ->
+                                    model
+                    in
+                    ( { updatedModel | drag = Nothing }, Cmd.none )
+
+                Just (DraggingNode _) ->
+                    ( { model | drag = Nothing }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        GotSvgElement result ->
+            case result of
+                Ok { element } ->
+                    ( { model
+                        | svgOffset =
+                            { x = element.x
+                            , y = element.y
+                            , width = element.width
+                            , height = element.height
+                            }
+                      }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        ToggleSimulationPaused paused ->
+            ( { model | simulationPaused = paused }, Cmd.none )
+
+        SetColorMode mode ->
+            ( { model | colorMode = mode }, Cmd.none )
+
+        WindowResized ->
+            ( model, Browser.Dom.getElement svgId |> Task.attempt GotSvgElement )
+
+
+updateMapping : WhichFunc -> Int -> Int -> Model -> Model
+updateMapping func aIndex targetIdx model =
+    let
+        replaceAt i newVal list =
+            List.indexedMap
+                (\idx val ->
+                    if idx == i then
+                        newVal
+
+                    else
+                        val
+                )
+                list
+
+        newModel =
+            case func of
+                FuncF ->
+                    { model | funcF = replaceAt aIndex targetIdx model.funcF }
+
+                FuncG ->
+                    { model | funcG = replaceAt aIndex targetIdx model.funcG }
+    in
+    rebuildSimulation newModel.currentView newModel
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    let
+        animSub =
+            if model.transition /= Nothing || (not model.simulationPaused && not (Force.isCompleted model.forceState)) then
+                Browser.Events.onAnimationFrameDelta Tick
+
+            else
+                Sub.none
+
+        dragSubs =
+            case model.drag of
+                Just _ ->
+                    Sub.batch
+                        [ Browser.Events.onMouseMove
+                            (Decode.map2 (\x y -> MouseMove ( x, y ))
+                                (Decode.field "clientX" Decode.float)
+                                (Decode.field "clientY" Decode.float)
+                            )
+                        , Browser.Events.onMouseUp
+                            (Decode.map2 (\x y -> MouseUp ( x, y ))
+                                (Decode.field "clientX" Decode.float)
+                                (Decode.field "clientY" Decode.float)
+                            )
+                        , Browser.Events.onAnimationFrameDelta Tick
+                        ]
+
+                Nothing ->
+                    animSub
+    in
+    Sub.batch
+        [ dragSubs
+        , Browser.Events.onResize (\_ _ -> WindowResized)
+        ]
+
+
+
+-- VIEW
+
+
+view : Model -> Html Msg
+view model =
+    Html.div
+        [ Attr.style "font-family" "monospace"
+        , Attr.style "display" "flex"
+        , Attr.style "height" "100vh"
+        , Attr.style "overflow" "hidden"
+        ]
+        [ viewControlsPanel model
+        , Html.div
+            [ Attr.style "flex" "1"
+            , Attr.style "display" "flex"
+            , Attr.style "align-items" "stretch"
+            ]
+            [ viewCanvas model ]
+        ]
+
+
+viewControlsPanel : Model -> Html Msg
+viewControlsPanel model =
+    let
+        transitioning =
+            model.transition /= Nothing
+    in
+    Html.div
+        [ Attr.style "width" "20%"
+        , Attr.style "min-width" "180px"
+        , Attr.style "max-width" "250px"
+        , Attr.style "display" "flex"
+        , Attr.style "flex-direction" "column"
+        , Attr.style "gap" "12px"
+        , Attr.style "padding" "12px"
+        , Attr.style "background" "#f5f5f5"
+        , Attr.style "border-right" "1px solid #ddd"
+        , Attr.style "overflow-y" "auto"
+        ]
+        [ viewSlider "|A|" model.sizeA (SetSize SetA) colorA
+        , viewSlider "|B1|" model.sizeB1 (SetSize SetB1) colorB1
+        , viewSlider "|B2|" model.sizeB2 (SetSize SetB2) colorB2
+        , Html.div []
+            [ Html.span [ Attr.style "font-size" "12px", Attr.style "display" "block", Attr.style "margin-bottom" "4px" ] [ Html.text "View" ]
+            , Html.div [ Attr.style "display" "flex" ]
+                [ viewToggleButton "Four sets" FourQuadrant model.currentView transitioning "4px 0 0 4px"
+                , viewToggleButton "Zoomed Pushout" ZoomedPushout model.currentView transitioning "0 4px 4px 0"
+                ]
+            ]
+        , Html.div []
+            [ Html.span [ Attr.style "font-size" "12px", Attr.style "display" "block", Attr.style "margin-bottom" "4px" ] [ Html.text "Force directed layout" ]
+            , Html.div [ Attr.style "display" "flex" ]
+                [ viewOnOffButton "Enabled" False model.simulationPaused "4px 0 0 4px"
+                , viewOnOffButton "Disabled" True model.simulationPaused "0 4px 4px 0"
+                ]
+            ]
+        , Html.div []
+            [ Html.span [ Attr.style "font-size" "12px", Attr.style "display" "block", Attr.style "margin-bottom" "4px" ] [ Html.text "Color by" ]
+            , Html.div [ Attr.style "display" "flex" ]
+                [ viewColorModeButton "Set" ColorBySet model.colorMode "4px 0 0 4px"
+                , viewColorModeButton "Equiv class" ColorByEquivClass model.colorMode "0 4px 4px 0"
+                ]
+            ]
+        , Html.button
+            [ Html.Events.onClick RandomizeFunctions
+            , Attr.disabled transitioning
+            , Attr.style "padding" "5px 12px"
+            , Attr.style "font-family" "monospace"
+            , Attr.style "font-size" "12px"
+            , Attr.style "cursor"
+                (if transitioning then
+                    "not-allowed"
+
+                 else
+                    "pointer"
+                )
+            , Attr.style "border" "1px solid #ccc"
+            , Attr.style "border-radius" "4px"
+            , Attr.style "background" "#fff"
+            , Attr.style "width" "100%"
+            , Attr.style "opacity"
+                (if transitioning then
+                    "0.5"
+
+                 else
+                    "1"
+                )
+            ]
+            [ Html.text "Randomize f,g" ]
+        ]
+
+
+viewSlider : String -> Int -> (String -> Msg) -> String -> Html Msg
+viewSlider label val toMsg color =
+    Html.div []
+        [ Html.span [ Attr.style "color" color, Attr.style "font-weight" "bold", Attr.style "font-size" "12px" ]
+            [ Html.text (label ++ " = " ++ String.fromInt val) ]
+        , Html.input
+            [ Attr.type_ "range"
+            , Attr.min "0"
+            , Attr.max "10"
+            , Attr.value (String.fromInt val)
+            , Html.Events.onInput toMsg
+            , Attr.style "width" "100%"
+            ]
+            []
+        ]
+
+
+viewToggleButton : String -> ViewMode -> ViewMode -> Bool -> String -> Html Msg
+viewToggleButton label targetView currentView transitioning borderRadius =
+    Html.button
+        [ Html.Events.onClick (SwitchView targetView)
+        , Attr.disabled transitioning
+        , Attr.style "padding" "5px 12px"
+        , Attr.style "font-family" "monospace"
+        , Attr.style "font-size" "12px"
+        , Attr.style "cursor"
+            (if transitioning then
+                "not-allowed"
+
+             else
+                "pointer"
+            )
+        , Attr.style "background"
+            (if targetView == currentView then
+                "#ddeeff"
+
+             else
+                "#fff"
+            )
+        , Attr.style "border"
+            (if targetView == currentView then
+                "2px solid #4488cc"
+
+             else
+                "1px solid #ccc"
+            )
+        , Attr.style "border-radius" borderRadius
+        , Attr.style "margin-left" "-1px"
+        , Attr.style "opacity"
+            (if transitioning then
+                "0.5"
+
+             else
+                "1"
+            )
+        ]
+        [ Html.text label ]
+
+
+viewOnOffButton : String -> Bool -> Bool -> String -> Html Msg
+viewOnOffButton label targetPaused currentPaused borderRadius =
+    let
+        isActive =
+            targetPaused == currentPaused
+    in
+    Html.button
+        [ Html.Events.onClick (ToggleSimulationPaused targetPaused)
+        , Attr.style "padding" "5px 12px"
+        , Attr.style "font-family" "monospace"
+        , Attr.style "font-size" "12px"
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background"
+            (if isActive then
+                "#ddeeff"
+
+             else
+                "#fff"
+            )
+        , Attr.style "border"
+            (if isActive then
+                "2px solid #4488cc"
+
+             else
+                "1px solid #ccc"
+            )
+        , Attr.style "border-radius" borderRadius
+        , Attr.style "margin-left" "-1px"
+        ]
+        [ Html.text label ]
+
+
+viewColorModeButton : String -> ColorMode -> ColorMode -> String -> Html Msg
+viewColorModeButton label targetMode currentMode borderRadius =
+    let
+        isActive =
+            targetMode == currentMode
+    in
+    Html.button
+        [ Html.Events.onClick (SetColorMode targetMode)
+        , Attr.style "padding" "5px 12px"
+        , Attr.style "font-family" "monospace"
+        , Attr.style "font-size" "12px"
+        , Attr.style "cursor" "pointer"
+        , Attr.style "background"
+            (if isActive then
+                "#ddeeff"
+
+             else
+                "#fff"
+            )
+        , Attr.style "border"
+            (if isActive then
+                "2px solid #4488cc"
+
+             else
+                "1px solid #ccc"
+            )
+        , Attr.style "border-radius" borderRadius
+        , Attr.style "margin-left" "-1px"
+        ]
+        [ Html.text label ]
+
+
+svgId : String
+svgId =
+    "pushout-svg"
+
+
+viewCanvas : Model -> Html Msg
+viewCanvas model =
+    Svg.svg
+        [ SA.id svgId
+        , SA.viewBox ("0 0 " ++ String.fromFloat canvasW ++ " " ++ String.fromFloat canvasH)
+        , Attr.style "background" "#fafafa"
+        , Attr.style "width" "100%"
+        , Attr.style "height" "100%"
+        , Attr.style "display" "block"
+        ]
+        (svgDefs
+            :: viewQuadrantLines model.currentView
+            ++ viewQuadrantLabels model.currentView
+            ++ viewBlobs model
+            ++ viewArrows model
+            ++ viewEntitiesLayer model
+            ++ viewDragArrow model
+        )
+
+
+svgDefs : Svg Msg
+svgDefs =
+    let
+        arrowMarker id color w h =
+            Svg.node "marker"
+                [ SA.id id
+                , SA.viewBox "0 0 10 6"
+                , SA.refX "10"
+                , SA.refY "3"
+                , SA.markerWidth (String.fromFloat w)
+                , SA.markerHeight (String.fromFloat h)
+                , SA.orient "auto"
+                ]
+                [ Svg.polygon [ SA.points "0,0 10,3 0,6", SA.fill color ] [] ]
+    in
+    Svg.defs []
+        [ arrowMarker "arrowF" colorB1 8 6
+        , arrowMarker "arrowG" colorB2 8 6
+        , arrowMarker "arrowInject" "#999" 6 4
+        , arrowMarker "arrowDrag" "#ff8800" 8 6
+        ]
+
+
+
+-- QUADRANT LINES & LABELS
+
+
+viewQuadrantLines : ViewMode -> List (Svg Msg)
+viewQuadrantLines viewMode =
+    case viewMode of
+        FourQuadrant ->
+            [ Svg.line
+                [ SA.x1 (String.fromFloat (canvasW / 2))
+                , SA.y1 "0"
+                , SA.x2 (String.fromFloat (canvasW / 2))
+                , SA.y2 (String.fromFloat canvasH)
+                , SA.stroke "#ddd"
+                , SA.strokeDasharray "6"
+                ]
+                []
+            , Svg.line
+                [ SA.x1 "0"
+                , SA.y1 (String.fromFloat (canvasH / 2))
+                , SA.x2 (String.fromFloat canvasW)
+                , SA.y2 (String.fromFloat (canvasH / 2))
+                , SA.stroke "#ddd"
+                , SA.strokeDasharray "6"
+                ]
+                []
+            ]
+
+        ZoomedPushout ->
+            []
+
+
+viewQuadrantLabels : ViewMode -> List (Svg Msg)
+viewQuadrantLabels viewMode =
+    case viewMode of
+        FourQuadrant ->
+            [ svgLabel 30 25 colorA "A"
+            , svgLabel 430 25 colorB1 "B1"
+            , svgLabel 30 325 colorB2 "B2"
+            , svgLabel 430 325 "#888" "P = pushout"
+            ]
+
+        ZoomedPushout ->
+            [ svgLabel 30 25 "#888" "P = pushout (zoomed)" ]
+
+
+svgLabel : Float -> Float -> String -> String -> Svg Msg
+svgLabel x y color text =
+    Svg.text_
+        [ SA.x (String.fromFloat x)
+        , SA.y (String.fromFloat y)
+        , SA.fontSize "14"
+        , SA.fontFamily "monospace"
+        , SA.fontWeight "bold"
+        , SA.fill color
+        , SA.style "user-select: none"
+        ]
+        [ Svg.text text ]
+
+
+
+-- BLOB RENDERING
+
+
+viewBlobs : Model -> List (Svg Msg)
+viewBlobs model =
+    let
+        entDict =
+            entityDict model.entities
+    in
+    List.filterMap (viewBlob entDict) model.equivClasses
+
+
+viewBlob : Dict String ForceEntity -> List String -> Maybe (Svg Msg)
+viewBlob entDict cls =
+    let
+        members =
+            List.filterMap (\id -> Dict.get id entDict) cls
+    in
+    if List.isEmpty members then
+        Nothing
+
+    else
+        let
+            xs =
+                List.map .x members
+
+            ys =
+                List.map .y members
+
+            cx =
+                List.sum xs / toFloat (List.length xs)
+
+            cy =
+                List.sum ys / toFloat (List.length ys)
+
+            maxDist =
+                List.map (\e -> sqrt ((e.x - cx) ^ 2 + (e.y - cy) ^ 2)) members
+                    |> List.maximum
+                    |> Maybe.withDefault 0
+
+            r =
+                maxDist + 22
+        in
+        Just
+            (Svg.circle
+                [ SA.cx (String.fromFloat cx)
+                , SA.cy (String.fromFloat cy)
+                , SA.r (String.fromFloat r)
+                , SA.fill "rgba(180,180,180,0.12)"
+                , SA.stroke "#ccc"
+                , SA.strokeDasharray "4"
+                , SA.strokeWidth "1"
+                ]
+                []
+            )
+
+
+
+-- ARROW RENDERING
+
+
+viewArrows : Model -> List (Svg Msg)
+viewArrows model =
+    let
+        entDict =
+            entityDict model.entities
+
+        isDragging func aIdx =
+            case model.drag of
+                Just (DraggingArrow ds) ->
+                    ds.func == func && ds.aIndex == aIdx
+
+                _ ->
+                    False
+
+        b1b2Visible =
+            showB1B2 model
+    in
+    if b1b2Visible then
+        -- FQ-style: a->b1, a->b2, injection b1->pb1, b2->pb2
+        List.indexedMap
+            (\i fi ->
+                if isDragging FuncF i then
+                    Svg.g [] []
+
+                else
+                    viewArrow entDict ("a_" ++ String.fromInt i) ("b1_" ++ String.fromInt fi) "arrowF" colorB1 0.6 False (Just ( FuncF, i ))
+            )
+            model.funcF
+            ++ List.indexedMap
+                (\i gi ->
+                    if isDragging FuncG i then
+                        Svg.g [] []
+
+                    else
+                        viewArrow entDict ("a_" ++ String.fromInt i) ("b2_" ++ String.fromInt gi) "arrowG" colorB2 0.6 False (Just ( FuncG, i ))
+                )
+                model.funcG
+            ++ List.concatMap
+                (\j ->
+                    [ viewArrow entDict ("b1_" ++ String.fromInt j) ("pb1_" ++ String.fromInt j) "arrowInject" "#999" 0.3 True Nothing ]
+                )
+                (List.range 0 (model.sizeB1 - 1))
+            ++ List.concatMap
+                (\k ->
+                    [ viewArrow entDict ("b2_" ++ String.fromInt k) ("pb2_" ++ String.fromInt k) "arrowInject" "#999" 0.3 True Nothing ]
+                )
+                (List.range 0 (model.sizeB2 - 1))
+
+    else
+        -- ZP-style: a->pb1, a->pb2 (draggable)
+        List.indexedMap
+            (\i fi ->
+                if isDragging FuncF i then
+                    Svg.g [] []
+
+                else
+                    viewArrow entDict ("a_" ++ String.fromInt i) ("pb1_" ++ String.fromInt fi) "arrowF" colorB1 0.5 False (Just ( FuncF, i ))
+            )
+            model.funcF
+            ++ List.indexedMap
+                (\i gi ->
+                    if isDragging FuncG i then
+                        Svg.g [] []
+
+                    else
+                        viewArrow entDict ("a_" ++ String.fromInt i) ("pb2_" ++ String.fromInt gi) "arrowG" colorB2 0.5 False (Just ( FuncG, i ))
+                )
+                model.funcG
+
+
+viewArrow : Dict String ForceEntity -> String -> String -> String -> String -> Float -> Bool -> Maybe ( WhichFunc, Int ) -> Svg Msg
+viewArrow entDict srcId tgtId markerId color opacity isDashed maybeDraggable =
+    case ( Dict.get srcId entDict, Dict.get tgtId entDict ) of
+        ( Just src, Just tgt ) ->
+            let
+                dx =
+                    tgt.x - src.x
+
+                dy =
+                    tgt.y - src.y
+
+                dist =
+                    sqrt (dx * dx + dy * dy)
+
+                -- Shorten arrows so they don't overlap with circles
+                nodeR =
+                    10
+
+                ratio =
+                    if dist < 1 then
+                        0
+
+                    else
+                        nodeR / dist
+
+                sx =
+                    src.x + dx * ratio
+
+                sy =
+                    src.y + dy * ratio
+
+                tx =
+                    tgt.x - dx * ratio
+
+                ty =
+                    tgt.y - dy * ratio
+
+                pathD =
+                    "M " ++ ff sx ++ " " ++ ff sy ++ " L " ++ ff tx ++ " " ++ ff ty
+
+                baseAttrs =
+                    [ SA.d pathD
+                    , SA.stroke color
+                    , SA.strokeWidth "1.5"
+                    , SA.fill "none"
+                    , SA.opacity (String.fromFloat opacity)
+                    , SA.markerEnd ("url(#" ++ markerId ++ ")")
+                    ]
+                        ++ (if isDashed then
+                                [ SA.strokeDasharray "4" ]
+
+                            else
+                                []
+                           )
+
+                -- Draggable hit area at arrowhead
+                hitArea =
+                    case maybeDraggable of
+                        Just ( func, aIdx ) ->
+                            [ Svg.circle
+                                [ SA.cx (ff tx)
+                                , SA.cy (ff ty)
+                                , SA.r "15"
+                                , SA.fill "transparent"
+                                , SA.style "cursor: grab"
+                                , Svg.Events.on "mousedown"
+                                    (Decode.map2 (\x y -> ArrowDragStart func aIdx ( x, y ))
+                                        (Decode.field "clientX" Decode.float)
+                                        (Decode.field "clientY" Decode.float)
+                                    )
+                                ]
+                                []
+                            ]
+
+                        Nothing ->
+                            []
+            in
+            Svg.g [] (Svg.path baseAttrs [] :: hitArea)
+
+        _ ->
+            Svg.g [] []
+
+
+
+-- DRAG ARROW RENDERING
+
+
+viewDragArrow : Model -> List (Svg Msg)
+viewDragArrow model =
+    case model.drag of
+        Just (DraggingArrow ds) ->
+            let
+                entDict =
+                    entityDict model.entities
+
+                srcId =
+                    "a_" ++ String.fromInt ds.aIndex
+
+                ( svgX, svgY ) =
+                    clientToSvg model ds.mousePos
+            in
+            case Dict.get srcId entDict of
+                Just src ->
+                    let
+                        pathD =
+                            "M " ++ ff src.x ++ " " ++ ff src.y ++ " L " ++ ff svgX ++ " " ++ ff svgY
+                    in
+                    Svg.path
+                        [ SA.d pathD
+                        , SA.stroke "#ff8800"
+                        , SA.strokeWidth "2"
+                        , SA.fill "none"
+                        , SA.markerEnd "url(#arrowDrag)"
+                        , SA.opacity "0.8"
+                        ]
+                        []
+                        :: viewValidTargetHighlights model ds
+
+                Nothing ->
+                    []
+
+        _ ->
+            []
+
+
+viewValidTargetHighlights : Model -> { func : WhichFunc, aIndex : Int, mousePos : ( Float, Float ) } -> List (Svg Msg)
+viewValidTargetHighlights model ds =
+    let
+        targets =
+            List.filter (\e -> e.value.group == dropTargetGroup model.currentView ds.func) model.entities
+    in
+    List.map
+        (\e ->
+            Svg.circle
+                [ SA.cx (ff e.x)
+                , SA.cy (ff e.y)
+                , SA.r "16"
+                , SA.fill "none"
+                , SA.stroke "#ff8800"
+                , SA.strokeWidth "2.5"
+                , SA.strokeDasharray "4"
+                , SA.opacity "0.8"
+                ]
+                []
+        )
+        targets
+
+
+
+-- ENTITY RENDERING
+
+
+viewEntitiesLayer : Model -> List (Svg Msg)
+viewEntitiesLayer model =
+    let
+        b1b2Visible =
+            showB1B2 model
+
+        visible =
+            if b1b2Visible then
+                model.entities
+
+            else
+                List.filter
+                    (\e ->
+                        case e.value.group of
+                            GroupB1 ->
+                                False
+
+                            GroupB2 ->
+                                False
+
+                            _ ->
+                                True
+                    )
+                    model.entities
+    in
+    let
+        colorFn =
+            case model.colorMode of
+                ColorBySet ->
+                    \e -> groupColor e.value.group
+
+                ColorByEquivClass ->
+                    let
+                        colorMap =
+                            equivClassColorMap model.funcF model.equivClasses
+                    in
+                    \e -> Dict.get e.id colorMap |> Maybe.withDefault (groupColor e.value.group)
+    in
+    List.map (viewEntity colorFn) visible
+
+
+viewEntity : (ForceEntity -> String) -> ForceEntity -> Svg Msg
+viewEntity colorFn ent =
+    let
+        color =
+            colorFn ent
+
+        r =
+            case ent.value.group of
+                GroupPB1 ->
+                    8
+
+                GroupPB2 ->
+                    8
+
+                _ ->
+                    10
+    in
+    Svg.g []
+        [ Svg.circle
+            [ SA.cx (ff ent.x)
+            , SA.cy (ff ent.y)
+            , SA.r (String.fromFloat r)
+            , SA.fill color
+            , SA.style "cursor: grab"
+            , Svg.Events.on "mousedown"
+                (Decode.map2 (\cx cy -> NodeDragStart ent.id ( cx, cy ))
+                    (Decode.field "clientX" Decode.float)
+                    (Decode.field "clientY" Decode.float)
+                )
+            , SA.opacity "0.75"
+            , SA.stroke color
+            , SA.strokeWidth "1.5"
+            , SA.strokeOpacity "0.5"
+            ]
+            []
+        , Svg.text_
+            [ SA.x (ff ent.x)
+            , SA.y (ff (ent.y + 3.5))
+            , SA.fontSize "9"
+            , SA.fontFamily "monospace"
+            , SA.fill "#fff"
+            , SA.textAnchor "middle"
+            , SA.style "pointer-events: none; user-select: none"
+            ]
+            [ Svg.text ent.value.label ]
+        ]
+
+
+groupColor : EntityGroup -> String
+groupColor group =
+    case group of
+        GroupA ->
+            colorA
+
+        GroupB1 ->
+            colorB1
+
+        GroupB2 ->
+            colorB2
+
+        GroupPB1 ->
+            colorPB1
+
+        GroupPB2 ->
+            colorPB2
+
+
+equivClassPalette : Array.Array String
+equivClassPalette =
+    Array.fromList
+        [ "#e6194b"
+        , "#3cb44b"
+        , "#4363d8"
+        , "#f58231"
+        , "#911eb4"
+        , "#42d4f4"
+        , "#f032e6"
+        , "#bfef45"
+        , "#fabed4"
+        , "#469990"
+        , "#dcbeff"
+        , "#9A6324"
+        , "#800000"
+        , "#aaffc3"
+        , "#808000"
+        , "#000075"
+        , "#a9a9a9"
+        , "#e6beff"
+        , "#fffac8"
+        , "#ffd8b1"
+        ]
+
+
+equivClassColorMap : List Int -> List (List String) -> Dict String String
+equivClassColorMap funcF equivClasses =
+    let
+        paletteSize =
+            Array.length equivClassPalette
+
+        classColor classIndex =
+            Array.get (modBy paletteSize classIndex) equivClassPalette
+                |> Maybe.withDefault "#888"
+
+        -- Map each pb entity to its class index
+        pbColors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.map (\memberId -> ( memberId, classColor classIndex )) cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map b1_j -> same color as pb1_j
+        b1Colors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.filterMap
+                        (\memberId ->
+                            if String.startsWith "pb1_" memberId then
+                                let
+                                    suffix =
+                                        String.dropLeft 4 memberId
+                                in
+                                Just ( "b1_" ++ suffix, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map b2_k -> same color as pb2_k
+        b2Colors =
+            List.indexedMap
+                (\classIndex cls ->
+                    List.filterMap
+                        (\memberId ->
+                            if String.startsWith "pb2_" memberId then
+                                let
+                                    suffix =
+                                        String.dropLeft 4 memberId
+                                in
+                                Just ( "b2_" ++ suffix, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        cls
+                )
+                equivClasses
+                |> List.concat
+
+        -- Map a_i -> class of pb1_{f(i)}
+        aColors =
+            List.indexedMap
+                (\i fi ->
+                    let
+                        pb1Id =
+                            "pb1_" ++ String.fromInt fi
+                    in
+                    List.indexedMap
+                        (\classIndex cls ->
+                            if List.member pb1Id cls then
+                                Just ( "a_" ++ String.fromInt i, classColor classIndex )
+
+                            else
+                                Nothing
+                        )
+                        equivClasses
+                        |> List.filterMap identity
+                        |> List.head
+                )
+                funcF
+                |> List.filterMap identity
+    in
+    Dict.fromList (pbColors ++ b1Colors ++ b2Colors ++ aColors)
+
+
+
+-- LEGEND
+
+
+viewLegend : Html Msg
+viewLegend =
+    Html.div
+        [ Attr.style "margin-top" "8px"
+        , Attr.style "font-size" "12px"
+        , Attr.style "color" "#666"
+        , Attr.style "display" "flex"
+        , Attr.style "gap" "16px"
+        , Attr.style "flex-wrap" "wrap"
+        ]
+        [ legendItem colorA "A elements"
+        , legendItem colorB1 "B1 elements"
+        , legendItem colorB2 "B2 elements"
+        , legendItem colorPB1 "B1 in P"
+        , legendItem colorPB2 "B2 in P"
+        , Html.span [] [ Html.text "| Drag arrowheads to edit f,g" ]
+        ]
+
+
+legendItem : String -> String -> Html Msg
+legendItem color label =
+    Html.span []
+        [ Html.span
+            [ Attr.style "display" "inline-block"
+            , Attr.style "width" "10px"
+            , Attr.style "height" "10px"
+            , Attr.style "border-radius" "50%"
+            , Attr.style "background" color
+            , Attr.style "margin-right" "4px"
+            , Attr.style "vertical-align" "middle"
+            ]
+            []
+        , Html.text label
+        ]
+
+
+
+-- HELPERS
+
+
+dropTargetGroup : ViewMode -> WhichFunc -> EntityGroup
+dropTargetGroup viewMode func =
+    case ( viewMode, func ) of
+        ( FourQuadrant, FuncF ) ->
+            GroupB1
+
+        ( FourQuadrant, FuncG ) ->
+            GroupB2
+
+        ( ZoomedPushout, FuncF ) ->
+            GroupPB1
+
+        ( ZoomedPushout, FuncG ) ->
+            GroupPB2
+
+
+smoothStep : Float -> Float
+smoothStep p =
+    p * p * (3 - 2 * p)
+
+
+{-| Should B1/B2 nodes and FQ-style arrows be shown?
+They are visible in FourQuadrant view and during merge/split phases.
+-}
+showB1B2 : Model -> Bool
+showB1B2 model =
+    case model.transition of
+        Nothing ->
+            model.currentView == FourQuadrant
+
+        Just t ->
+            case t.phase of
+                MergePhase _ ->
+                    True
+
+                RearrangePhase _ ->
+                    False
+
+                FinalPhase ->
+                    -- Final phase: show B1/B2 if we're going TO FourQuadrant (splitting)
+                    model.currentView == FourQuadrant
+
+
+{-| Clamp a position to stay within the set's visual region.
+-}
+clampToSet : ViewMode -> EntityGroup -> Float -> Float -> ( Float, Float )
+clampToSet viewMode group x y =
+    let
+        margin =
+            15
+
+        bounds =
+            case viewMode of
+                ZoomedPushout ->
+                    { xMin = margin, xMax = canvasW - margin, yMin = margin, yMax = canvasH - margin }
+
+                FourQuadrant ->
+                    case group of
+                        GroupA ->
+                            { xMin = margin, xMax = canvasW / 2 - margin, yMin = margin, yMax = canvasH / 2 - margin }
+
+                        GroupB1 ->
+                            { xMin = canvasW / 2 + margin, xMax = canvasW - margin, yMin = margin, yMax = canvasH / 2 - margin }
+
+                        GroupB2 ->
+                            { xMin = margin, xMax = canvasW / 2 - margin, yMin = canvasH / 2 + margin, yMax = canvasH - margin }
+
+                        GroupPB1 ->
+                            { xMin = canvasW / 2 + margin, xMax = canvasW - margin, yMin = canvasH / 2 + margin, yMax = canvasH - margin }
+
+                        GroupPB2 ->
+                            { xMin = canvasW / 2 + margin, xMax = canvasW - margin, yMin = canvasH / 2 + margin, yMax = canvasH - margin }
+    in
+    ( clamp bounds.xMin bounds.xMax x, clamp bounds.yMin bounds.yMax y )
+
+
+entityDict : List ForceEntity -> Dict String ForceEntity
+entityDict entities =
+    List.foldl (\entity -> Dict.insert entity.id entity) Dict.empty entities
+
+
+lowercaseLetter : Int -> String
+lowercaseLetter i =
+    String.fromChar (Char.fromCode (97 + modBy 26 i))
+
+
+uppercaseLetter : Int -> String
+uppercaseLetter i =
+    String.fromChar (Char.fromCode (65 + modBy 26 i))
+
+
+labelForId : String -> String
+labelForId id =
+    let
+        idx =
+            String.split "_" id |> List.drop 1 |> List.head |> Maybe.andThen String.toInt |> Maybe.withDefault 0
+    in
+    if String.startsWith "pb1_" id || String.startsWith "b1_" id then
+        lowercaseLetter idx
+
+    else if String.startsWith "pb2_" id || String.startsWith "b2_" id then
+        uppercaseLetter idx
+
+    else if String.startsWith "a_" id then
+        String.fromInt (idx + 1)
+
+    else
+        id
+
+
+ff : Float -> String
+ff =
+    String.fromFloat
