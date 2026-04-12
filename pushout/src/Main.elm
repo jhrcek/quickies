@@ -229,6 +229,12 @@ type WhichSet
     | SetB2
 
 
+type GenKind
+    = GenAny
+    | GenInjective
+    | GenSurjective
+
+
 
 -- MSG
 
@@ -243,6 +249,8 @@ type Msg
     | MouseMove ( Float, Float )
     | MouseUp ( Float, Float )
     | RandomizeFunctions
+    | RandomizeSingle WhichFunc GenKind
+    | GotRandomSingle WhichFunc (List Int)
     | GotSvgElement (Result Browser.Dom.Error Browser.Dom.Element)
     | ToggleSimulationPaused Bool
     | SetColorMode ColorMode
@@ -294,18 +302,74 @@ init () =
 randomFunctionPair : Int -> Int -> Int -> Random.Generator ( List Int, List Int )
 randomFunctionPair sizeA sizeB1 sizeB2 =
     Random.map2 Tuple.pair
-        (if sizeB1 > 0 && sizeA > 0 then
-            Random.list sizeA (Random.int 0 (sizeB1 - 1))
+        (randomAnyFunction sizeA sizeB1)
+        (randomAnyFunction sizeA sizeB2)
 
-         else
-            Random.constant []
-        )
-        (if sizeB2 > 0 && sizeA > 0 then
-            Random.list sizeA (Random.int 0 (sizeB2 - 1))
 
-         else
-            Random.constant []
-        )
+randomAnyFunction : Int -> Int -> Random.Generator (List Int)
+randomAnyFunction sizeDom sizeCod =
+    if sizeDom > 0 && sizeCod > 0 then
+        Random.list sizeDom (Random.int 0 (sizeCod - 1))
+
+    else
+        Random.constant []
+
+
+shuffle : List a -> Random.Generator (List a)
+shuffle xs =
+    Random.list (List.length xs) (Random.float 0 1)
+        |> Random.map
+            (\ks ->
+                List.map2 Tuple.pair ks xs
+                    |> List.sortBy Tuple.first
+                    |> List.map Tuple.second
+            )
+
+
+randomInjectiveFunction : Int -> Int -> Random.Generator (List Int)
+randomInjectiveFunction sizeDom sizeCod =
+    shuffle (List.range 0 (sizeCod - 1))
+        |> Random.map (List.take sizeDom)
+
+
+randomSurjectiveFunction : Int -> Int -> Random.Generator (List Int)
+randomSurjectiveFunction sizeDom sizeCod =
+    if sizeDom == 0 then
+        Random.constant []
+
+    else
+        Random.list (sizeDom - sizeCod) (Random.int 0 (sizeCod - 1))
+            |> Random.andThen (\extras -> shuffle (List.range 0 (sizeCod - 1) ++ extras))
+
+
+randomFunction : GenKind -> Int -> Int -> Random.Generator (List Int)
+randomFunction kind sizeDom sizeCod =
+    case kind of
+        GenAny ->
+            randomAnyFunction sizeDom sizeCod
+
+        GenInjective ->
+            randomInjectiveFunction sizeDom sizeCod
+
+        GenSurjective ->
+            randomSurjectiveFunction sizeDom sizeCod
+
+
+canGenerate : GenKind -> Int -> Int -> Bool
+canGenerate kind sizeDom sizeCod =
+    case kind of
+        GenAny ->
+            sizeDom == 0 || sizeCod > 0
+
+        GenInjective ->
+            sizeDom <= sizeCod
+
+        GenSurjective ->
+            if sizeCod == 0 then
+                sizeDom == 0
+
+            else
+                sizeDom >= sizeCod
 
 
 
@@ -1238,6 +1302,32 @@ update msg model =
             , Random.generate GotRandomFunctions (randomFunctionPair model.sizeA model.sizeB1 model.sizeB2)
             )
 
+        RandomizeSingle which kind ->
+            let
+                sizeCod =
+                    case which of
+                        FuncF ->
+                            model.sizeB1
+
+                        FuncG ->
+                            model.sizeB2
+            in
+            ( model
+            , Random.generate (GotRandomSingle which) (randomFunction kind model.sizeA sizeCod)
+            )
+
+        GotRandomSingle which vals ->
+            let
+                updated =
+                    case which of
+                        FuncF ->
+                            { model | funcF = vals }
+
+                        FuncG ->
+                            { model | funcG = vals }
+            in
+            ( rebuildSimulation model.currentView updated, Cmd.none )
+
         SwitchView viewMode ->
             if viewMode == model.currentView then
                 ( model, Cmd.none )
@@ -1521,32 +1611,110 @@ viewControlsPanel model =
                 , viewColorModeButton "Equiv class" ColorByEquivClass model.colorMode "0 4px 4px 0"
                 ]
             ]
-        , Html.button
-            [ Html.Events.onClick RandomizeFunctions
-            , Attr.disabled transitioning
-            , Attr.style "padding" "5px 12px"
-            , Attr.style "font-family" "monospace"
-            , Attr.style "font-size" "12px"
-            , Attr.style "cursor"
-                (if transitioning then
-                    "not-allowed"
+        , viewRandomizeSection model transitioning
+        ]
 
-                 else
-                    "pointer"
-                )
-            , Attr.style "border" "1px solid #ccc"
-            , Attr.style "border-radius" "4px"
-            , Attr.style "background" "#fff"
-            , Attr.style "width" "100%"
-            , Attr.style "opacity"
-                (if transitioning then
-                    "0.5"
 
-                 else
-                    "1"
-                )
+viewRandomizeSection : Model -> Bool -> Html Msg
+viewRandomizeSection model transitioning =
+    let
+        fCod =
+            model.sizeB1
+
+        gCod =
+            model.sizeB2
+
+        header label =
+            Html.div
+                [ Attr.style "font-size" "11px"
+                , Attr.style "text-align" "center"
+                , Attr.style "color" "#666"
+                ]
+                [ Html.text label ]
+
+        rowLabel label =
+            Html.div
+                [ Attr.style "font-family" "monospace"
+                , Attr.style "font-size" "12px"
+                , Attr.style "font-weight" "bold"
+                , Attr.style "display" "flex"
+                , Attr.style "align-items" "center"
+                , Attr.style "justify-content" "flex-end"
+                , Attr.style "padding-right" "6px"
+                ]
+                [ Html.text label ]
+
+        btn label msg disabled =
+            Html.button
+                [ Html.Events.onClick msg
+                , Attr.disabled disabled
+                , Attr.style "padding" "5px 4px"
+                , Attr.style "font-family" "monospace"
+                , Attr.style "font-size" "11px"
+                , Attr.style "cursor"
+                    (if disabled then
+                        "not-allowed"
+
+                     else
+                        "pointer"
+                    )
+                , Attr.style "border" "1px solid #ccc"
+                , Attr.style "border-radius" "4px"
+                , Attr.style "background" "#fff"
+                , Attr.style "width" "100%"
+                , Attr.style "opacity"
+                    (if disabled then
+                        "0.5"
+
+                     else
+                        "1"
+                    )
+                ]
+                [ Html.text label ]
+
+        dis which kind =
+            transitioning
+                || not
+                    (canGenerate kind
+                        model.sizeA
+                        (case which of
+                            FuncF ->
+                                fCod
+
+                            FuncG ->
+                                gCod
+                        )
+                    )
+
+        bothPairDisabled =
+            transitioning
+                || not (canGenerate GenAny model.sizeA fCod && canGenerate GenAny model.sizeA gCod)
+    in
+    Html.div []
+        [ Html.span [ Attr.style "font-size" "12px", Attr.style "display" "block", Attr.style "margin-bottom" "4px" ] [ Html.text "Randomize functions" ]
+        , Html.div
+            [ Attr.style "display" "grid"
+            , Attr.style "grid-template-columns" "auto 1fr 1fr 1fr"
+            , Attr.style "gap" "4px"
+            , Attr.style "align-items" "stretch"
             ]
-            [ Html.text "Randomize f,g" ]
+            [ Html.div [] []
+            , header "Random"
+            , header "Injective"
+            , header "Surjective"
+            , rowLabel "f"
+            , btn "Random" (RandomizeSingle FuncF GenAny) (dis FuncF GenAny)
+            , btn "Injective" (RandomizeSingle FuncF GenInjective) (dis FuncF GenInjective)
+            , btn "Surjective" (RandomizeSingle FuncF GenSurjective) (dis FuncF GenSurjective)
+            , rowLabel "g"
+            , btn "Random" (RandomizeSingle FuncG GenAny) (dis FuncG GenAny)
+            , btn "Injective" (RandomizeSingle FuncG GenInjective) (dis FuncG GenInjective)
+            , btn "Surjective" (RandomizeSingle FuncG GenSurjective) (dis FuncG GenSurjective)
+            , rowLabel "f, g"
+            , btn "Random" RandomizeFunctions bothPairDisabled
+            , Html.div [] []
+            , Html.div [] []
+            ]
         ]
 
 
