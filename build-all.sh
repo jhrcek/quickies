@@ -25,6 +25,7 @@ projects=(
   ["IEEE-754"]="IEEE-754 floating point visualizer"
   ["legendres-formula"]="Intuition behind Legendre's formula"
   ["permutation-explorer"]="Playground for exploring permutations"
+  ["pushout"]="Explore pushouts construction in category SET"
   ["sampling"]="Random sampling toy"
   ["sampling-weighted"]="Weighted random sampling toy"
   ["trigonometric-hyperbolic"]="Mini reference of goniometric and trigonometric functions"
