@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Legendre's Formula</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.33/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.33/dist/katex.min.js"></script>
+    <style>body{padding:0;margin:0;}</style>
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script>
+        class MathTex extends HTMLElement {
+            static get observedAttributes() { return ['formula', 'display-mode']; }
+            connectedCallback() { this._render(); }
+            attributeChangedCallback() { this._render(); }
+            _render() {
+                const tex = this.getAttribute('formula') || '';
+                const displayMode = this.getAttribute('display-mode') !== 'false';
+                try { katex.render(tex, this, { displayMode, throwOnError: false }); }
+                catch (e) { this.textContent = tex; }
+            }
+        }
+        customElements.define('math-tex', MathTex);
+    </script>
+
+    <script src="elm.min.js"></script>
+    <script>Elm.Main.init({ node: document.getElementById('app') });</script>
+</body>
+
+</html>

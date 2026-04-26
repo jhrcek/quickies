@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html)
 import Html.Attributes as A
 import Html.Events exposing (..)
+import KaTeX
 
 
 type alias Model =
@@ -72,7 +73,24 @@ headerSection =
             [ A.style "margin" "10px 0 0 0"
             , A.style "color" "#7f8c8d"
             ]
-            [ Html.text "Visualizing the exponent of a prime p in the prime factorization of n!" ]
+            [ Html.text "Visualizing "
+            , KaTeX.inline "\\nu_p(n!)"
+            , Html.text " — the exponent of a prime "
+            , KaTeX.inline "p"
+            , Html.text " in the prime factorization of "
+            , KaTeX.inline "n!"
+            , Html.text " (the "
+            , Html.a
+                [ A.href "https://en.wikipedia.org/wiki/P-adic_valuation"
+                , A.target "_blank"
+                , A.rel "noopener noreferrer"
+                , A.style "color" "inherit"
+                ]
+                [ Html.text "p-adic valuation" ]
+            , Html.text " of "
+            , KaTeX.inline "n!"
+            , Html.text ")."
+            ]
         ]
 
 
@@ -200,44 +218,36 @@ renderRowWithStep model r maybeStep =
                         isHovered =
                             model.hoveredStep == Just r
 
-                        quotientBg =
+                        quotientColor =
                             if isHovered then
                                 theme.factorHighlight
 
                             else
                                 theme.factor
 
-                        plainNum txt width =
-                            Html.div
-                                [ A.style "width" width
-                                , A.style "text-align" "right"
-                                ]
-                                [ Html.text txt ]
-
-                        symbol txt =
-                            Html.div
-                                [ A.style "width" "20px"
-                                , A.style "text-align" "center"
-                                ]
-                                [ Html.text txt ]
+                        formula =
+                            String.fromInt dividend
+                                ++ " = "
+                                ++ String.fromInt model.p
+                                ++ " \\cdot \\colorbox{"
+                                ++ quotientColor
+                                ++ "}{$"
+                                ++ String.fromInt quotient
+                                ++ "$} + \\colorbox{"
+                                ++ theme.remainder
+                                ++ "}{$"
+                                ++ String.fromInt remainder
+                                ++ "$}"
                     in
                     Html.div
                         [ onMouseEnter (HoverStep (Just r))
                         , onMouseLeave (HoverStep Nothing)
                         , A.style "cursor" "pointer"
                         , A.style "margin-left" "20px"
-                        , A.style "display" "flex"
-                        , A.style "align-items" "center"
-                        , A.style "font-family" "monospace"
+                        , A.style "font-size" "11px"
+                        , A.style "line-height" "1"
                         ]
-                        [ plainNum (String.fromInt dividend) "30px"
-                        , symbol "="
-                        , plainNum (String.fromInt model.p) "20px"
-                        , symbol "×"
-                        , renderBoxedValue (String.fromInt quotient) quotientBg
-                        , symbol "+"
-                        , renderBoxedValue (String.fromInt remainder) theme.remainder
-                        ]
+                        [ KaTeX.inline formula ]
 
                 Nothing ->
                     Html.text ""
@@ -310,29 +320,76 @@ renderResults n p steps =
             else
                 0
 
-        interspersePlus list =
-            case list of
-                [] ->
-                    []
+        boxedFactor v =
+            "\\colorbox{" ++ theme.factor ++ "}{$" ++ String.fromInt v ++ "$}"
 
-                [ x ] ->
-                    [ x ]
+        boxedRemainder v =
+            "\\colorbox{" ++ theme.remainder ++ "}{$" ++ String.fromInt v ++ "$}"
 
-                x :: xs ->
-                    x :: Html.div [ A.style "margin" "0 3px", A.style "color" "#7f8c8d" ] [ Html.text "+" ] :: interspersePlus xs
-
-        quotientElements =
+        quotientsTex =
             quotients
-                |> List.map (\q -> renderBoxedValue (String.fromInt q) theme.factor)
-                |> interspersePlus
+                |> List.map boxedFactor
+                |> String.join " + "
 
-        digitElements =
+        digitsTex =
             remainders
                 |> List.reverse
-                |> List.map (\d -> renderBoxedValue (String.fromInt d) theme.remainder)
+                |> List.map boxedRemainder
+                |> String.join " \\, "
 
-        equalsSign =
-            Html.div [ A.style "margin" "0 8px" ] [ Html.text "=" ]
+        method1Tex =
+            "\\nu_{"
+                ++ String.fromInt p
+                ++ "}("
+                ++ String.fromInt n
+                ++ "!) = "
+                ++ (if String.isEmpty quotientsTex then
+                        "0"
+
+                    else
+                        quotientsTex
+                  )
+                ++ " = "
+                ++ String.fromInt total
+
+        baseRepTex =
+            "("
+                ++ String.fromInt n
+                ++ ")_{10} = ("
+                ++ (if List.isEmpty remainders then
+                        "0"
+
+                    else
+                        digitsTex
+                  )
+                ++ ")_{"
+                ++ String.fromInt p
+                ++ "}, \\quad S_{"
+                ++ String.fromInt p
+                ++ "}("
+                ++ String.fromInt n
+                ++ ") = "
+                ++ String.fromInt digitSum
+
+        method2Tex =
+            "\\nu_{"
+                ++ String.fromInt p
+                ++ "}("
+                ++ String.fromInt n
+                ++ "!) = \\frac{n - S_{"
+                ++ String.fromInt p
+                ++ "}(n)}{p - 1} = \\frac{"
+                ++ String.fromInt n
+                ++ " - "
+                ++ String.fromInt digitSum
+                ++ "}{"
+                ++ String.fromInt p
+                ++ " - 1} = \\frac{"
+                ++ String.fromInt numerator
+                ++ "}{"
+                ++ String.fromInt denominator
+                ++ "} = "
+                ++ String.fromInt formulaResult
     in
     Html.div
         [ A.style "margin-top" "30px"
@@ -340,77 +397,13 @@ renderResults n p steps =
         , A.style "border-top" "1px solid #eee"
         ]
         [ Html.h4 [ A.style "margin" "0 0 15px 0", A.style "color" "#2c3e50" ] [ Html.text "Method 1: Sum of Quotients" ]
-        , Html.div
-            [ A.style "display" "flex"
-            , A.style "align-items" "center"
-            , A.style "flex-wrap" "wrap"
-            , A.style "margin-bottom" "30px"
-            , A.style "padding-left" "10px"
-            ]
-            ([ Html.text ("Total factors of " ++ String.fromInt p ++ " in " ++ String.fromInt n ++ "! = ")
-             , Html.div [ A.style "width" "8px" ] []
-             ]
-                ++ quotientElements
-                ++ [ equalsSign
-                   , Html.strong [] [ Html.text (String.fromInt total) ]
-                   ]
-            )
+        , Html.div [ A.style "padding-left" "10px", A.style "margin-bottom" "30px" ]
+            [ KaTeX.display method1Tex ]
         , Html.h4 [ A.style "margin" "0 0 15px 0", A.style "color" "#2c3e50" ] [ Html.text "Method 2: Digit Sum Formula" ]
-        , Html.div
-            [ A.style "padding-left" "10px" ]
-            [ Html.div
-                [ A.style "display" "flex"
-                , A.style "align-items" "center"
-                , A.style "flex-wrap" "wrap"
-                , A.style "margin-bottom" "15px"
-                ]
-                ([ Html.text ("Base " ++ String.fromInt p ++ " representation of " ++ String.fromInt n ++ ": ")
-                 , Html.div [ A.style "width" "8px" ] []
-                 ]
-                    ++ digitElements
-                    ++ [ Html.span
-                            [ A.style "color" "#7f8c8d"
-                            , A.style "font-size" "0.9em"
-                            , A.style "margin-left" "8px"
-                            ]
-                            [ Html.text "(digit sum S"
-                            , Html.sub [ A.style "font-size" "0.7em" ] [ Html.text "p" ]
-                            , Html.text ("(n) = " ++ String.fromInt digitSum ++ ")")
-                            ]
-                       ]
-                )
-            , Html.div
-                [ A.style "display" "flex"
-                , A.style "align-items" "center"
-                ]
-                [ Html.text ("Total factors of " ++ String.fromInt p ++ " in " ++ String.fromInt n ++ "! = ")
-                , Html.div [ A.style "width" "8px" ] []
-                , renderFraction
-                    (Html.span [] [ Html.text "n - S", Html.sub [] [ Html.text "p" ], Html.text "(n)" ])
-                    (Html.text "p - 1")
-                , equalsSign
-                , renderFraction (Html.text (String.fromInt n ++ " - " ++ String.fromInt digitSum)) (Html.text (String.fromInt p ++ " - 1"))
-                , equalsSign
-                , renderFraction (Html.text (String.fromInt numerator)) (Html.text (String.fromInt denominator))
-                , equalsSign
-                , Html.strong [] [ Html.text (String.fromInt formulaResult) ]
-                ]
+        , Html.div [ A.style "padding-left" "10px" ]
+            [ KaTeX.display baseRepTex
+            , KaTeX.display method2Tex
             ]
-        ]
-
-
-renderFraction : Html msg -> Html msg -> Html msg
-renderFraction num den =
-    Html.div
-        [ A.style "display" "flex"
-        , A.style "flex-direction" "column"
-        , A.style "align-items" "center"
-        , A.style "margin" "0 2px"
-        ]
-        [ Html.div [ A.style "border-bottom" "1px solid black", A.style "padding-bottom" "2px" ]
-            [ num ]
-        , Html.div [ A.style "padding-top" "2px" ]
-            [ den ]
         ]
 
 
@@ -528,18 +521,6 @@ renderCell status isHighlighted =
                ]
         )
         []
-
-
-renderBoxedValue : String -> String -> Html msg
-renderBoxedValue text bgColor =
-    Html.div
-        (cellStyle
-            ++ [ A.style "border" "1px solid black"
-               , A.style "background-color" bgColor
-               , A.style "margin" "0 1px"
-               ]
-        )
-        [ Html.text text ]
 
 
 cellStyle : List (Html.Attribute msg)
