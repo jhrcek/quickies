@@ -34,9 +34,15 @@ type alias Model =
     , bInput : String
     , trace : List EuclidStep
     , showSquareDecomposition : Bool
+    , viewMode : ViewMode
 
     -- TODO highlight fibonacci numbers in the grid
     }
+
+
+type ViewMode
+    = EuclidView
+    | ExtendedEuclidView
 
 
 type alias EuclidStep =
@@ -65,6 +71,7 @@ init _ =
       , bInput = String.fromInt b
       , trace = euclidTrace a b
       , showSquareDecomposition = False
+      , viewMode = EuclidView
       }
     , Task.perform GotViewport Dom.getViewport
     )
@@ -80,6 +87,7 @@ type Msg
     | KeyUpDownPressed Int -- deltaA
     | LeftRightPressed Int -- deltaB
     | ToggleShowSquareDecomposition
+    | SetViewMode ViewMode
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -151,6 +159,9 @@ update msg model =
 
         ToggleShowSquareDecomposition ->
             pure { model | showSquareDecomposition = not model.showSquareDecomposition }
+
+        SetViewMode mode ->
+            pure { model | viewMode = mode }
 
 
 getNumRows : Model -> Int
@@ -357,7 +368,7 @@ euclidPanel model =
                     )
                     colors
                 )
-            , renderTrace model.a model.b model.trace
+            , renderTrace model.viewMode model.a model.b model.trace
             ]
         ]
 
@@ -419,54 +430,36 @@ viewNumberInput label value onChangeMsg maxValue =
         ]
 
 
-renderTrace : Int -> Int -> List EuclidStep -> Html Msg
-renderTrace a b trace =
+renderTrace : ViewMode -> Int -> Int -> List EuclidStep -> Html Msg
+renderTrace viewMode a b trace =
     let
         ( gcd, x, y ) =
             extendedGCD (max a b) (min a b)
     in
     Html.div []
-        [ Html.table
-            [ style "border-collapse" "collapse"
-            , style "width" "100%"
-            , style "line-height" "1.5"
+        [ Html.div
+            [ style "display" "flex"
+            , style "align-items" "center"
+            , style "justify-content" "space-between"
+            , style "border-bottom" "2px solid #333"
+            , style "padding" "3px"
+            , style "margin-bottom" "4px"
             ]
-            [ Html.thead []
-                [ Html.tr [ style "border-bottom" "2px solid #333" ]
-                    [ Html.th
-                        [ style "padding" "3px"
-                        , style "text-align" "left"
-                        ]
-                        [ Html.text "Steps" ]
-                    ]
+            [ Html.div
+                [ style "font-weight" "bold" ]
+                [ Html.text "Steps" ]
+            , Html.div
+                [ style "display" "flex", style "gap" "4px" ]
+                [ viewModeButton viewMode EuclidView "Euclid"
+                , viewModeButton viewMode ExtendedEuclidView "Extended Euclid"
                 ]
-            , Html.tbody []
-                (List.indexedMap
-                    (\i step ->
-                        Html.tr
-                            [ style "border-bottom" "1px solid #ddd" ]
-                            [ Html.td
-                                [ style "padding" "3px 8px"
-                                , style "font-family" "monospace"
-                                , style "font-size" "16px"
-                                ]
-                                [ coloredNumber (i - 1) step.a
-                                , Html.text " = "
-                                , Html.text (String.fromInt step.quotient)
-                                , Html.text " × "
-                                , coloredNumber i step.b
-                                , Html.text " + "
-                                , if step.remainder == 0 then
-                                    Html.text "0"
-
-                                  else
-                                    coloredNumber (i + 1) step.remainder
-                                ]
-                            ]
-                    )
-                    trace
-                )
             ]
+        , case viewMode of
+            EuclidView ->
+                renderEuclidSteps trace
+
+            ExtendedEuclidView ->
+                renderExtendedSteps (max a b) (min a b) trace
         , Html.p
             [ style "margin-top" "8px"
             , style "font-weight" "bold"
@@ -490,6 +483,301 @@ renderTrace a b trace =
             , Html.text " = "
             , coloredNumber (List.length trace - 1) gcd
             ]
+        ]
+
+
+viewModeButton : ViewMode -> ViewMode -> String -> Html Msg
+viewModeButton current target label =
+    let
+        isActive =
+            current == target
+    in
+    Html.button
+        [ Html.Events.onClick (SetViewMode target)
+        , style "padding" "3px 8px"
+        , style "font-size" "12px"
+        , style "cursor" "pointer"
+        , style "border" "1px solid #888"
+        , style "border-radius" "3px"
+        , style "background-color"
+            (if isActive then
+                "#333"
+
+             else
+                "#eee"
+            )
+        , style "color"
+            (if isActive then
+                "white"
+
+             else
+                "#333"
+            )
+        ]
+        [ Html.text label ]
+
+
+renderEuclidSteps : List EuclidStep -> Html Msg
+renderEuclidSteps trace =
+    Html.table
+        [ style "border-collapse" "collapse"
+        , style "width" "100%"
+        , style "line-height" "1.5"
+        ]
+        [ Html.tbody []
+            (List.indexedMap
+                (\i step ->
+                    Html.tr
+                        [ style "border-bottom" "1px solid #ddd" ]
+                        [ Html.td
+                            [ style "padding" "3px 8px"
+                            , style "font-family" "monospace"
+                            , style "font-size" "16px"
+                            ]
+                            [ coloredNumber (i - 1) step.a
+                            , Html.text " = "
+                            , Html.text (String.fromInt step.quotient)
+                            , Html.text " × "
+                            , coloredNumber i step.b
+                            , Html.text " + "
+                            , if step.remainder == 0 then
+                                Html.text "0"
+
+                              else
+                                coloredNumber (i + 1) step.remainder
+                            ]
+                        ]
+                )
+                trace
+            )
+        ]
+
+
+type alias ExtendedRow =
+    { value : Int
+    , coeffA : Int
+    , coeffB : Int
+    }
+
+
+buildExtendedRows : Int -> Int -> List EuclidStep -> List ExtendedRow
+buildExtendedRows bigA bigB trace =
+    let
+        r0 =
+            { value = bigA, coeffA = 1, coeffB = 0 }
+
+        r1 =
+            { value = bigB, coeffA = 0, coeffB = 1 }
+
+        go prev2 prev1 steps acc =
+            case steps of
+                [] ->
+                    List.reverse acc
+
+                step :: rest ->
+                    let
+                        next =
+                            { value = prev2.value - step.quotient * prev1.value
+                            , coeffA = prev2.coeffA - step.quotient * prev1.coeffA
+                            , coeffB = prev2.coeffB - step.quotient * prev1.coeffB
+                            }
+                    in
+                    go prev1 next rest (next :: acc)
+    in
+    r0 :: r1 :: go r0 r1 trace []
+
+
+renderExtendedSteps : Int -> Int -> List EuclidStep -> Html Msg
+renderExtendedSteps bigA bigB trace =
+    let
+        rows =
+            buildExtendedRows bigA bigB trace
+
+        nSteps =
+            List.length trace
+
+        gcdRowIdx =
+            -- index of the GCD row (last non-zero row)
+            nSteps
+
+        quotients =
+            List.map .quotient trace
+
+        labelFor : Int -> String
+        labelFor i =
+            let
+                base =
+                    case i of
+                        0 ->
+                            "a"
+
+                        1 ->
+                            "b"
+
+                        _ ->
+                            ""
+
+                isGcd =
+                    i == gcdRowIdx && i > 0
+            in
+            if isGcd && base /= "" then
+                base ++ " = g"
+
+            else if isGcd then
+                "g"
+
+            else
+                base
+
+        -- For row i (1-indexed in quotient terms), the multiplier is -q_i.
+        -- Quotients align with rows 1..nSteps.
+        quotientFor : Int -> Maybe Int
+        quotientFor i =
+            if i >= 1 && i <= nSteps then
+                List.head (List.drop (i - 1) quotients)
+
+            else
+                Nothing
+
+        renderRow : Int -> ExtendedRow -> Html Msg
+        renderRow i row =
+            let
+                isZeroRow =
+                    i > gcdRowIdx
+
+                colorIdx =
+                    -- match existing convention: row 0 -> -1, row 1 -> 0, ...
+                    i - 1
+
+                valueCell =
+                    if isZeroRow then
+                        Html.text "0"
+
+                    else
+                        coloredNumber colorIdx row.value
+
+                multiplierCell =
+                    case quotientFor i of
+                        Just q ->
+                            quotientCircle (negate q)
+
+                        Nothing ->
+                            Html.text ""
+            in
+            Html.tr
+                []
+                [ Html.td
+                    [ style "padding" "2px 4px"
+                    , style "text-align" "right"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    , style "color" "#888"
+                    ]
+                    [ Html.text
+                        (let
+                            l =
+                                labelFor i
+                         in
+                         if l == "" then
+                            ""
+
+                         else
+                            l ++ " ="
+                        )
+                    ]
+                , Html.td
+                    [ style "padding" "2px 4px"
+                    , style "text-align" "right"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    ]
+                    [ valueCell ]
+                , Html.td
+                    [ style "padding" "2px 4px"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    ]
+                    [ if isZeroRow then
+                        Html.text ""
+
+                      else
+                        Html.text "="
+                    ]
+                , Html.td
+                    [ style "padding" "2px 4px"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    , style "text-align" "right"
+                    ]
+                    [ if isZeroRow then
+                        Html.text ""
+
+                      else
+                        Html.text (String.fromInt row.coeffA ++ "a")
+                    ]
+                , Html.td
+                    [ style "padding" "2px 2px"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    , style "text-align" "center"
+                    ]
+                    [ if isZeroRow then
+                        Html.text ""
+
+                      else if row.coeffB >= 0 then
+                        Html.text "+"
+
+                      else
+                        Html.text "−"
+                    ]
+                , Html.td
+                    [ style "padding" "2px 4px"
+                    , style "font-family" "monospace"
+                    , style "font-size" "16px"
+                    , style "text-align" "right"
+                    ]
+                    [ if isZeroRow then
+                        Html.text ""
+
+                      else
+                        Html.text (String.fromInt (abs row.coeffB) ++ "b")
+                    ]
+                , Html.td
+                    [ style "padding" "2px 4px" ]
+                    [ multiplierCell ]
+                ]
+    in
+    Html.table
+        [ style "border-collapse" "collapse"
+        , style "line-height" "1.5"
+        , style "margin" "4px 0"
+        ]
+        [ Html.tbody [] (List.indexedMap renderRow rows) ]
+
+
+quotientCircle : Int -> Html Msg
+quotientCircle n =
+    Html.span
+        [ style "display" "inline-flex"
+        , style "align-items" "center"
+        , style "justify-content" "center"
+        , style "min-width" "26px"
+        , style "height" "22px"
+        , style "padding" "0 6px"
+        , style "border" "1.5px solid #2a9d4a"
+        , style "border-radius" "999px"
+        , style "color" "#2a9d4a"
+        , style "font-family" "monospace"
+        , style "font-size" "14px"
+        , style "font-weight" "bold"
+        ]
+        [ Html.text
+            (if n >= 0 then
+                "+" ++ String.fromInt n
+
+             else
+                "−" ++ String.fromInt (abs n)
+            )
         ]
 
 
