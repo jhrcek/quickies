@@ -155,6 +155,54 @@ legendItem status isHighlighted label =
 
 visualizationSection : Model -> List ( Int, Int ) -> Html Msg
 visualizationSection ({ n, p } as model) steps =
+    let
+        gridHeader =
+            Html.div [ A.style "margin-bottom" "5px" ] [ renderHeader n ]
+
+        gridRows =
+            List.indexedMap
+                (\r _ ->
+                    Html.div
+                        [ onMouseEnter (HoverStep (Just r))
+                        , onMouseLeave (HoverStep Nothing)
+                        , A.style "margin-bottom" "2px"
+                        ]
+                        [ renderTransposedRow model r ]
+                )
+                steps
+
+        equationLabel =
+            Html.div
+                [ A.style "height" "15px"
+                , A.style "margin-bottom" "5px"
+                , A.style "display" "flex"
+                , A.style "align-items" "center"
+                , A.style "font-weight" "bold"
+                , A.style "font-size" "12px"
+                , A.style "color" "#7f8c8d"
+                , A.style "white-space" "nowrap"
+                ]
+                [ Html.text "Equation (hover row to highlight)" ]
+
+        equationRows =
+            List.indexedMap
+                (\r step ->
+                    Html.div
+                        [ onMouseEnter (HoverStep (Just r))
+                        , onMouseLeave (HoverStep Nothing)
+                        , A.style "cursor" "pointer"
+                        , A.style "height" "15px"
+                        , A.style "margin-bottom" "2px"
+                        , A.style "display" "flex"
+                        , A.style "align-items" "center"
+                        , A.style "font-size" "11px"
+                        , A.style "line-height" "1"
+                        , A.style "white-space" "nowrap"
+                        ]
+                        [ KaTeX.inline (equationTex model.p step (model.hoveredStep == Just r)) ]
+                )
+                steps
+    in
     Html.div sectionStyle
         [ Html.h3 sectionHeaderStyle [ Html.text "Step-by-Step Analysis" ]
         , Html.div [ A.style "margin-bottom" "20px" ]
@@ -162,33 +210,20 @@ visualizationSection ({ n, p } as model) steps =
                 [ Html.text "The grid below shows numbers 1 to n. Each row represents a division step by p." ]
             , legendPanel
             ]
-        , headerRow n
-        , Html.div []
-            (List.indexedMap
-                (\r step ->
-                    renderRowWithStep model r (Just step)
-                )
-                steps
-            )
-        , renderResults n p steps
-        ]
-
-
-headerRow : Int -> Html Msg
-headerRow n =
-    Html.div
-        [ A.style "display" "flex"
-        , A.style "align-items" "center"
-        , A.style "margin-bottom" "5px"
-        ]
-        [ renderHeader n
-        , Html.div
-            [ A.style "margin-left" "20px"
-            , A.style "font-weight" "bold"
-            , A.style "font-size" "12px"
-            , A.style "color" "#7f8c8d"
+        , Html.div [ A.style "display" "flex", A.style "align-items" "flex-start" ]
+            [ Html.div
+                [ A.style "overflow-x" "auto"
+                , A.style "flex" "1 1 auto"
+                , A.style "min-width" "0"
+                ]
+                (gridHeader :: gridRows)
+            , Html.div
+                [ A.style "flex" "0 0 auto"
+                , A.style "margin-left" "20px"
+                ]
+                (equationLabel :: equationRows)
             ]
-            [ Html.text "Equation (hover row to highlight)" ]
+        , renderResults n p steps
         ]
 
 
@@ -205,61 +240,31 @@ renderHeader n =
         )
 
 
-renderRowWithStep : Model -> Int -> Maybe ( Int, Int ) -> Html Msg
-renderRowWithStep model r maybeStep =
+equationTex : Int -> ( Int, Int ) -> Bool -> String
+equationTex p ( dividend, quotient ) isHovered =
     let
-        stepContent =
-            case maybeStep of
-                Just ( dividend, quotient ) ->
-                    let
-                        remainder =
-                            modBy model.p dividend
+        remainder =
+            modBy p dividend
 
-                        isHovered =
-                            model.hoveredStep == Just r
+        quotientColor =
+            if isHovered then
+                theme.factorHighlight
 
-                        quotientColor =
-                            if isHovered then
-                                theme.factorHighlight
-
-                            else
-                                theme.factor
-
-                        formula =
-                            String.fromInt dividend
-                                ++ " = "
-                                ++ String.fromInt model.p
-                                ++ " \\cdot \\colorbox{"
-                                ++ quotientColor
-                                ++ "}{$"
-                                ++ String.fromInt quotient
-                                ++ "$} + \\colorbox{"
-                                ++ theme.remainder
-                                ++ "}{$"
-                                ++ String.fromInt remainder
-                                ++ "$}"
-                    in
-                    Html.div
-                        [ onMouseEnter (HoverStep (Just r))
-                        , onMouseLeave (HoverStep Nothing)
-                        , A.style "cursor" "pointer"
-                        , A.style "margin-left" "20px"
-                        , A.style "font-size" "11px"
-                        , A.style "line-height" "1"
-                        ]
-                        [ KaTeX.inline formula ]
-
-                Nothing ->
-                    Html.text ""
+            else
+                theme.factor
     in
-    Html.div
-        [ A.style "display" "flex"
-        , A.style "align-items" "center"
-        , A.style "margin-bottom" "2px"
-        ]
-        [ renderTransposedRow model r
-        , stepContent
-        ]
+    String.fromInt dividend
+        ++ " = "
+        ++ String.fromInt p
+        ++ " \\cdot \\colorbox{"
+        ++ quotientColor
+        ++ "}{$"
+        ++ String.fromInt quotient
+        ++ "$} + \\colorbox{"
+        ++ theme.remainder
+        ++ "}{$"
+        ++ String.fromInt remainder
+        ++ "$}"
 
 
 renderTransposedRow : Model -> Int -> Html Msg
@@ -348,7 +353,7 @@ renderResults n p steps =
 
                     else
                         quotientsTex
-                  )
+                   )
                 ++ " = "
                 ++ String.fromInt total
 
@@ -361,7 +366,7 @@ renderResults n p steps =
 
                     else
                         digitsTex
-                  )
+                   )
                 ++ ")_{"
                 ++ String.fromInt p
                 ++ "}, \\quad S_{"
@@ -527,6 +532,7 @@ cellStyle : List (Html.Attribute msg)
 cellStyle =
     [ A.style "width" "15px"
     , A.style "height" "15px"
+    , A.style "flex" "0 0 auto"
     , A.style "display" "flex"
     , A.style "justify-content" "center"
     , A.style "align-items" "center"
