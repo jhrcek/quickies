@@ -4,11 +4,16 @@ module BoolFun exposing
     , arity1Config
     , arity2Config
     , arityNConfig
+    , arityOf
+    , bitwiseLeq
     , boolCell
+    , eval
     , f1Names
     , f2Names
     , flipBit
     , funCount
+    , inputBits
+    , inputs
     , isFalsityPreserving
     , isTruthPreserving
     , maxArity
@@ -207,6 +212,31 @@ showBool b =
 eval_internal : BF -> Int -> Bool
 eval_internal (BF { funIndex }) inputRowIndex =
     getBit2 inputRowIndex funIndex
+
+
+eval : BF -> Int -> Bool
+eval =
+    eval_internal
+
+
+arityOf : BF -> Int
+arityOf (BF { arity }) =
+    arity
+
+
+inputs : Int -> List Int
+inputs arity =
+    List.range 0 (2 ^ arity - 1)
+
+
+inputBits : Int -> Int -> List Bool
+inputBits arity i =
+    lastNBits arity i
+
+
+bitwiseLeq : Int -> Int -> Bool
+bitwiseLeq x y =
+    Bitwise.and x y == x
 
 
 lastNBits : Int -> Int -> List Bool

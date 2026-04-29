@@ -4,10 +4,12 @@ import Array
 import BoolFun
 import Browser
 import Browser.Navigation as Nav
+import HasseDiagram
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
 import Natural as N exposing (Natural)
+import PostProperties
 import Random
 import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
@@ -190,21 +192,62 @@ buildBreadcrumbs route =
                     ]
 
                 Function functionIndex propertySubroute ->
+                    let
+                        onProperty =
+                            propertySubroute /= PropertiesSummary
+                    in
                     [ homeLink
                     , arityControls True arity
-                    , functionControls arity functionIndex
-
-                    -- TODO add property subroute links
+                    , functionControls onProperty arity functionIndex
                     ]
+                        ++ (if onProperty then
+                                [ Html.text (propertyName propertySubroute) ]
+
+                            else
+                                []
+                           )
 
         NotFound ->
             [ homeLink ]
 
 
-functionControls : Int -> Natural -> Html Msg
-functionControls arity functionIndex =
+propertyName : PropertyRoute -> String
+propertyName p =
+    case p of
+        PropertiesSummary ->
+            "Properties"
+
+        FalsePreserving ->
+            "0-preserving"
+
+        TruePreserving ->
+            "1-preserving"
+
+        Monotonic ->
+            "Monotone"
+
+        Affine ->
+            "Affine"
+
+        SelfDual ->
+            "Self-dual"
+
+
+functionControls : Bool -> Int -> Natural -> Html Msg
+functionControls renderLink arity functionIndex =
+    let
+        functionLabel =
+            if renderLink then
+                Html.a
+                    [ Route.href (Arity arity (Function functionIndex PropertiesSummary)) ]
+                    [ Html.text "Function" ]
+
+            else
+                Html.text "Function"
+    in
     Html.span []
-        [ Html.text "Function "
+        [ functionLabel
+        , Html.text " "
         , Html.button
             [ Events.onClick (BumpFunctionIndex Minus1)
             , HA.disabled (N.isLessThan N.one functionIndex)
@@ -254,6 +297,7 @@ viewRoute route =
                                                     , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Html.text name ] ]
                                                     , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
                                                     , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
+                                                    , BoolFun.boolCell (PostProperties.monotone bf).holds
                                                     ]
                                             )
                                             (BoolFun.mkBF arity natIndex)
@@ -265,6 +309,7 @@ viewRoute route =
                                             , Html.th [] [ Html.text "Function Name" ]
                                             , Html.th [] [ Html.text "Falsity-preserving" ]
                                             , Html.th [] [ Html.text "Truth-preserving" ]
+                                            , Html.th [] [ Html.text "Monotone" ]
                                             ]
                                         ]
                                     )
@@ -323,35 +368,147 @@ viewRoute route =
 
                                             Nothing ->
                                                 unsupportedArity
-                                , case propSubroute of
-                                    PropertiesSummary ->
-                                        Html.div []
-                                            [ Html.div []
-                                                [ Html.text "Falsity-preserving: ", yesNo (BoolFun.isFalsityPreserving bf) ]
-                                            , Html.div []
-                                                [ Html.text "Truth-preserving: ", yesNo (BoolFun.isTruthPreserving bf) ]
-
-                                            -- TODO other properties
-                                            ]
-
-                                    FalsePreserving ->
-                                        Html.text "TODO - False preserving"
-
-                                    TruePreserving ->
-                                        Html.text "TODO - True preserving"
-
-                                    Monotonic ->
-                                        Html.text "TODO - Monotonic"
-
-                                    Affine ->
-                                        Html.text "TODO - Affine"
-
-                                    SelfDual ->
-                                        Html.text "TODO - Self Dual"
+                                , viewProperty arity functionIndex propSubroute bf
                                 ]
 
         NotFound ->
             Html.text "404 - Page not found"
+
+
+viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewProperty arity functionIndex propSubroute bf =
+    let
+        propLink : PropertyRoute -> String -> Html Msg
+        propLink target label =
+            Html.a [ Route.href (Arity arity (Function functionIndex target)) ]
+                [ Html.text label ]
+    in
+    case propSubroute of
+        PropertiesSummary ->
+            let
+                row label result =
+                    Html.tr []
+                        [ Html.td [] [ label ]
+                        , Html.td [] [ yesNo result ]
+                        ]
+            in
+            Html.table [ HA.class "functions-table" ]
+                [ Html.thead []
+                    [ Html.tr []
+                        [ Html.th [] [ Html.text "Property" ]
+                        , Html.th [] [ Html.text "Holds?" ]
+                        ]
+                    ]
+                , Html.tbody []
+                    [ row (propLink FalsePreserving "0-preserving") (BoolFun.isFalsityPreserving bf)
+                    , row (propLink TruePreserving "1-preserving") (BoolFun.isTruthPreserving bf)
+                    , row (propLink Monotonic "Monotone") (PostProperties.monotone bf).holds
+                    , row (Html.text "Affine") False
+                    , row (Html.text "Self-dual") False
+                    ]
+                ]
+
+        FalsePreserving ->
+            Html.div [ HA.class "property-page" ]
+                [ Html.h3 [] [ Html.text "0-preserving (Falsity-preserving)" ]
+                , Html.p [] [ Html.text "A function f is 0-preserving iff f(0, 0, …, 0) = 0." ]
+                , Html.p [] [ Html.text "Result: ", yesNo (BoolFun.isFalsityPreserving bf) ]
+                ]
+
+        TruePreserving ->
+            Html.div [ HA.class "property-page" ]
+                [ Html.h3 [] [ Html.text "1-preserving (Truth-preserving)" ]
+                , Html.p [] [ Html.text "A function f is 1-preserving iff f(1, 1, …, 1) = 1." ]
+                , Html.p [] [ Html.text "Result: ", yesNo (BoolFun.isTruthPreserving bf) ]
+                ]
+
+        Monotonic ->
+            viewMonotone bf
+
+        Affine ->
+            Html.div [ HA.class "property-page" ]
+                [ Html.h3 [] [ Html.text "Affine" ]
+                , Html.p [] [ Html.em [] [ Html.text "Coming soon." ] ]
+                ]
+
+        SelfDual ->
+            Html.div [ HA.class "property-page" ]
+                [ Html.h3 [] [ Html.text "Self-dual" ]
+                , Html.p [] [ Html.em [] [ Html.text "Coming soon." ] ]
+                ]
+
+
+viewMonotone : BoolFun.BF -> Html Msg
+viewMonotone bf =
+    let
+        result =
+            PostProperties.monotone bf
+
+        bitsOf i =
+            BoolFun.inputBits (BoolFun.arityOf bf) i
+                |> List.map
+                    (\b ->
+                        if b then
+                            "1"
+
+                        else
+                            "0"
+                    )
+                |> String.concat
+
+        verdict =
+            case result.witness of
+                Nothing ->
+                    Html.p []
+                        [ Html.text "✅ This function "
+                        , Html.strong [] [ Html.text "is monotone" ]
+                        , Html.text "."
+                        ]
+
+                Just w ->
+                    Html.div []
+                        [ Html.p []
+                            [ Html.text "❌ This function "
+                            , Html.strong [] [ Html.text "is not monotone" ]
+                            , Html.text "."
+                            ]
+                        , Html.p []
+                            [ Html.text "Witness: f("
+                            , Html.code [] [ Html.text (bitsOf w.smaller) ]
+                            , Html.text ") = 1, but f("
+                            , Html.code [] [ Html.text (bitsOf w.bigger) ]
+                            , Html.text ") = 0, even though "
+                            , Html.code [] [ Html.text (bitsOf w.smaller) ]
+                            , Html.text " ≤ "
+                            , Html.code [] [ Html.text (bitsOf w.bigger) ]
+                            , Html.text " bitwise."
+                            ]
+                        ]
+    in
+    Html.div [ HA.class "property-page" ]
+        [ Html.h3 [] [ Html.text "Monotone" ]
+        , Html.p []
+            [ Html.text
+                "A Boolean function f is "
+            , Html.em [] [ Html.text "monotone" ]
+            , Html.text
+                " iff it is order-preserving on the Boolean cube: whenever x ≤ y bitwise (every 1-bit of x is also a 1-bit of y), f(x) ≤ f(y). Equivalently: flipping any input bit from 0 to 1 can only flip the output from 0 to 1, never from 1 to 0."
+            ]
+        , verdict
+        , if BoolFun.arityOf bf <= HasseDiagram.maxRenderableArity then
+            Html.div []
+                [ Html.p []
+                    [ Html.text
+                        "Below is the Hasse diagram of {0,1}ⁿ ordered bitwise: edges connect inputs differing in exactly one bit, with the larger input above. Nodes are colored by the function's output (green = 1, red = 0). Edges that "
+                    , Html.strong [] [ Html.text "violate monotonicity" ]
+                    , Html.text " (1 below, 0 above) are highlighted in red."
+                    ]
+                , HasseDiagram.view { highlightMonotonicityViolations = True } bf
+                ]
+
+          else
+            HasseDiagram.view { highlightMonotonicityViolations = True } bf
+        ]
 
 
 unsupportedArity : Html msg
