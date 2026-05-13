@@ -7,14 +7,17 @@ module BoolFun exposing
     , arityOf
     , bitwiseLeq
     , boolCell
+    , dualOf
     , eval
     , f1Names
     , f2Names
     , flipBit
     , funCount
+    , funIndexOf
     , inputBits
     , inputs
     , isFalsityPreserving
+    , isSelfDual
     , isTruthPreserving
     , maxArity
     , maxFunctionIndex
@@ -222,6 +225,49 @@ eval =
 arityOf : BF -> Int
 arityOf (BF { arity }) =
     arity
+
+
+funIndexOf : BF -> Natural
+funIndexOf (BF { funIndex }) =
+    funIndex
+
+
+{-| Dual of a Boolean function: g(x) = ¬f(¬x).
+The truth-table bit at row i of g equals the negation of f's bit at row (2^n − 1 − i).
+-}
+dualOf : BF -> BF
+dualOf ((BF { arity }) as bf) =
+    let
+        rowCount =
+            2 ^ arity
+
+        dualIndex =
+            List.range 0 (rowCount - 1)
+                |> List.foldl
+                    (\i acc ->
+                        if not (eval_internal bf (rowCount - 1 - i)) then
+                            flipBit i acc
+
+                        else
+                            acc
+                    )
+                    N.zero
+    in
+    BF { arity = arity, funIndex = dualIndex }
+
+
+{-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x.
+Equivalently: for every pair of complementary rows i and (2^n − 1 − i),
+the truth-table values differ.
+-}
+isSelfDual : BF -> Bool
+isSelfDual ((BF { arity }) as bf) =
+    let
+        rowCount =
+            2 ^ arity
+    in
+    List.range 0 (rowCount // 2 - 1)
+        |> List.all (\i -> eval_internal bf i /= eval_internal bf (rowCount - 1 - i))
 
 
 inputs : Int -> List Int

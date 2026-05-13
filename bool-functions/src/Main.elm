@@ -298,6 +298,7 @@ viewRoute route =
                                                     , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
                                                     , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
                                                     , BoolFun.boolCell (PostProperties.monotone bf).holds
+                                                    , BoolFun.boolCell (BoolFun.isSelfDual bf)
                                                     ]
                                             )
                                             (BoolFun.mkBF arity natIndex)
@@ -310,6 +311,7 @@ viewRoute route =
                                             , Html.th [] [ Html.text "Falsity-preserving" ]
                                             , Html.th [] [ Html.text "Truth-preserving" ]
                                             , Html.th [] [ Html.text "Monotone" ]
+                                            , Html.th [] [ Html.text "Self-dual" ]
                                             ]
                                         ]
                                     )
@@ -404,7 +406,7 @@ viewProperty arity functionIndex propSubroute bf =
                     , row (propLink TruePreserving "1-preserving") (BoolFun.isTruthPreserving bf)
                     , row (propLink Monotonic "Monotone") (PostProperties.monotone bf).holds
                     , row (Html.text "Affine") False
-                    , row (Html.text "Self-dual") False
+                    , row (propLink SelfDual "Self-dual") (BoolFun.isSelfDual bf)
                     ]
                 ]
 
@@ -432,10 +434,48 @@ viewProperty arity functionIndex propSubroute bf =
                 ]
 
         SelfDual ->
-            Html.div [ HA.class "property-page" ]
-                [ Html.h3 [] [ Html.text "Self-dual" ]
-                , Html.p [] [ Html.em [] [ Html.text "Coming soon." ] ]
-                ]
+            viewSelfDual arity bf
+
+
+viewSelfDual : Int -> BoolFun.BF -> Html Msg
+viewSelfDual arity bf =
+    let
+        dual =
+            BoolFun.dualOf bf
+
+        dualIndex =
+            BoolFun.funIndexOf dual
+
+        verdict =
+            if BoolFun.isSelfDual bf then
+                Html.p []
+                    [ Html.text "✅ This function "
+                    , Html.strong [] [ Html.text "is self-dual" ]
+                    , Html.text " — it is its own dual."
+                    ]
+
+            else
+                Html.p []
+                    [ Html.text "❌ This function "
+                    , Html.strong [] [ Html.text "is not self-dual" ]
+                    , Html.text ". Its dual is function "
+                    , Html.a
+                        [ Route.href (Arity arity (Function dualIndex SelfDual)) ]
+                        [ Html.text (N.toDecimalString dualIndex) ]
+                    , Html.text "."
+                    ]
+    in
+    Html.div [ HA.class "property-page" ]
+        [ Html.h3 [] [ Html.text "Self-dual" ]
+        , Html.p []
+            [ Html.text "The "
+            , Html.em [] [ Html.text "dual" ]
+            , Html.text " of a Boolean function f is the function f* defined by f*(x₁, …, xₙ) = ¬f(¬x₁, …, ¬xₙ). A function is "
+            , Html.em [] [ Html.text "self-dual" ]
+            , Html.text " iff f = f*, equivalently f(¬x) = ¬f(x) for every input x. In the truth table, this means the output at row i and the output at the complementary row (2ⁿ − 1 − i) always differ."
+            ]
+        , verdict
+        ]
 
 
 viewMonotone : BoolFun.BF -> Html Msg
