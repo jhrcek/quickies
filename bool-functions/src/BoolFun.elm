@@ -8,6 +8,7 @@ module BoolFun exposing
     , bitwiseLeq
     , boolCell
     , dualOf
+    , essentialVariables
     , eval
     , f1Names
     , f2Names
@@ -337,6 +338,41 @@ flipBit bitIndex n =
 
         else
             N.add n mask
+
+
+{-| For a function f of arity N, returns a list of N booleans describing
+which arguments f genuinely depends on. The element at position i is `True`
+iff the i-th argument of f is _essential_ — there exists some assignment
+of the remaining N−1 arguments under which flipping this argument changes
+f's output:
+
+    ∃ x₀ … x_{i−1} x_{i+1} … x_{N−1}.
+        f(x₀,…,0,…,x_{N−1}) ≠ f(x₀,…,1,…,x_{N−1})
+
+A `False` means the argument is _fictitious_: f does not depend on it.
+
+-}
+essentialVariables : BF -> List Bool
+essentialVariables ((BF { arity }) as bf) =
+    List.range 1 arity
+        |> List.map (\i -> isEssentialAtBit bf (arity - i))
+
+
+isEssentialAtBit : BF -> Int -> Bool
+isEssentialAtBit ((BF { arity }) as bf) bitPos =
+    let
+        rowCount =
+            2 ^ arity
+
+        mask =
+            Bitwise.shiftLeftBy bitPos 1
+    in
+    List.range 0 (rowCount - 1)
+        |> List.any
+            (\x ->
+                (Bitwise.and x mask == 0)
+                    && (eval_internal bf x /= eval_internal bf (Bitwise.or x mask))
+            )
 
 
 isFalsityPreserving : BF -> Bool

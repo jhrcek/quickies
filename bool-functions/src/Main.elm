@@ -393,20 +393,44 @@ viewProperty arity functionIndex propSubroute bf =
                         [ Html.td [] [ label ]
                         , Html.td [] [ yesNo result ]
                         ]
+
+                essentialLetters =
+                    BoolFun.essentialVariables bf
+                        |> List.indexedMap
+                            (\i isEssential ->
+                                if isEssential then
+                                    Just (String.fromChar (Char.fromCode (97 + i)))
+
+                                else
+                                    Nothing
+                            )
+                        |> List.filterMap identity
             in
-            Html.table [ HA.class "functions-table" ]
-                [ Html.thead []
-                    [ Html.tr []
-                        [ Html.th [] [ Html.text "Property" ]
-                        , Html.th [] [ Html.text "Holds?" ]
+            Html.div []
+                [ Html.table [ HA.class "functions-table" ]
+                    [ Html.thead []
+                        [ Html.tr []
+                            [ Html.th [] [ Html.text "Property" ]
+                            , Html.th [] [ Html.text "Holds?" ]
+                            ]
+                        ]
+                    , Html.tbody []
+                        [ row (propLink FalsePreserving "0-preserving") (BoolFun.isFalsityPreserving bf)
+                        , row (propLink TruePreserving "1-preserving") (BoolFun.isTruthPreserving bf)
+                        , row (propLink Monotonic "Monotone") (PostProperties.monotone bf).holds
+                        , row (Html.text "Affine") False
+                        , row (propLink SelfDual "Self-dual") (BoolFun.isSelfDual bf)
                         ]
                     ]
-                , Html.tbody []
-                    [ row (propLink FalsePreserving "0-preserving") (BoolFun.isFalsityPreserving bf)
-                    , row (propLink TruePreserving "1-preserving") (BoolFun.isTruthPreserving bf)
-                    , row (propLink Monotonic "Monotone") (PostProperties.monotone bf).holds
-                    , row (Html.text "Affine") False
-                    , row (propLink SelfDual "Self-dual") (BoolFun.isSelfDual bf)
+                , Html.h4 [] [ Html.text "Essential variables" ]
+                , Html.p []
+                    [ Html.text
+                        (if List.isEmpty essentialLetters then
+                            "None — this function is constant (does not depend on any argument)."
+
+                         else
+                            String.join ", " essentialLetters
+                        )
                     ]
                 ]
 
