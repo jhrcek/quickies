@@ -79,13 +79,7 @@ buildGraph highlightViolations bf =
                 [ ( "label", GraphViz.str (bitString i) )
                 , ( "style", GraphViz.str "filled" )
                 , ( "fillcolor"
-                  , GraphViz.str
-                        (if BoolFun.eval bf i then
-                            "lightgreen"
-
-                         else
-                            "lightcoral"
-                        )
+                  , GraphViz.str (BoolFun.boolColor (BoolFun.eval bf i))
                   )
                 , ( "shape", GraphViz.str "circle" )
                 , ( "fontname", GraphViz.str "monospace" )

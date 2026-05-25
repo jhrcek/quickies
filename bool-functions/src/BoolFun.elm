@@ -7,6 +7,7 @@ module BoolFun exposing
     , arityOf
     , bitwiseLeq
     , boolCell
+    , boolColor
     , dualOf
     , essentialVariables
     , eval
@@ -20,10 +21,12 @@ module BoolFun exposing
     , isFalsityPreserving
     , isSelfDual
     , isTruthPreserving
+    , varNames
     , maxArity
     , maxFunctionIndex
     , mkBF
     , restriction
+    , showBool
     , truthTable
     )
 
@@ -33,6 +36,8 @@ import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
 import Natural as N exposing (Natural)
+
+
 
 
 
@@ -150,7 +155,7 @@ truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
     Html.table [ A.class "truth-table" ]
         [ Html.thead []
             [ Html.tr []
-                (List.map (\l -> Html.th [] [ Html.text l ]) (letters arity)
+                (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
                     ++ [ Html.th [] [ Html.text (getName (N.toInt funIndex)) ] ]
                 )
             ]
@@ -174,8 +179,8 @@ truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
         ]
 
 
-letters : Int -> List String
-letters n =
+varNames : Int -> List String
+varNames n =
     List.range 0 (n - 1)
         |> List.map (\i -> Char.fromCode (97 + i))
         |> List.map String.fromChar
@@ -193,16 +198,17 @@ boolCell b =
 boolCellWith : List (Attribute a) -> Bool -> Html a
 boolCellWith attrs b =
     Html.td
-        (A.style "background-color"
-            (if b then
-                "lightgreen"
-
-             else
-                "lightcoral"
-            )
-            :: attrs
-        )
+        (A.style "background-color" (boolColor b) :: attrs)
         [ Html.text (showBool b) ]
+
+
+boolColor : Bool -> String
+boolColor b =
+    if b then
+        "lightgreen"
+
+    else
+        "lightcoral"
 
 
 showBool : Bool -> String

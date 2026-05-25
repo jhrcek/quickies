@@ -15,6 +15,11 @@ import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
 
 
+
+-- TODO:
+--  add listPrimeImplicants
+
+
 main : Program () Model Msg
 main =
     Browser.application
@@ -370,11 +375,69 @@ viewRoute route =
 
                                             Nothing ->
                                                 unsupportedArity
+                                , viewRestrictions arity propSubroute bf
                                 , viewProperty arity functionIndex propSubroute bf
                                 ]
 
         NotFound ->
             Html.text "404 - Page not found"
+
+
+viewRestrictions : Int -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewRestrictions arity propSubroute bf =
+    if arity <= 1 then
+        Html.text ""
+
+    else
+        let
+            varIndices =
+                List.range 1 arity
+
+            cell varIdx value =
+                case BoolFun.restriction varIdx value bf of
+                    Nothing ->
+                        Html.td [] []
+
+                    Just restricted ->
+                        let
+                            newIndex =
+                                BoolFun.funIndexOf restricted
+                        in
+                        Html.td []
+                            [ Html.a
+                                [ Route.href
+                                    (Arity (arity - 1)
+                                        (Function newIndex propSubroute)
+                                    )
+                                ]
+                                [ Html.text (N.toDecimalString newIndex) ]
+                            ]
+
+            valueRow value =
+                Html.tr []
+                    (Html.th
+                        [ HA.style "background-color" (BoolFun.boolColor value) ]
+                        [ Html.text (BoolFun.showBool value) ]
+                        :: List.map (\varIdx -> cell varIdx value) varIndices
+                    )
+        in
+        Html.div []
+            [ Html.h4 [] [ Html.text "Restrictions" ]
+            , Html.table [ HA.class "functions-table" ]
+                [ Html.thead []
+                    [ Html.tr []
+                        (Html.th [] []
+                            :: List.map
+                                (\letter -> Html.th [] [ Html.text letter ])
+                                (BoolFun.varNames arity)
+                        )
+                    ]
+                , Html.tbody []
+                    [ valueRow False
+                    , valueRow True
+                    ]
+                ]
+            ]
 
 
 viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
@@ -395,19 +458,21 @@ viewProperty arity functionIndex propSubroute bf =
                         ]
 
                 essentialLetters =
-                    BoolFun.essentialVariables bf
-                        |> List.indexedMap
-                            (\i isEssential ->
-                                if isEssential then
-                                    Just (String.fromChar (Char.fromCode (97 + i)))
+                    List.map2
+                        (\letter isEssential ->
+                            if isEssential then
+                                Just letter
 
-                                else
-                                    Nothing
-                            )
+                            else
+                                Nothing
+                        )
+                        (BoolFun.varNames arity)
+                        (BoolFun.essentialVariables bf)
                         |> List.filterMap identity
             in
             Html.div []
-                [ Html.table [ HA.class "functions-table" ]
+                [ Html.h4 [] [ Html.text "Properties" ]
+                , Html.table [ HA.class "functions-table" ]
                     [ Html.thead []
                         [ Html.tr []
                             [ Html.th [] [ Html.text "Property" ]
