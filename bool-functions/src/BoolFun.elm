@@ -23,6 +23,7 @@ module BoolFun exposing
     , maxArity
     , maxFunctionIndex
     , mkBF
+    , restriction
     , truthTable
     )
 
@@ -338,6 +339,46 @@ flipBit bitIndex n =
 
         else
             N.add n mask
+
+
+{-| Restrict the i-th argument (1-based) of a function of arity n to a fixed
+Boolean value, producing a function of arity n−1. Returns `Nothing` when `i`
+is outside `[1, arity]`, or when the input has arity 1 (the resulting arity-0
+constant function is not representable by `BF`).
+-}
+restriction : Int -> Bool -> BF -> Maybe BF
+restriction i b ((BF { arity }) as bf) =
+    if i < 1 || i > arity then
+        Nothing
+
+    else
+        let
+            mask =
+                Bitwise.shiftLeftBy (arity - i) 1
+
+            bBit =
+                if b then
+                    mask
+
+                else
+                    0
+
+            ( newFunIndex, _ ) =
+                List.range 0 (2 ^ arity - 1)
+                    |> List.foldl
+                        (\k ( acc, j ) ->
+                            if Bitwise.and k mask /= bBit then
+                                ( acc, j )
+
+                            else if eval_internal bf k then
+                                ( flipBit j acc, j + 1 )
+
+                            else
+                                ( acc, j + 1 )
+                        )
+                        ( N.zero, 0 )
+        in
+        mkBF (arity - 1) newFunIndex
 
 
 {-| For a function f of arity N, returns a list of N booleans describing
