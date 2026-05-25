@@ -1,6 +1,8 @@
 module BoolFun exposing
     ( -- Opaque
       BF
+    , Implicant
+    , Literal(..)
     , arity1Config
     , arity2Config
     , arityNConfig
@@ -21,13 +23,15 @@ module BoolFun exposing
     , isFalsityPreserving
     , isSelfDual
     , isTruthPreserving
-    , varNames
+    , literals
     , maxArity
     , maxFunctionIndex
     , mkBF
+    , primeImplicants
     , restriction
     , showBool
     , truthTable
+    , varNames
     )
 
 import Array exposing (Array)
@@ -36,8 +40,7 @@ import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
 import Natural as N exposing (Natural)
-
-
+import Set
 
 
 
@@ -420,6 +423,185 @@ isEssentialAtBit ((BF { arity }) as bf) bitPos =
                 (Bitwise.and x mask == 0)
                     && (eval_internal bf x /= eval_internal bf (Bitwise.or x mask))
             )
+
+
+{-| One position inside an `Implicant`: a variable's required value, or
+`DontCare` when the variable is absent from the implicant.
+-}
+type Literal
+    = Positive
+    | Negative
+    | DontCare
+
+
+{-| An implicant of a Boolean function: a partial assignment in which some
+variables are fixed (required to hold a specific value) and the rest are
+don't-cares.
+
+Internally stored as two bitmasks (using the same MSB-first variable
+ordering as the rest of the module, matching `varNames`):
+
+  - `mask` has a 1-bit for each variable that is _fixed_;
+  - `value` carries that variable's required value at the corresponding bit;
+  - bits where `mask` is 0 are don't-cares (the matching `value` bits are
+    ignored).
+
+This representation makes the Quine–McCluskey merge step a single bitwise
+operation on the two ints.
+
+-}
+type Implicant
+    = Implicant
+        { arity : Int
+        , mask : Int
+        , value : Int
+        }
+
+
+{-| Decompose an implicant into a list of literals, one per variable, in the
+same order as `varNames`.
+-}
+literals : Implicant -> List Literal
+literals (Implicant impl) =
+    List.range 1 impl.arity
+        |> List.map
+            (\i ->
+                let
+                    bit =
+                        Bitwise.shiftLeftBy (impl.arity - i) 1
+                in
+                if Bitwise.and impl.mask bit == 0 then
+                    DontCare
+
+                else if Bitwise.and impl.value bit == 0 then
+                    Negative
+
+                else
+                    Positive
+            )
+
+
+{-| Find every prime implicant of a Boolean function using the
+Quine–McCluskey method. A prime implicant is a maximal product of literals
+that still implies the function — removing any literal from it would make
+it cover a row where f is false.
+
+The empty list is returned for the constant-false function; the constant-
+true function yields a single implicant with no literals (the empty
+conjunction, which is always true).
+
+-}
+primeImplicants : BF -> List Implicant
+primeImplicants ((BF { arity }) as bf) =
+    let
+        rowCount =
+            2 ^ arity
+
+        fullMask =
+            rowCount - 1
+
+        minterms =
+            List.range 0 (rowCount - 1)
+                |> List.filter (eval_internal bf)
+                |> List.map (\i -> { mask = fullMask, value = i })
+    in
+    collectPrimes [] minterms
+        |> List.sortBy (\c -> ( c.mask, c.value ))
+        |> List.map
+            (\c ->
+                Implicant
+                    { arity = arity
+                    , mask = c.mask
+                    , value = c.value
+                    }
+            )
+
+
+{-| Internal counterpart of `Implicant` used while running Quine–McCluskey:
+the same (mask, value) bit pair but without the `arity` field, since every
+cube produced in a single run of `primeImplicants` shares the same arity.
+Wrapping each intermediate cube as an `Implicant` would only add noise to
+the merge loop.
+-}
+type alias Cube =
+    { mask : Int, value : Int }
+
+
+collectPrimes : List Cube -> List Cube -> List Cube
+collectPrimes accPrimes current =
+    case current of
+        [] ->
+            accPrimes
+
+        _ ->
+            let
+                ( primesAtLevel, next ) =
+                    mergeLevel current
+            in
+            collectPrimes (primesAtLevel ++ accPrimes) next
+
+
+mergeLevel : List Cube -> ( List Cube, List Cube )
+mergeLevel cubes =
+    let
+        indexed =
+            List.indexedMap Tuple.pair cubes
+
+        pairs =
+            indexed
+                |> List.concatMap
+                    (\( i, a ) ->
+                        indexed
+                            |> List.filter (\( j, _ ) -> j > i)
+                            |> List.map (\( j, b ) -> ( i, j, ( a, b ) ))
+                    )
+
+        ( used, mergedSet ) =
+            List.foldl
+                (\( i, j, ( a, b ) ) ( usedAcc, mergedAcc ) ->
+                    case tryMerge a b of
+                        Just c ->
+                            ( usedAcc |> Set.insert i |> Set.insert j
+                            , Set.insert ( c.mask, c.value ) mergedAcc
+                            )
+
+                        Nothing ->
+                            ( usedAcc, mergedAcc )
+                )
+                ( Set.empty, Set.empty )
+                pairs
+
+        primesAtLevel =
+            indexed
+                |> List.filter (\( i, _ ) -> not (Set.member i used))
+                |> List.map Tuple.second
+
+        next =
+            mergedSet
+                |> Set.toList
+                |> List.map (\( m, v ) -> { mask = m, value = v })
+    in
+    ( primesAtLevel, next )
+
+
+tryMerge : Cube -> Cube -> Maybe Cube
+tryMerge a b =
+    if a.mask /= b.mask then
+        Nothing
+
+    else
+        let
+            diff =
+                Bitwise.xor a.value b.value
+        in
+        if diff /= 0 && Bitwise.and diff (diff - 1) == 0 then
+            Just
+                { mask = Bitwise.and a.mask (Bitwise.complement diff)
+                , value = Bitwise.and a.value (Bitwise.complement diff)
+                }
+
+        else
+            Nothing
 
 
 isFalsityPreserving : BF -> Bool

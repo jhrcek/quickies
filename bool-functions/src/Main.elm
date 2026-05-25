@@ -16,10 +16,6 @@ import Url
 
 
 
--- TODO:
---  add listPrimeImplicants
-
-
 main : Program () Model Msg
 main =
     Browser.application
@@ -440,6 +436,33 @@ viewRestrictions arity propSubroute bf =
             ]
 
 
+viewImplicant : Int -> BoolFun.Implicant -> Html msg
+viewImplicant arity implicant =
+    let
+        parts =
+            List.map2
+                (\name lit ->
+                    case lit of
+                        BoolFun.Positive ->
+                            Just name
+
+                        BoolFun.Negative ->
+                            Just ("¬" ++ name)
+
+                        BoolFun.DontCare ->
+                            Nothing
+                )
+                (BoolFun.varNames arity)
+                (BoolFun.literals implicant)
+                |> List.filterMap identity
+    in
+    if List.isEmpty parts then
+        Html.text "⊤"
+
+    else
+        Html.text (String.join " ∧ " parts)
+
+
 viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
 viewProperty arity functionIndex propSubroute bf =
     let
@@ -497,6 +520,17 @@ viewProperty arity functionIndex propSubroute bf =
                             String.join ", " essentialLetters
                         )
                     ]
+                , Html.h4 [] [ Html.text "Prime implicants" ]
+                , case BoolFun.primeImplicants bf of
+                    [] ->
+                        Html.p [] [ Html.text "None — this function is constantly false." ]
+
+                    primes ->
+                        Html.ul []
+                            (List.map
+                                (\p -> Html.li [] [ viewImplicant arity p ])
+                                primes
+                            )
                 ]
 
         FalsePreserving ->
