@@ -595,7 +595,6 @@ primeImplicants ((BF { arity }) as bf) =
                 |> List.map (\i -> { mask = fullMask, value = i })
     in
     collectPrimes [] minterms
-        |> List.sortBy (\c -> ( c.mask, c.value ))
         |> List.map
             (\c ->
                 Implicant
@@ -604,6 +603,20 @@ primeImplicants ((BF { arity }) as bf) =
                     , value = c.value
                     }
             )
+        |> List.sortBy (literals >> List.map literalSortKey)
+
+
+literalSortKey : Literal -> Int
+literalSortKey lit =
+    case lit of
+        Positive ->
+            0
+
+        Negative ->
+            1
+
+        DontCare ->
+            2
 
 
 {-| Internal counterpart of `Implicant` used while running Quine–McCluskey:
