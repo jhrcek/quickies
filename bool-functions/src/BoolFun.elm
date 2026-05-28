@@ -18,6 +18,7 @@ module BoolFun exposing
     , flipBit
     , funCount
     , funIndexOf
+    , implicantToFunction
     , inputBits
     , inputs
     , isFalsityPreserving
@@ -30,6 +31,7 @@ module BoolFun exposing
     , primeImplicants
     , restriction
     , showBool
+    , showImplicant
     , truthTable
     , varNames
     )
@@ -149,17 +151,49 @@ arityNConfig n =
             }
 
 
-truthTable : (Int -> msg) -> ArityConfig -> BF -> Html msg
-truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
+truthTable : (Int -> msg) -> ArityConfig -> List Implicant -> BF -> Html msg
+truthTable flipBitInFunctionIndex { arity, getName } implicants ((BF { funIndex }) as bf) =
     let
         rowCount =
             2 ^ arity
+
+        doubleBorder =
+            A.style "border-left" "3px double #333"
+
+        implicantFns =
+            List.map implicantToFunction implicants
+
+        firstImplicantBorder idx =
+            if idx == 0 then
+                [ doubleBorder ]
+
+            else
+                []
+
+        implicantHeaderCells =
+            List.indexedMap
+                (\idx impl ->
+                    Html.th
+                        (firstImplicantBorder idx)
+                        [ Html.text (showImplicant impl) ]
+                )
+                implicants
+
+        implicantBodyCells i =
+            List.indexedMap
+                (\idx implFn ->
+                    boolCellWith
+                        (firstImplicantBorder idx)
+                        (eval_internal implFn i)
+                )
+                implicantFns
     in
     Html.table [ A.class "truth-table" ]
         [ Html.thead []
             [ Html.tr []
                 (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
-                    ++ [ Html.th [] [ Html.text (getName (N.toInt funIndex)) ] ]
+                    ++ implicantHeaderCells
+                    ++ [ Html.th [ doubleBorder ] [ Html.text (getName (N.toInt funIndex)) ] ]
                 )
             ]
         , Html.tbody []
@@ -168,11 +202,11 @@ truthTable flipBitInFunctionIndex { arity, getName } ((BF { funIndex }) as bf) =
                     (\i ->
                         Html.tr []
                             (List.map boolCell (lastNBits arity i)
+                                ++ implicantBodyCells i
                                 ++ [ boolCellWith
                                         -- TODO fix width/height to prevent jumping when changing to different functions
                                         [ Events.onClick (flipBitInFunctionIndex i)
-                                        , -- double border to distinguish results column from input cols
-                                          A.style "border-left" "3px double #333"
+                                        , doubleBorder
                                         ]
                                         (eval_internal bf i)
                                    ]
@@ -456,6 +490,61 @@ type Implicant
         , mask : Int
         , value : Int
         }
+
+
+{-| Build the Boolean function that an implicant represents: the conjunction
+of its fixed literals. Cells where the input matches the implicant's
+(mask, value) pattern map to True; everything else maps to False.
+-}
+implicantToFunction : Implicant -> BF
+implicantToFunction (Implicant impl) =
+    let
+        rowCount =
+            2 ^ impl.arity
+
+        funIndex =
+            List.range 0 (rowCount - 1)
+                |> List.foldl
+                    (\i acc ->
+                        if Bitwise.and i impl.mask == Bitwise.and impl.value impl.mask then
+                            flipBit i acc
+
+                        else
+                            acc
+                    )
+                    N.zero
+    in
+    BF { arity = impl.arity, funIndex = funIndex }
+
+
+{-| Human-readable form of an implicant: a conjunction of literals using the
+variable names from `varNames`, or `⊤` for the empty implicant.
+-}
+showImplicant : Implicant -> String
+showImplicant ((Implicant impl) as implicant) =
+    let
+        parts =
+            List.map2
+                (\name lit ->
+                    case lit of
+                        Positive ->
+                            Just name
+
+                        Negative ->
+                            Just ("¬" ++ name)
+
+                        DontCare ->
+                            Nothing
+                )
+                (varNames impl.arity)
+                (literals implicant)
+                |> List.filterMap identity
+    in
+    if List.isEmpty parts then
+        "⊤"
+
+    else
+        String.join "∧" parts
 
 
 {-| Decompose an implicant into a list of literals, one per variable, in the

@@ -15,7 +15,6 @@ import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
 
 
-
 main : Program () Model Msg
 main =
     Browser.application
@@ -32,6 +31,7 @@ type alias Model =
     { key : Nav.Key
     , url : Url.Url
     , route : Route
+    , showImplicantsInTable : Bool
     }
 
 
@@ -40,6 +40,7 @@ init _ url key =
     ( { key = key
       , url = url
       , route = Route.parseUrl url
+      , showImplicantsInTable = False
       }
     , Cmd.none
     )
@@ -53,6 +54,7 @@ type Msg
     | FlipBitInFunctionIndex Int -- index of a bit to flip
     | BumpArity Int -- delta
     | BumpFunctionIndex Delta
+    | SetShowImplicantsInTable Bool
 
 
 type Delta
@@ -124,6 +126,11 @@ update msg model =
             , Nav.pushUrl model.key (Route.render newRoute)
             )
 
+        SetShowImplicantsInTable show ->
+            ( { model | showImplicantsInTable = show }
+            , Cmd.none
+            )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
@@ -142,7 +149,7 @@ viewBody model =
     Html.div []
         [ Html.node "style" [] [ Html.text styles ]
         , viewNavigation model.route
-        , viewRoute model.route
+        , viewRoute model.showImplicantsInTable model.route
         ]
 
 
@@ -263,8 +270,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Route -> Html Msg
-viewRoute route =
+viewRoute : Bool -> Route -> Html Msg
+viewRoute showImplicantsInTable route =
     case route of
         Home ->
             Html.div []
@@ -356,23 +363,31 @@ viewRoute route =
                             Html.text "Invalid function index"
 
                         Just bf ->
+                            let
+                                implicantsForTable =
+                                    if showImplicantsInTable && propSubroute == PropertiesSummary then
+                                        BoolFun.primeImplicants bf
+
+                                    else
+                                        []
+                            in
                             Html.div []
                                 [ case arity of
                                     1 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config implicantsForTable bf
 
                                     2 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config implicantsForTable bf
 
                                     n ->
                                         case BoolFun.arityNConfig n of
                                             Just config ->
-                                                BoolFun.truthTable FlipBitInFunctionIndex config bf
+                                                BoolFun.truthTable FlipBitInFunctionIndex config implicantsForTable bf
 
                                             Nothing ->
                                                 unsupportedArity
                                 , viewRestrictions arity propSubroute bf
-                                , viewProperty arity functionIndex propSubroute bf
+                                , viewProperty showImplicantsInTable arity functionIndex propSubroute bf
                                 ]
 
         NotFound ->
@@ -436,35 +451,8 @@ viewRestrictions arity propSubroute bf =
             ]
 
 
-viewImplicant : Int -> BoolFun.Implicant -> Html msg
-viewImplicant arity implicant =
-    let
-        parts =
-            List.map2
-                (\name lit ->
-                    case lit of
-                        BoolFun.Positive ->
-                            Just name
-
-                        BoolFun.Negative ->
-                            Just ("¬" ++ name)
-
-                        BoolFun.DontCare ->
-                            Nothing
-                )
-                (BoolFun.varNames arity)
-                (BoolFun.literals implicant)
-                |> List.filterMap identity
-    in
-    if List.isEmpty parts then
-        Html.text "⊤"
-
-    else
-        Html.text (String.join " ∧ " parts)
-
-
-viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
-viewProperty arity functionIndex propSubroute bf =
+viewProperty : Bool -> Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
     let
         propLink : PropertyRoute -> String -> Html Msg
         propLink target label =
@@ -525,12 +513,23 @@ viewProperty arity functionIndex propSubroute bf =
                     [] ->
                         Html.p [] [ Html.text "None — this function is constantly false." ]
 
-                    primes ->
-                        Html.ul []
-                            (List.map
-                                (\p -> Html.li [] [ viewImplicant arity p ])
-                                primes
-                            )
+                    implicants ->
+                        Html.div []
+                            [ Html.label []
+                                [ Html.input
+                                    [ HA.type_ "checkbox"
+                                    , HA.checked showImplicantsInTable
+                                    , Events.onCheck SetShowImplicantsInTable
+                                    ]
+                                    []
+                                , Html.text " Show in function table"
+                                ]
+                            , Html.div []
+                                (List.map
+                                    (\implicant -> Html.div [] [ Html.text (BoolFun.showImplicant implicant) ])
+                                    implicants
+                                )
+                            ]
                 ]
 
         FalsePreserving ->
