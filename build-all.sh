@@ -13,6 +13,7 @@ projects=(
   ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
   ["binary-addition"]="Game to practice binary addition"
   ["binomial"]="Normal and Poisson approximations to Binomial distribution"
+  ["bool-functions"]="Explore boolean functions"
   ["click-searcher"]="Search dictionary by clicking a word in text"
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
