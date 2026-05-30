@@ -1,6 +1,5 @@
 module Main exposing (..)
 
-import Array
 import BoolFun
 import Browser
 import Browser.Navigation as Nav
@@ -458,23 +457,12 @@ viewRoute settings showImplicantsInTable route =
                                         []
                             in
                             Html.div []
-                                [ case arity of
-                                    0 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity0Config implicantsForTable bf
+                                [ case BoolFun.configForArity arity of
+                                    Just config ->
+                                        BoolFun.truthTable FlipBitInFunctionIndex settings config implicantsForTable bf
 
-                                    1 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity1Config implicantsForTable bf
-
-                                    2 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity2Config implicantsForTable bf
-
-                                    n ->
-                                        case BoolFun.arityNConfig n of
-                                            Just config ->
-                                                BoolFun.truthTable FlipBitInFunctionIndex settings config implicantsForTable bf
-
-                                            Nothing ->
-                                                unsupportedArity
+                                    Nothing ->
+                                        unsupportedArity
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
                                 , viewRestrictions arity propSubroute bf
                                 , viewProperty arity functionIndex propSubroute bf
@@ -799,24 +787,35 @@ viewAllFunctions settings arity page =
         endExclusive =
             N.min (N.add offset BoolFun.pageSize) total
 
+        maybeGetName =
+            BoolFun.configForArity arity
+                |> Maybe.andThen .getName
+
         rows =
             naturalRange offset endExclusive
                 |> List.filterMap
                     (\index ->
                         BoolFun.mkBF arity index
-                            |> Maybe.map (functionRow settings arity index)
+                            |> Maybe.map (functionRow settings arity maybeGetName index)
                     )
 
         header =
             Html.thead []
                 [ Html.tr []
-                    [ Html.th [] [ Html.text "Index" ]
-                    , Html.th [] [ Html.text "Function Name" ]
-                    , Html.th [] [ Html.text "Falsity-preserving" ]
-                    , Html.th [] [ Html.text "Truth-preserving" ]
-                    , Html.th [] [ Html.text "Monotone" ]
-                    , Html.th [] [ Html.text "Self-dual" ]
-                    ]
+                    (Html.th [] [ Html.text "Index" ]
+                        :: (case maybeGetName of
+                                Just _ ->
+                                    [ Html.th [] [ Html.text "Function Name" ] ]
+
+                                Nothing ->
+                                    []
+                           )
+                        ++ [ Html.th [] [ Html.text "Falsity-preserving" ]
+                           , Html.th [] [ Html.text "Truth-preserving" ]
+                           , Html.th [] [ Html.text "Monotone" ]
+                           , Html.th [] [ Html.text "Self-dual" ]
+                           ]
+                    )
                 ]
 
         rangeLabel =
@@ -834,41 +833,27 @@ viewAllFunctions settings arity page =
         ]
 
 
-functionRow : Settings -> Int -> Natural -> BoolFun.BF -> Html Msg
-functionRow settings arity index bf =
+functionRow : Settings -> Int -> Maybe (Int -> String) -> Natural -> BoolFun.BF -> Html Msg
+functionRow settings arity maybeGetName index bf =
     Html.tr []
-        [ Html.td [] [ Html.text (N.toDecimalString index) ]
-        , Html.td []
+        (Html.td []
             [ Html.a
                 [ Route.href (Arity arity (Function index PropertiesSummary)) ]
-                [ Settings.viewTerm settings (functionName arity index) ]
+                [ Html.text (N.toDecimalString index) ]
             ]
-        , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
-        , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
-        , BoolFun.boolCell (PostProperties.monotone bf).holds
-        , BoolFun.boolCell (BoolFun.isSelfDual bf)
-        ]
+            :: (case maybeGetName of
+                    Just getName ->
+                        [ Html.td [] [ Settings.viewTerm settings (getName (N.toInt index)) ] ]
 
-
-functionName : Int -> Natural -> String
-functionName arity index =
-    let
-        lookup names =
-            Array.get (N.toInt index) names
-                |> Maybe.withDefault (N.toDecimalString index)
-    in
-    case arity of
-        0 ->
-            lookup BoolFun.f0Names
-
-        1 ->
-            lookup BoolFun.f1Names
-
-        2 ->
-            lookup BoolFun.f2Names
-
-        _ ->
-            N.toDecimalString index
+                    Nothing ->
+                        []
+               )
+            ++ [ BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
+               , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
+               , BoolFun.boolCell (PostProperties.monotone bf).holds
+               , BoolFun.boolCell (BoolFun.isSelfDual bf)
+               ]
+        )
 
 
 {-| The natural numbers in the half-open interval [start, end).

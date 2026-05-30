@@ -4,20 +4,14 @@ module BoolFun exposing
     , Implicant
     , Literal(..)
     , Polarity(..)
-    , arity0Config
-    , arity1Config
-    , arity2Config
-    , arityNConfig
     , arityOf
     , bitwiseLeq
     , boolCell
     , boolColor
+    , configForArity
     , dualOf
     , essentialVariables
     , eval
-    , f0Names
-    , f1Names
-    , f2Names
     , flipBit
     , funCount
     , funIndexOf
@@ -160,57 +154,48 @@ f2Names =
 
 
 type alias ArityConfig =
-    { arity : Int
-    , getName : Int -> String
+    { getName : Maybe (Int -> String)
     }
 
 
-arity0Config : ArityConfig
-arity0Config =
-    { arity = 0
-    , getName = \i -> Array.get i f0Names |> Maybe.withDefault "f()"
-    }
-
-
-arity1Config : ArityConfig
-arity1Config =
-    { arity = 1
-    , getName = \i -> Array.get i f1Names |> Maybe.withDefault "f(a)"
-    }
-
-
-arity2Config : ArityConfig
-arity2Config =
-    { arity = 2
-    , getName = \i -> Array.get i f2Names |> Maybe.withDefault "f(a, b)"
-    }
-
-
-arityNConfig : Int -> Maybe ArityConfig
-arityNConfig n =
-    if n < minArity || n > maxArity then
+{-| The `ArityConfig` for an arity, or `Nothing` when the arity is out of range.
+Only arities 0, 1 and 2 have meaningful per-function names; for higher arities
+`getName` is `Nothing`.
+-}
+configForArity : Int -> Maybe ArityConfig
+configForArity arity =
+    if arity < minArity || arity > maxArity then
         Nothing
 
     else
         Just
-            { arity = n
-            , getName =
-                \_ ->
-                    "f("
-                        ++ String.join ","
-                            (List.range 1 n
-                                |> List.map
-                                    (\i ->
-                                        Char.fromCode (96 + i)
-                                            |> String.fromChar
-                                    )
-                            )
-                        ++ ")"
+            { getName =
+                case arity of
+                    0 ->
+                        Just (\i -> Array.get i f0Names |> Maybe.withDefault "f()")
+
+                    1 ->
+                        Just (\i -> Array.get i f1Names |> Maybe.withDefault "f(a)")
+
+                    2 ->
+                        Just (\i -> Array.get i f2Names |> Maybe.withDefault "f(a, b)")
+
+                    _ ->
+                        Nothing
             }
 
 
+{-| Generic, name-free label for a function of the given arity, e.g. `f(a,b,c)`.
+Used as the truth-table output-column header for arities that have no meaningful
+per-function names.
+-}
+genericName : Int -> String
+genericName n =
+    "f(" ++ String.join "," (varNames n) ++ ")"
+
+
 truthTable : (Int -> msg) -> Settings -> ArityConfig -> List Implicant -> BF -> Html msg
-truthTable flipBitInFunctionIndex settings { arity, getName } implicants ((BF { funIndex }) as bf) =
+truthTable flipBitInFunctionIndex settings { getName } implicants ((BF { arity, funIndex }) as bf) =
     let
         rowCount =
             2 ^ arity
@@ -251,7 +236,17 @@ truthTable flipBitInFunctionIndex settings { arity, getName } implicants ((BF { 
             [ Html.tr []
                 (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
                     ++ implicantHeaderCells
-                    ++ [ Html.th [ doubleBorder ] [ Settings.viewTerm settings (getName (N.toInt funIndex)) ] ]
+                    ++ [ Html.th [ doubleBorder ]
+                            [ Settings.viewTerm settings
+                                (case getName of
+                                    Just toName ->
+                                        toName (N.toInt funIndex)
+
+                                    Nothing ->
+                                        genericName arity
+                                )
+                            ]
+                       ]
                 )
             ]
         , Html.tbody []
