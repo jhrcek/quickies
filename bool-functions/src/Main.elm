@@ -348,13 +348,13 @@ viewRoute showImplicantsInTable route =
                         funList BoolFun.f2Names
 
                     else if arity == 3 then
-                        funList (Array.fromList (List.map String.fromInt (List.range 0 (BoolFun.funCount 3 - 1))))
+                        funList (Array.fromList (List.map String.fromInt (List.range 0 (N.toInt (BoolFun.maxFunctionIndex 3)))))
 
                     else if arity <= BoolFun.maxArity then
                         Html.div []
                             [ Html.text
                                 ("There are "
-                                    ++ String.fromInt (BoolFun.funCount arity)
+                                    ++ N.toString (BoolFun.funCount arity)
                                     ++ " functions of arity "
                                     ++ String.fromInt arity
                                 )

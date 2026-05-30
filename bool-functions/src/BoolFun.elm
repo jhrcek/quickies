@@ -66,6 +66,26 @@ type alias BfInternal =
     }
 
 
+minArity : Int
+minArity =
+    0
+
+
+maxArity : Int
+maxArity =
+    6
+
+
+funCount : Int -> Natural
+funCount arity =
+    N.exp N.two (N.fromSafeInt (2 ^ arity))
+
+
+maxFunctionIndex : Int -> Natural
+maxFunctionIndex arity =
+    N.sub (funCount arity) N.one
+
+
 mkBF : Int -> Natural -> Maybe BF
 mkBF arity funIndex =
     if arity < minArity || maxArity < arity then
@@ -122,11 +142,6 @@ type alias ArityConfig =
     { arity : Int
     , getName : Int -> String
     }
-
-
-funCount : Int -> Int
-funCount arity =
-    2 ^ (2 ^ arity)
 
 
 arity0Config : ArityConfig
@@ -299,31 +314,30 @@ funIndexOf (BF { funIndex }) =
     funIndex
 
 
+{-| The function's truth table as a binary string: the bit for row 2^n−1 first
+down to row 0, zero-padded to the full 2^n width (`N.toBinaryString` itself drops
+leading zeros).
+-}
+toBitString : BF -> String
+toBitString (BF { arity, funIndex }) =
+    String.padLeft (2 ^ arity) '0' (N.toBinaryString funIndex)
+
+
 {-| True iff `f` implies `g`: at every input where `f` is True, `g` is also True
 (equivalently, `f ≤ g` pointwise). Since both truth tables are the bits of the
 functions' `funIndex`, this is just a subset check on those bits: `f` must not
 have a 1 anywhere `g` has a 0. Returns `False` when the arities differ.
 -}
 implies : BF -> BF -> Bool
-implies (BF f) (BF g) =
+implies ((BF f) as fBF) ((BF g) as gBF) =
     if f.arity /= g.arity then
         False
 
     else
-        let
-            fBits =
-                N.toBinaryString f.funIndex
-
-            gBits =
-                N.toBinaryString g.funIndex
-
-            width =
-                max (String.length fBits) (String.length gBits)
-        in
         List.map2
             (\fb gb -> not (fb == '1' && gb == '0'))
-            (String.toList (String.padLeft width '0' fBits))
-            (String.toList (String.padLeft width '0' gBits))
+            (String.toList (toBitString fBF))
+            (String.toList (toBitString gBF))
             |> List.all identity
 
 
@@ -351,19 +365,27 @@ dualOf ((BF { arity }) as bf) =
     BF { arity = arity, funIndex = dualIndex }
 
 
-{-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x.
-Equivalently: every row i and its complement (2^n − 1 − i) carry different
-values. A constant function is never self-dual — at arity 0 the lone input is
-its own complement, so the differ-from-complement check fails.
+{-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x — equivalently,
+f equals its own dual. The dual's truth table is f's bits reversed (¬x maps row i
+to row 2^n−1−i) and negated, so self-duality is a string comparison on the
+funIndex bits: pad them to the full 2^n width, then check they equal their own
+reverse-and-flip. A constant function is never self-dual — a single bit never
+equals its own flip.
 -}
 isSelfDual : BF -> Bool
-isSelfDual ((BF { arity }) as bf) =
+isSelfDual bf =
     let
-        rowCount =
-            2 ^ arity
+        bits =
+            toBitString bf
+
+        flipBitChar c =
+            if c == '0' then
+                '1'
+
+            else
+                '0'
     in
-    List.range 0 (rowCount - 1)
-        |> List.all (\i -> eval_internal bf i /= eval_internal bf (rowCount - 1 - i))
+    bits == String.map flipBitChar (String.reverse bits)
 
 
 inputs : Int -> List Int
@@ -835,18 +857,3 @@ isTruthPreserving (BF { arity, funIndex }) =
             2 ^ arity
     in
     getBit2 (rowCount - 1) funIndex
-
-
-minArity : Int
-minArity =
-    0
-
-
-maxArity : Int
-maxArity =
-    6
-
-
-maxFunctionIndex : Int -> Natural
-maxFunctionIndex arity =
-    N.sub (N.exp N.two (N.fromSafeInt (2 ^ arity))) N.one
