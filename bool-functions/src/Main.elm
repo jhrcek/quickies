@@ -15,6 +15,18 @@ import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
 import Url
 
 
+
+{-
+   TODO:
+   - add something like Settings page, where global settings can be modified
+       - show negation as ¬x or x̄?
+       - show product terms using x∧y or xy?
+   - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
+   - add possibility to see f|x=0 and f|x=1 restrictions next to function table
+   - fold in implicants list into the function table
+-}
+
+
 main : Program () Model Msg
 main =
     Browser.application
@@ -467,19 +479,6 @@ viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
                         [ Html.td [] [ label ]
                         , Html.td [] [ yesNo result ]
                         ]
-
-                essentialLetters =
-                    List.map2
-                        (\letter isEssential ->
-                            if isEssential then
-                                Just letter
-
-                            else
-                                Nothing
-                        )
-                        (BoolFun.varNames arity)
-                        (BoolFun.essentialVariables bf)
-                        |> List.filterMap identity
             in
             Html.div []
                 [ Html.h4 [] [ Html.text "Properties" ]
@@ -498,15 +497,40 @@ viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
                         , row (propLink SelfDual "Self-dual") (BoolFun.isSelfDual bf)
                         ]
                     ]
-                , Html.h4 [] [ Html.text "Essential variables" ]
-                , Html.p []
-                    [ Html.text
-                        (if List.isEmpty essentialLetters then
-                            "None — this function is constant (does not depend on any argument)."
-
-                         else
-                            String.join ", " essentialLetters
+                , Html.h4 [] [ Html.text "Input variables" ]
+                , Html.table [ HA.class "functions-table" ]
+                    [ Html.thead []
+                        [ Html.tr []
+                            [ Html.th [] [ Html.text "Variable" ]
+                            , Html.th [] [ Html.text "Essential" ]
+                            , Html.th [] [ Html.text "Polarity" ]
+                            ]
+                        ]
+                    , Html.tbody []
+                        (List.map3
+                            (\letter isEssential polarity ->
+                                Html.tr []
+                                    [ Html.td [] [ Html.text letter ]
+                                    , yesNoCell isEssential
+                                    , Html.td [] [ Html.text (BoolFun.showPolarity polarity) ]
+                                    ]
+                            )
+                            (BoolFun.varNames arity)
+                            (BoolFun.essentialVariables bf)
+                            (BoolFun.variablePolarities bf)
                         )
+                    ]
+                , let
+                    legendItem term explanation =
+                        Html.p [ HA.style "margin" "0.15em 0" ]
+                            [ Html.b [] [ Html.text term ], Html.text explanation ]
+                  in
+                  Html.div
+                    [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
+                    [ legendItem "Essential" " — the function genuinely depends on the variable; flipping it changes the output for at least one input. Non-essential means it never affects the output."
+                    , legendItem "Positive" " — raising the variable (0→1) never decreases the output (the function is monotone increasing in it)."
+                    , legendItem "Negative" " — raising the variable (0→1) never increases the output (monotone decreasing)."
+                    , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
                     ]
                 , Html.h4 [] [ Html.text "Prime implicants" ]
                 , case BoolFun.primeImplicants bf of
@@ -687,6 +711,11 @@ yesNo condition =
          else
             "No"
         )
+
+
+yesNoCell : Bool -> Html msg
+yesNoCell b =
+    Html.td [ HA.style "background-color" (BoolFun.boolColor b) ] [ yesNo b ]
 
 
 styles : String

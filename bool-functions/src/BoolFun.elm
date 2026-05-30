@@ -3,6 +3,7 @@ module BoolFun exposing
       BF
     , Implicant
     , Literal(..)
+    , Polarity(..)
     , arity1Config
     , arity2Config
     , arityNConfig
@@ -32,8 +33,10 @@ module BoolFun exposing
     , restriction
     , showBool
     , showImplicant
+    , showPolarity
     , truthTable
     , varNames
+    , variablePolarities
     )
 
 import Array exposing (Array)
@@ -457,6 +460,71 @@ isEssentialAtBit ((BF { arity }) as bf) bitPos =
                 (Bitwise.and x mask == 0)
                     && (eval_internal bf x /= eval_internal bf (Bitwise.or x mask))
             )
+
+
+{-| A variable's polarity (its _unateness_), describing how raising that
+variable from 0 to 1 affects the function's output.
+-}
+type Polarity
+    = PositiveUnate -- raising it never decreases the output (monotone increasing)
+    | NegativeUnate -- raising it never increases the output (monotone decreasing)
+    | Binate -- it increases the output for some inputs and decreases it for others
+    | Independent -- it never changes the output (the function is non-essential in this variable)
+
+
+{-| Polarity of each variable, in the same MSB-first order as `varNames`
+(and lined up row-by-row with `essentialVariables`).
+-}
+variablePolarities : BF -> List Polarity
+variablePolarities ((BF { arity }) as bf) =
+    List.range 1 arity
+        |> List.map (\i -> polarityAtBit bf (arity - i))
+
+
+polarityAtBit : BF -> Int -> Polarity
+polarityAtBit ((BF { arity }) as bf) bitPos =
+    let
+        mask =
+            Bitwise.shiftLeftBy bitPos 1
+
+        zeroRows =
+            List.range 0 (2 ^ arity - 1)
+                |> List.filter (\x -> Bitwise.and x mask == 0)
+
+        hasIncrease =
+            List.any (\x -> not (eval_internal bf x) && eval_internal bf (Bitwise.or x mask)) zeroRows
+
+        hasDecrease =
+            List.any (\x -> eval_internal bf x && not (eval_internal bf (Bitwise.or x mask))) zeroRows
+    in
+    case ( hasIncrease, hasDecrease ) of
+        ( True, True ) ->
+            Binate
+
+        ( True, False ) ->
+            PositiveUnate
+
+        ( False, True ) ->
+            NegativeUnate
+
+        ( False, False ) ->
+            Independent
+
+
+showPolarity : Polarity -> String
+showPolarity p =
+    case p of
+        PositiveUnate ->
+            "Positive"
+
+        NegativeUnate ->
+            "Negative"
+
+        Binate ->
+            "Binate"
+
+        Independent ->
+            "—"
 
 
 {-| One position inside an `Implicant`: a variable's required value, or
