@@ -12,15 +12,13 @@ import Natural as N exposing (Natural)
 import PostProperties
 import Random
 import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
+import Settings exposing (Settings)
 import Url
 
 
 
 {-
    TODO:
-   - add something like Settings page, where global settings can be modified
-       - show negation as ¬x or x̄?
-       - show product terms using x∧y or xy?
    - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
    - add possibility to see f|x=0 and f|x=1 restrictions next to function table
    - fold in implicants list into the function table
@@ -44,6 +42,8 @@ type alias Model =
     , url : Url.Url
     , route : Route
     , showImplicantsInTable : Bool
+    , settings : Settings
+    , settingsOpen : Bool
     }
 
 
@@ -53,6 +53,8 @@ init _ url key =
       , url = url
       , route = Route.parseUrl url
       , showImplicantsInTable = False
+      , settings = Settings.default
+      , settingsOpen = False
       }
     , Cmd.none
     )
@@ -67,6 +69,8 @@ type Msg
     | BumpArity Int -- delta
     | BumpFunctionIndex Delta
     | SetShowImplicantsInTable Bool
+    | ToggleSettings
+    | SetFormulaStyle Settings.FormulaStyle
 
 
 type Delta
@@ -143,6 +147,16 @@ update msg model =
             , Cmd.none
             )
 
+        ToggleSettings ->
+            ( { model | settingsOpen = not model.settingsOpen }
+            , Cmd.none
+            )
+
+        SetFormulaStyle style ->
+            ( { model | settings = { formula = style } }
+            , Cmd.none
+            )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
@@ -160,8 +174,49 @@ viewBody : Model -> Html Msg
 viewBody model =
     Html.div []
         [ Html.node "style" [] [ Html.text styles ]
+        , viewSettings model.settingsOpen model.settings
         , viewNavigation model.route
-        , viewRoute model.showImplicantsInTable model.route
+        , viewRoute model.settings model.showImplicantsInTable model.route
+        ]
+
+
+viewSettings : Bool -> Settings -> Html Msg
+viewSettings isOpen settings =
+    let
+        radio name isChecked msg label =
+            Html.label [ HA.style "display" "block" ]
+                [ Html.input
+                    [ HA.type_ "radio"
+                    , HA.name name
+                    , HA.checked isChecked
+                    , Events.onClick msg
+                    ]
+                    []
+                , Html.text " "
+                , label
+                ]
+
+        popup =
+            if isOpen then
+                Html.div [ HA.class "settings-popup" ]
+                    [ Html.fieldset []
+                        [ Html.legend [] [ Html.text "Formula display" ]
+                        , radio "formula" (settings.formula == Settings.Symbols) (SetFormulaStyle Settings.Symbols) (Html.text "symbols (x∧¬y)")
+                        , radio "formula" (settings.formula == Settings.Compact) (SetFormulaStyle Settings.Compact) (Html.span [] [ Html.text "compact (x", Settings.overbar "y", Html.text ")" ])
+                        ]
+                    ]
+
+            else
+                Html.text ""
+    in
+    Html.div []
+        [ Html.button
+            [ HA.class "settings-cog"
+            , HA.title "Settings"
+            , Events.onClick ToggleSettings
+            ]
+            [ Html.text "⚙" ]
+        , popup
         ]
 
 
@@ -282,8 +337,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Bool -> Route -> Html Msg
-viewRoute showImplicantsInTable route =
+viewRoute : Settings -> Bool -> Route -> Html Msg
+viewRoute settings showImplicantsInTable route =
     case route of
         Home ->
             Html.div []
@@ -314,7 +369,7 @@ viewRoute showImplicantsInTable route =
                                             (\bf ->
                                                 Html.tr []
                                                     [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Html.text name ] ]
+                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Settings.viewTerm settings name ] ]
                                                     , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
                                                     , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
                                                     , BoolFun.boolCell (PostProperties.monotone bf).holds
@@ -389,23 +444,23 @@ viewRoute showImplicantsInTable route =
                             Html.div []
                                 [ case arity of
                                     0 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity0Config implicantsForTable bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity0Config implicantsForTable bf
 
                                     1 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config implicantsForTable bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity1Config implicantsForTable bf
 
                                     2 ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity2Config implicantsForTable bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex settings BoolFun.arity2Config implicantsForTable bf
 
                                     n ->
                                         case BoolFun.arityNConfig n of
                                             Just config ->
-                                                BoolFun.truthTable FlipBitInFunctionIndex config implicantsForTable bf
+                                                BoolFun.truthTable FlipBitInFunctionIndex settings config implicantsForTable bf
 
                                             Nothing ->
                                                 unsupportedArity
                                 , viewRestrictions arity propSubroute bf
-                                , viewProperty showImplicantsInTable arity functionIndex propSubroute bf
+                                , viewProperty settings showImplicantsInTable arity functionIndex propSubroute bf
                                 ]
 
         NotFound ->
@@ -469,8 +524,8 @@ viewRestrictions arity propSubroute bf =
             ]
 
 
-viewProperty : Bool -> Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
-viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
+viewProperty : Settings -> Bool -> Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewProperty settings showImplicantsInTable arity functionIndex propSubroute bf =
     let
         propLink : PropertyRoute -> String -> Html Msg
         propLink target label =
@@ -562,7 +617,7 @@ viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
                                 ]
                             , Html.div []
                                 (List.map
-                                    (\implicant -> Html.div [] [ Html.text (BoolFun.showImplicant implicant) ])
+                                    (\implicant -> Html.div [] [ BoolFun.viewImplicant settings implicant ])
                                     implicants
                                 )
                             ]
@@ -758,5 +813,29 @@ styles =
     border: 1px solid black;
     padding: 2px;
 
+}
+
+.settings-cog {
+    position: fixed;
+    top: 6px;
+    right: 6px;
+    z-index: 1000;
+}
+.settings-popup {
+    position: fixed;
+    top: 34px;
+    right: 6px;
+    z-index: 1000;
+    background: white;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.settings-popup fieldset {
+    margin: 0 0 6px 0;
+}
+.settings-popup fieldset:last-child {
+    margin-bottom: 0;
 }
 """

@@ -36,11 +36,11 @@ module BoolFun exposing
     , primeImplicants
     , restriction
     , showBool
-    , showImplicant
     , showPolarity
     , truthTable
     , varNames
     , variablePolarities
+    , viewImplicant
     )
 
 import Array exposing (Array)
@@ -50,6 +50,7 @@ import Html.Attributes as A
 import Html.Events as Events
 import Natural as N exposing (Natural)
 import Set
+import Settings exposing (Settings)
 
 
 
@@ -188,8 +189,8 @@ arityNConfig n =
             }
 
 
-truthTable : (Int -> msg) -> ArityConfig -> List Implicant -> BF -> Html msg
-truthTable flipBitInFunctionIndex { arity, getName } implicants ((BF { funIndex }) as bf) =
+truthTable : (Int -> msg) -> Settings -> ArityConfig -> List Implicant -> BF -> Html msg
+truthTable flipBitInFunctionIndex settings { arity, getName } implicants ((BF { funIndex }) as bf) =
     let
         rowCount =
             2 ^ arity
@@ -212,7 +213,7 @@ truthTable flipBitInFunctionIndex { arity, getName } implicants ((BF { funIndex 
                 (\idx impl ->
                     Html.th
                         (firstImplicantBorder idx)
-                        [ Html.text (showImplicant impl) ]
+                        [ viewImplicant settings impl ]
                 )
                 implicants
 
@@ -230,7 +231,7 @@ truthTable flipBitInFunctionIndex { arity, getName } implicants ((BF { funIndex 
             [ Html.tr []
                 (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
                     ++ implicantHeaderCells
-                    ++ [ Html.th [ doubleBorder ] [ Html.text (getName (N.toInt funIndex)) ] ]
+                    ++ [ Html.th [ doubleBorder ] [ Settings.viewTerm settings (getName (N.toInt funIndex)) ] ]
                 )
             ]
         , Html.tbody []
@@ -659,18 +660,18 @@ implicantToFunction (Implicant impl) =
 {-| Human-readable form of an implicant: a conjunction of literals using the
 variable names from `varNames`, or `⊤` for the empty implicant.
 -}
-showImplicant : Implicant -> String
-showImplicant ((Implicant impl) as implicant) =
+viewImplicant : Settings -> Implicant -> Html msg
+viewImplicant settings ((Implicant impl) as implicant) =
     let
         parts =
             List.map2
                 (\name lit ->
                     case lit of
                         Positive ->
-                            Just name
+                            Just (Html.text name)
 
                         Negative ->
-                            Just ("¬" ++ name)
+                            Just (Settings.viewNegation settings name)
 
                         DontCare ->
                             Nothing
@@ -680,10 +681,10 @@ showImplicant ((Implicant impl) as implicant) =
                 |> List.filterMap identity
     in
     if List.isEmpty parts then
-        "⊤"
+        Html.text "⊤"
 
     else
-        String.join "∧" parts
+        Html.span [] (Settings.joinConjuncts settings parts)
 
 
 {-| Decompose an implicant into a list of literals, one per variable, in the
