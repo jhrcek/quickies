@@ -20,6 +20,7 @@ module BoolFun exposing
     , funCount
     , funIndexOf
     , implicantToFunction
+    , implies
     , inputBits
     , inputs
     , isFalsityPreserving
@@ -280,6 +281,34 @@ funIndexOf (BF { funIndex }) =
     funIndex
 
 
+{-| True iff `f` implies `g`: at every input where `f` is True, `g` is also True
+(equivalently, `f ≤ g` pointwise). Since both truth tables are the bits of the
+functions' `funIndex`, this is just a subset check on those bits: `f` must not
+have a 1 anywhere `g` has a 0. Returns `False` when the arities differ.
+-}
+implies : BF -> BF -> Bool
+implies (BF f) (BF g) =
+    if f.arity /= g.arity then
+        False
+
+    else
+        let
+            fBits =
+                N.toBinaryString f.funIndex
+
+            gBits =
+                N.toBinaryString g.funIndex
+
+            width =
+                max (String.length fBits) (String.length gBits)
+        in
+        List.map2
+            (\fb gb -> not (fb == '1' && gb == '0'))
+            (String.toList (String.padLeft width '0' fBits))
+            (String.toList (String.padLeft width '0' gBits))
+            |> List.all identity
+
+
 {-| Dual of a Boolean function: g(x) = ¬f(¬x).
 The truth-table bit at row i of g equals the negation of f's bit at row (2^n − 1 − i).
 -}
@@ -472,34 +501,40 @@ type Polarity
     | Independent -- it never changes the output (the function is non-essential in this variable)
 
 
-{-| Polarity of each variable, in the same MSB-first order as `varNames`
+{-| Polarity of each variable, in the same 1-based order as `varNames`
 (and lined up row-by-row with `essentialVariables`).
 -}
 variablePolarities : BF -> List Polarity
 variablePolarities ((BF { arity }) as bf) =
     List.range 1 arity
-        |> List.map (\i -> polarityAtBit bf (arity - i))
+        |> List.map (\varIdx -> variablePolarity varIdx bf)
 
 
-polarityAtBit : BF -> Int -> Polarity
-polarityAtBit ((BF { arity }) as bf) bitPos =
+{-| Polarity of the variable at 1-based index `varIdx` (the convention used by
+`restriction` and `varNames`). A variable is positive unate when fixing it to 0
+yields a function that implies the one from fixing it to 1 (raising the variable
+never switches the output off), negative unate in the mirror case, binate when
+neither implication holds, and independent when both do (the two cofactors are
+equal, so the function ignores the variable).
+-}
+variablePolarity : Int -> BF -> Polarity
+variablePolarity varIdx bf =
     let
-        mask =
-            Bitwise.shiftLeftBy bitPos 1
+        ( zeroImpliesOne, oneImpliesZero ) =
+            case ( restriction varIdx False bf, restriction varIdx True bf ) of
+                ( Just f0, Just f1 ) ->
+                    ( implies f0 f1, implies f1 f0 )
 
-        zeroRows =
-            List.range 0 (2 ^ arity - 1)
-                |> List.filter (\x -> Bitwise.and x mask == 0)
-
-        hasIncrease =
-            List.any (\x -> not (eval_internal bf x) && eval_internal bf (Bitwise.or x mask)) zeroRows
-
-        hasDecrease =
-            List.any (\x -> eval_internal bf x && not (eval_internal bf (Bitwise.or x mask))) zeroRows
+                _ ->
+                    -- arity 1: the cofactors are the arity-0 constants f(0) and
+                    -- f(1), which BF can't represent, so compare them directly.
+                    ( not (eval bf 0) || eval bf 1
+                    , not (eval bf 1) || eval bf 0
+                    )
     in
-    case ( hasIncrease, hasDecrease ) of
+    case ( zeroImpliesOne, oneImpliesZero ) of
         ( True, True ) ->
-            Binate
+            Independent
 
         ( True, False ) ->
             PositiveUnate
@@ -508,7 +543,7 @@ polarityAtBit ((BF { arity }) as bf) bitPos =
             NegativeUnate
 
         ( False, False ) ->
-            Independent
+            Binate
 
 
 showPolarity : Polarity -> String
