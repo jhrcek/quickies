@@ -8,10 +8,11 @@ import HasseDiagram
 import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
+import Json.Decode as Decode
 import Natural as N exposing (Natural)
 import PostProperties
 import Random
-import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..))
+import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..), RouteError(..))
 import Settings exposing (Settings)
 import Url
 
@@ -39,7 +40,7 @@ main =
 type alias Model =
     { key : Nav.Key
     , url : Url.Url
-    , route : Route
+    , route : Result RouteError Route
     , showImplicantsInTable : Bool
     , settings : Settings
     , settingsOpen : Bool
@@ -63,9 +64,10 @@ type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | GoToRoute Route
-    | GoToRandomFunction Int -- fun index
+    | GoToRandomFunction Int -- arity
+    | GoToFunctionsPage String -- raw 1-based page input
     | FlipBitInFunctionIndex Int -- index of a bit to flip
-    | BumpArity Int -- delta
+    | BumpArity Delta
     | BumpFunctionIndex Delta
     | SetShowImplicantsInTable Bool
     | ToggleSettings
@@ -105,41 +107,42 @@ update msg model =
                 |> Random.generate (\funIdx -> GoToRoute (Arity arity (Function funIdx PropertiesSummary)))
             )
 
+        GoToFunctionsPage rawInput ->
+            case N.fromDecimalString rawInput of
+                Just page ->
+                    navigateToRoute model (Route.updatePageNumber (always page))
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         FlipBitInFunctionIndex indexOfBitToFlipInFunIndex ->
-            let
-                newRoute =
-                    Route.updateFunIndex (BoolFun.flipBit indexOfBitToFlipInFunIndex) model.route
-            in
-            ( model
-            , Nav.pushUrl model.key (Route.render newRoute)
-            )
+            navigateToRoute model (Route.updateFunIndex (BoolFun.flipBit indexOfBitToFlipInFunIndex))
 
         BumpArity delta ->
-            let
-                newRoute =
-                    Route.updateArity (\arity -> arity + delta) model.route
-            in
-            ( model
-            , Nav.pushUrl model.key (Route.render newRoute)
-            )
+            navigateToRoute model
+                (Route.updateArity
+                    (\arity ->
+                        case delta of
+                            Plus1 ->
+                                arity + 1
+
+                            Minus1 ->
+                                arity - 1
+                    )
+                )
 
         BumpFunctionIndex delta ->
-            let
-                newRoute =
-                    Route.updateFunIndex
-                        (\funIndex ->
-                            case delta of
-                                Plus1 ->
-                                    N.add funIndex N.one
+            navigateToRoute model
+                (Route.updateFunIndex
+                    (\funIndex ->
+                        case delta of
+                            Plus1 ->
+                                N.add funIndex N.one
 
-                                Minus1 ->
-                                    N.sub funIndex N.one
-                        )
-                        model.route
-            in
-            ( model
-            , Nav.pushUrl model.key (Route.render newRoute)
-            )
+                            Minus1 ->
+                                N.sub funIndex N.one
+                    )
+                )
 
         SetShowImplicantsInTable show ->
             ( { model | showImplicantsInTable = show }
@@ -155,6 +158,20 @@ update msg model =
             ( { model | settings = { formula = style } }
             , Cmd.none
             )
+
+
+{-| Navigate to the result of transforming the current route. The transforming
+functions clamp into the valid range, so this only fires from controls that are
+rendered for a valid (`Ok`) route; an `Err` route has no such controls.
+-}
+navigateToRoute : Model -> (Route -> Route) -> ( Model, Cmd Msg )
+navigateToRoute model f =
+    case model.route of
+        Ok route ->
+            ( model, Nav.pushUrl model.key (Route.render (f route)) )
+
+        Err _ ->
+            ( model, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
@@ -174,9 +191,74 @@ viewBody model =
     Html.div []
         [ Html.node "style" [] [ Html.text styles ]
         , viewSettings model.settingsOpen model.settings
-        , viewNavigation model.route
-        , viewRoute model.settings model.showImplicantsInTable model.route
+        , case model.route of
+            Ok route ->
+                Html.div []
+                    [ viewNavigation route
+                    , viewRoute model.settings model.showImplicantsInTable route
+                    ]
+
+            Err error ->
+                Html.div []
+                    [ Html.div [] [ Html.a [ Route.href Home ] [ Html.text "Home" ] ]
+                    , viewRouteError error
+                    ]
         ]
+
+
+{-| Render a domain-validation error for a URL the user entered by hand. We do
+not rewrite the URL; we just explain what's wrong and link to a valid route.
+-}
+viewRouteError : RouteError -> Html Msg
+viewRouteError error =
+    let
+        paragraph message fixRoute fixLabel =
+            Html.div []
+                [ Html.p [] [ Html.text message ]
+                , Html.p [] [ Html.a [ Route.href fixRoute ] [ Html.text fixLabel ] ]
+                ]
+    in
+    case error of
+        Route.UnrecognizedUrl fragment ->
+            paragraph
+                ("Unrecognized URL: #" ++ fragment)
+                Home
+                "Go to the home page"
+
+        Route.UnsupportedArity arity ->
+            paragraph
+                ("Unsupported arity "
+                    ++ String.fromInt arity
+                    ++ ": must be between "
+                    ++ String.fromInt BoolFun.minArity
+                    ++ " and "
+                    ++ String.fromInt BoolFun.maxArity
+                    ++ " inclusive."
+                )
+                Home
+                "Go to the home page"
+
+        Route.PageOutOfRange arity pageCount ->
+            paragraph
+                ("Page out of range: arity "
+                    ++ String.fromInt arity
+                    ++ " has pages 1 to "
+                    ++ N.toDecimalString pageCount
+                    ++ "."
+                )
+                (Arity arity (AllFunctions N.one))
+                "Go to page 1"
+
+        Route.FunctionIndexOutOfRange arity maxIndex ->
+            paragraph
+                ("Function index out of range: arity "
+                    ++ String.fromInt arity
+                    ++ " has indices 0 to "
+                    ++ N.toDecimalString maxIndex
+                    ++ "."
+                )
+                (Arity arity (Function N.zero PropertiesSummary))
+                "Go to function 0"
 
 
 viewSettings : Bool -> Settings -> Html Msg
@@ -200,8 +282,14 @@ viewSettings isOpen settings =
                 Html.div [ HA.class "settings-popup" ]
                     [ Html.fieldset []
                         [ Html.legend [] [ Html.text "Formula display" ]
-                        , radio "formula" (settings.formula == Settings.Symbols) (SetFormulaStyle Settings.Symbols) (Html.text "symbols (x∧¬y)")
-                        , radio "formula" (settings.formula == Settings.Compact) (SetFormulaStyle Settings.Compact) (Html.span [] [ Html.text "compact (x", Settings.overbar "y", Html.text ")" ])
+                        , radio "formula"
+                            (settings.formula == Settings.Symbols)
+                            (SetFormulaStyle Settings.Symbols)
+                            (Html.text "symbols (x∧¬y)")
+                        , radio "formula"
+                            (settings.formula == Settings.Compact)
+                            (SetFormulaStyle Settings.Compact)
+                            (Html.span [] [ Html.text "compact (x", Settings.overbar "y", Html.text ")" ])
                         ]
                     ]
 
@@ -229,19 +317,19 @@ arityControls : Bool -> Int -> Html Msg
 arityControls renderLink arity =
     Html.span []
         [ if renderLink then
-            Html.a [ Route.href (Arity arity AllFunctions) ] [ Html.text "Arity" ]
+            Html.a [ Route.href (Arity arity (AllFunctions N.one)) ] [ Html.text "Arity" ]
 
           else
             Html.text "Arity"
         , Html.text " "
         , Html.button
-            [ Events.onClick (BumpArity -1)
+            [ Events.onClick (BumpArity Minus1)
             , HA.disabled (arity <= BoolFun.minArity)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt arity ++ " ")
         , Html.button
-            [ Events.onClick (BumpArity 1)
+            [ Events.onClick (BumpArity Plus1)
             , HA.disabled (arity >= BoolFun.maxArity)
             ]
             [ Html.text "+" ]
@@ -260,7 +348,7 @@ buildBreadcrumbs route =
 
         Arity arity aritySubroute ->
             case aritySubroute of
-                AllFunctions ->
+                AllFunctions _ ->
                     [ homeLink
                     , arityControls False arity
                     ]
@@ -280,9 +368,6 @@ buildBreadcrumbs route =
                             else
                                 []
                            )
-
-        NotFound ->
-            [ homeLink ]
 
 
 propertyName : PropertyRoute -> String
@@ -346,7 +431,7 @@ viewRoute settings showImplicantsInTable route =
                     :: List.intersperse (Html.text ", ")
                         (List.map
                             (\arity ->
-                                Html.a [ Route.href (Arity arity AllFunctions) ] [ Html.text (String.fromInt arity) ]
+                                Html.a [ Route.href (Arity arity (AllFunctions N.one)) ] [ Html.text (String.fromInt arity) ]
                             )
                             (List.range BoolFun.minArity BoolFun.maxArity)
                         )
@@ -354,76 +439,8 @@ viewRoute settings showImplicantsInTable route =
 
         Arity arity arityRoute ->
             case arityRoute of
-                AllFunctions ->
-                    let
-                        funList names =
-                            Array.toIndexedList names
-                                |> List.filterMap
-                                    (\( idx, name ) ->
-                                        let
-                                            natIndex =
-                                                N.fromSafeInt idx
-                                        in
-                                        Maybe.map
-                                            (\bf ->
-                                                Html.tr []
-                                                    [ Html.td [] [ Html.text (String.fromInt idx) ]
-                                                    , Html.td [] [ Html.a [ Route.href (Arity arity (Function natIndex PropertiesSummary)) ] [ Settings.viewTerm settings name ] ]
-                                                    , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
-                                                    , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
-                                                    , BoolFun.boolCell (PostProperties.monotone bf).holds
-                                                    , BoolFun.boolCell (BoolFun.isSelfDual bf)
-                                                    ]
-                                            )
-                                            (BoolFun.mkBF arity natIndex)
-                                    )
-                                |> (::)
-                                    (Html.thead []
-                                        [ Html.tr []
-                                            [ Html.th [] [ Html.text "Index" ]
-                                            , Html.th [] [ Html.text "Function Name" ]
-                                            , Html.th [] [ Html.text "Falsity-preserving" ]
-                                            , Html.th [] [ Html.text "Truth-preserving" ]
-                                            , Html.th [] [ Html.text "Monotone" ]
-                                            , Html.th [] [ Html.text "Self-dual" ]
-                                            ]
-                                        ]
-                                    )
-                                |> Html.table
-                                    [ HA.class "functions-table" ]
-                    in
-                    if arity == 0 then
-                        funList BoolFun.f0Names
-
-                    else if arity == 1 then
-                        funList BoolFun.f1Names
-
-                    else if arity == 2 then
-                        funList BoolFun.f2Names
-
-                    else if arity == 3 then
-                        funList (Array.fromList (List.map String.fromInt (List.range 0 (N.toInt (BoolFun.maxFunctionIndex 3)))))
-
-                    else if arity <= BoolFun.maxArity then
-                        Html.div []
-                            [ Html.text
-                                ("There are "
-                                    ++ N.toString (BoolFun.funCount arity)
-                                    ++ " functions of arity "
-                                    ++ String.fromInt arity
-                                )
-                            , Html.div []
-                                [ Html.text "Go and look at randomly picked one: "
-                                , Html.button
-                                    [ Events.onClick (GoToRandomFunction arity)
-                                    , HA.title "Go to random function"
-                                    ]
-                                    [ Html.text "⚄" ]
-                                ]
-                            ]
-
-                    else
-                        unsupportedArity
+                AllFunctions page ->
+                    viewAllFunctions settings arity page
 
                 Function functionIndex propSubroute ->
                     case BoolFun.mkBF arity functionIndex of
@@ -462,9 +479,6 @@ viewRoute settings showImplicantsInTable route =
                                 , viewRestrictions arity propSubroute bf
                                 , viewProperty arity functionIndex propSubroute bf
                                 ]
-
-        NotFound ->
-            Html.text "404 - Page not found"
 
 
 viewRestrictions : Int -> PropertyRoute -> BoolFun.BF -> Html Msg
@@ -768,6 +782,146 @@ unsupportedArity =
             ++ String.fromInt BoolFun.maxArity
             ++ " inclusive)"
         )
+
+
+viewAllFunctions : Settings -> Int -> Natural -> Html Msg
+viewAllFunctions settings arity page =
+    let
+        total =
+            BoolFun.funCount arity
+
+        pageCount =
+            BoolFun.pageCount arity
+
+        offset =
+            N.mul (N.sub page N.one) BoolFun.pageSize
+
+        endExclusive =
+            N.min (N.add offset BoolFun.pageSize) total
+
+        rows =
+            naturalRange offset endExclusive
+                |> List.filterMap
+                    (\index ->
+                        BoolFun.mkBF arity index
+                            |> Maybe.map (functionRow settings arity index)
+                    )
+
+        header =
+            Html.thead []
+                [ Html.tr []
+                    [ Html.th [] [ Html.text "Index" ]
+                    , Html.th [] [ Html.text "Function Name" ]
+                    , Html.th [] [ Html.text "Falsity-preserving" ]
+                    , Html.th [] [ Html.text "Truth-preserving" ]
+                    , Html.th [] [ Html.text "Monotone" ]
+                    , Html.th [] [ Html.text "Self-dual" ]
+                    ]
+                ]
+
+        rangeLabel =
+            "Functions with index "
+                ++ N.toDecimalString offset
+                ++ "-"
+                ++ N.toDecimalString (N.sub endExclusive N.one)
+                ++ " of "
+                ++ N.toDecimalString total
+    in
+    Html.div []
+        [ Html.table [ HA.class "functions-table" ] (header :: rows)
+        , viewPager arity page pageCount
+        , Html.div [] [ Html.text rangeLabel ]
+        ]
+
+
+functionRow : Settings -> Int -> Natural -> BoolFun.BF -> Html Msg
+functionRow settings arity index bf =
+    Html.tr []
+        [ Html.td [] [ Html.text (N.toDecimalString index) ]
+        , Html.td []
+            [ Html.a
+                [ Route.href (Arity arity (Function index PropertiesSummary)) ]
+                [ Settings.viewTerm settings (functionName arity index) ]
+            ]
+        , BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
+        , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
+        , BoolFun.boolCell (PostProperties.monotone bf).holds
+        , BoolFun.boolCell (BoolFun.isSelfDual bf)
+        ]
+
+
+functionName : Int -> Natural -> String
+functionName arity index =
+    let
+        lookup names =
+            Array.get (N.toInt index) names
+                |> Maybe.withDefault (N.toDecimalString index)
+    in
+    case arity of
+        0 ->
+            lookup BoolFun.f0Names
+
+        1 ->
+            lookup BoolFun.f1Names
+
+        2 ->
+            lookup BoolFun.f2Names
+
+        _ ->
+            N.toDecimalString index
+
+
+{-| The natural numbers in the half-open interval [start, end).
+Used to build at most `BoolFun.pageSize` rows, so recursion depth is bounded.
+-}
+naturalRange : Natural -> Natural -> List Natural
+naturalRange start end =
+    if N.isLessThan end start then
+        start :: naturalRange (N.add start N.one) end
+
+    else
+        []
+
+
+viewPager : Int -> Natural -> Natural -> Html Msg
+viewPager arity page pageCount =
+    let
+        onFirst =
+            page == N.one
+
+        onLast =
+            page == pageCount
+
+        navButton enabled targetPage titleTxt symbol =
+            Html.button
+                [ Events.onClick (GoToRoute (Arity arity (AllFunctions targetPage)))
+                , HA.disabled (not enabled)
+                , HA.title titleTxt
+                ]
+                [ Html.text symbol ]
+    in
+    Html.div [ HA.class "pager" ]
+        [ navButton (not onFirst) N.one "First page" "⏮"
+        , navButton (not onFirst) (N.sub page N.one) "Previous page" "◀"
+        , Html.text " Page "
+        , Html.input
+            [ HA.type_ "number"
+            , HA.attribute "min" "1"
+            , HA.value (N.toDecimalString page)
+            , HA.style "width" "5em"
+            , Events.on "change" (Decode.map GoToFunctionsPage Events.targetValue)
+            ]
+            []
+        , Html.text (" of " ++ N.toDecimalString pageCount ++ " ")
+        , navButton (not onLast) (N.add page N.one) "Next page" "▶"
+        , navButton (not onLast) pageCount "Last page" "⏭"
+        , Html.text " "
+        , Html.button
+            [ Events.onClick (GoToRandomFunction arity)
+            , HA.title "Go to random function"
+            ]
+            [ Html.text "⚄" ]
+        ]
 
 
 yesNo : Bool -> Html msg

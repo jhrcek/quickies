@@ -2,14 +2,16 @@ module Route exposing
     ( ArityRoute(..)
     , PropertyRoute(..)
     , Route(..)
+    , RouteError(..)
     , href
     , parseUrl
     , render
     , updateArity
     , updateFunIndex
+    , updatePageNumber
     )
 
-import BoolFun exposing (maxArity, maxFunctionIndex, minArity)
+import BoolFun exposing (maxArity, maxFunctionIndex, minArity, pageCount)
 import Html exposing (Attribute)
 import Html.Attributes as HA
 import Natural as N exposing (Natural)
@@ -20,11 +22,10 @@ import Url.Parser as Parser exposing ((</>), Parser, int, map, oneOf, s, top)
 type Route
     = Home
     | Arity Int ArityRoute
-    | NotFound
 
 
 type ArityRoute
-    = AllFunctions
+    = AllFunctions Natural
     | Function Natural PropertyRoute
 
 
@@ -52,9 +53,6 @@ render route =
                 Home ->
                     ""
 
-                NotFound ->
-                    ""
-
                 Arity arity arityRoute ->
                     String.join "/" [ "functions", String.fromInt arity, renderArityRoute arityRoute ]
            )
@@ -63,7 +61,8 @@ render route =
 arityRouteParser : Parser (ArityRoute -> a) a
 arityRouteParser =
     oneOf
-        [ map AllFunctions top
+        [ map (AllFunctions N.one) top
+        , map AllFunctions (s "page" </> Parser.custom "Natural" N.fromDecimalString)
         , map Function
             (s "function"
                 </> Parser.custom "Natural" N.fromDecimalString
@@ -74,12 +73,14 @@ arityRouteParser =
 
 renderArityRoute : ArityRoute -> String
 renderArityRoute route =
-    case route of
-        AllFunctions ->
-            ""
+    String.join "/"
+        (case route of
+            AllFunctions page ->
+                [ "page", N.toDecimalString page ]
 
-        Function functionIndex propertyRoute ->
-            String.join "/" [ "function", N.toDecimalString functionIndex, renderPropertyRoute propertyRoute ]
+            Function functionIndex propertyRoute ->
+                [ "function", N.toDecimalString functionIndex, renderPropertyRoute propertyRoute ]
+        )
 
 
 propertyRouteParser : Parser (PropertyRoute -> a) a
@@ -116,19 +117,19 @@ renderPropertyRoute route =
             "self-dual"
 
 
-parseUrl : Url.Url -> Route
+parseUrl : Url.Url -> Result RouteError Route
 parseUrl url =
     case url.fragment of
         Nothing ->
-            Home
+            Ok Home
 
         Just fragment ->
             case Parser.parse routeParser { url | path = fragment } of
                 Just route ->
-                    route
+                    validateRoute route
 
                 Nothing ->
-                    NotFound
+                    Err (UnrecognizedUrl fragment)
 
 
 href : Route -> Attribute msg
@@ -142,14 +143,11 @@ updateFunIndex f route =
         Home ->
             Home
 
-        Arity arity AllFunctions ->
-            Arity arity AllFunctions
+        Arity arity (AllFunctions page) ->
+            Arity arity (AllFunctions page)
 
         Arity arity (Function funIndex propertyRoute) ->
             Arity arity (Function (naturalClamp N.zero (maxFunctionIndex arity) (f funIndex)) propertyRoute)
-
-        NotFound ->
-            NotFound
 
 
 naturalClamp : Natural -> Natural -> Natural -> Natural
@@ -170,8 +168,8 @@ updateArity f route =
         Home ->
             Home
 
-        Arity arity AllFunctions ->
-            Arity (clamp minArity maxArity (f arity)) AllFunctions
+        Arity arity (AllFunctions _) ->
+            Arity (clamp minArity maxArity (f arity)) (AllFunctions N.one)
 
         Arity arity (Function funIndex propertyRoute) ->
             let
@@ -180,5 +178,59 @@ updateArity f route =
             in
             Arity newArity (Function (naturalClamp N.zero (maxFunctionIndex newArity) funIndex) propertyRoute)
 
-        NotFound ->
-            NotFound
+
+{-| Apply a function to the (1-based) page number of an AllFunctions route,
+clamping the result into the valid range `1..pageCount`. Used by in-app page
+navigation, which should always land on a valid page.
+-}
+updatePageNumber : (Natural -> Natural) -> Route -> Route
+updatePageNumber f route =
+    case route of
+        Home ->
+            Home
+
+        Arity arity (AllFunctions page) ->
+            Arity arity (AllFunctions (naturalClamp N.one (pageCount arity) (f page)))
+
+        Arity arity (Function funIndex propertyRoute) ->
+            Arity arity (Function funIndex propertyRoute)
+
+
+type RouteError
+    = UnrecognizedUrl String -- the fragment that didn't parse
+    | UnsupportedArity Int
+    | PageOutOfRange Int Natural -- arity, pageCount
+    | FunctionIndexOutOfRange Int Natural -- arity, maxFunctionIndex
+
+
+{-| Validate that a freshly parsed route makes domain sense.
+The arity range is checked first, so the (potentially astronomically large)
+page / function-index bounds are only computed for an in-range arity.
+-}
+validateRoute : Route -> Result RouteError Route
+validateRoute route =
+    case route of
+        Arity arity arityRoute ->
+            if arity < minArity || arity > maxArity then
+                Err (UnsupportedArity arity)
+
+            else
+                case arityRoute of
+                    AllFunctions page ->
+                        -- valid iff 1 <= page <= pageCount arity
+                        if N.isLessThan N.one page || N.isLessThan page (pageCount arity) then
+                            Err (PageOutOfRange arity (pageCount arity))
+
+                        else
+                            Ok route
+
+                    Function funIndex _ ->
+                        -- valid iff funIndex <= maxFunctionIndex arity
+                        if N.isLessThan funIndex (maxFunctionIndex arity) then
+                            Err (FunctionIndexOutOfRange arity (maxFunctionIndex arity))
+
+                        else
+                            Ok route
+
+        Home ->
+            Ok route

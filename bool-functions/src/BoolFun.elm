@@ -33,6 +33,8 @@ module BoolFun exposing
     , maxFunctionIndex
     , minArity
     , mkBF
+    , pageCount
+    , pageSize
     , primeImplicants
     , restriction
     , showBool
@@ -85,6 +87,24 @@ funCount arity =
 maxFunctionIndex : Int -> Natural
 maxFunctionIndex arity =
     N.sub (funCount arity) N.one
+
+
+{-| Number of functions shown per page on the AllFunctions listing.
+-}
+pageSize : Natural
+pageSize =
+    N.fromSafeInt 20
+
+
+{-| Total number of pages (>= 1) when listing all functions of the given
+arity, `pageSize` functions per page. Pages are numbered 1..pageCount.
+-}
+pageCount : Int -> Natural
+pageCount arity =
+    N.sub (funCount arity) N.one
+        |> N.divBy pageSize
+        |> Maybe.withDefault N.zero
+        |> N.add N.one
 
 
 mkBF : Int -> Natural -> Maybe BF
