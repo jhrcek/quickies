@@ -21,7 +21,6 @@ import Url
    TODO:
    - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
    - add possibility to see f|x=0 and f|x=1 restrictions next to function table
-   - fold in implicants list into the function table
 -}
 
 
@@ -459,8 +458,9 @@ viewRoute settings showImplicantsInTable route =
 
                                             Nothing ->
                                                 unsupportedArity
+                                , viewImplicantsToggle showImplicantsInTable propSubroute bf
                                 , viewRestrictions arity propSubroute bf
-                                , viewProperty settings showImplicantsInTable arity functionIndex propSubroute bf
+                                , viewProperty arity functionIndex propSubroute bf
                                 ]
 
         NotFound ->
@@ -524,8 +524,25 @@ viewRestrictions arity propSubroute bf =
             ]
 
 
-viewProperty : Settings -> Bool -> Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
-viewProperty settings showImplicantsInTable arity functionIndex propSubroute bf =
+viewImplicantsToggle : Bool -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewImplicantsToggle showImplicantsInTable propSubroute bf =
+    if propSubroute == PropertiesSummary && not (List.isEmpty (BoolFun.primeImplicants bf)) then
+        Html.label []
+            [ Html.input
+                [ HA.type_ "checkbox"
+                , HA.checked showImplicantsInTable
+                , Events.onCheck SetShowImplicantsInTable
+                ]
+                []
+            , Html.text " Show prime implicants"
+            ]
+
+    else
+        Html.text ""
+
+
+viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
+viewProperty arity functionIndex propSubroute bf =
     let
         propLink : PropertyRoute -> String -> Html Msg
         propLink target label =
@@ -599,28 +616,6 @@ viewProperty settings showImplicantsInTable arity functionIndex propSubroute bf 
                             , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
                             ]
                         ]
-                , Html.h4 [] [ Html.text "Prime implicants" ]
-                , case BoolFun.primeImplicants bf of
-                    [] ->
-                        Html.p [] [ Html.text "None — this function is constantly false." ]
-
-                    implicants ->
-                        Html.div []
-                            [ Html.label []
-                                [ Html.input
-                                    [ HA.type_ "checkbox"
-                                    , HA.checked showImplicantsInTable
-                                    , Events.onCheck SetShowImplicantsInTable
-                                    ]
-                                    []
-                                , Html.text " Show in function table"
-                                ]
-                            , Html.div []
-                                (List.map
-                                    (\implicant -> Html.div [] [ BoolFun.viewImplicant settings implicant ])
-                                    implicants
-                                )
-                            ]
                 ]
 
         FalsePreserving ->

@@ -24,8 +24,7 @@ type alias Settings =
 
 default : Settings
 default =
-    { formula = Compact
-    }
+    { formula = Symbols }
 
 
 {-| A string drawn with a CSS overline. Unlike a combining macron, the bar is
