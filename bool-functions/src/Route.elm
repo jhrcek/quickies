@@ -9,7 +9,7 @@ module Route exposing
     , updateFunIndex
     )
 
-import BoolFun exposing (maxArity, maxFunctionIndex)
+import BoolFun exposing (maxArity, maxFunctionIndex, minArity)
 import Html exposing (Attribute)
 import Html.Attributes as HA
 import Natural as N exposing (Natural)
@@ -171,12 +171,12 @@ updateArity f route =
             Home
 
         Arity arity AllFunctions ->
-            Arity (clamp 1 maxArity (f arity)) AllFunctions
+            Arity (clamp minArity maxArity (f arity)) AllFunctions
 
         Arity arity (Function funIndex propertyRoute) ->
             let
                 newArity =
-                    clamp 1 maxArity (f arity)
+                    clamp minArity maxArity (f arity)
             in
             Arity newArity (Function (naturalClamp N.zero (maxFunctionIndex newArity) funIndex) propertyRoute)
 

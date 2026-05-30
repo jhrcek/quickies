@@ -182,7 +182,7 @@ arityControls renderLink arity =
         , Html.text " "
         , Html.button
             [ Events.onClick (BumpArity -1)
-            , HA.disabled (arity <= 1)
+            , HA.disabled (arity <= BoolFun.minArity)
             ]
             [ Html.text "-" ]
         , Html.text (" " ++ String.fromInt arity ++ " ")
@@ -294,7 +294,7 @@ viewRoute showImplicantsInTable route =
                             (\arity ->
                                 Html.a [ Route.href (Arity arity AllFunctions) ] [ Html.text (String.fromInt arity) ]
                             )
-                            (List.range 1 BoolFun.maxArity)
+                            (List.range BoolFun.minArity BoolFun.maxArity)
                         )
                 )
 
@@ -338,7 +338,10 @@ viewRoute showImplicantsInTable route =
                                 |> Html.table
                                     [ HA.class "functions-table" ]
                     in
-                    if arity == 1 then
+                    if arity == 0 then
+                        funList BoolFun.f0Names
+
+                    else if arity == 1 then
                         funList BoolFun.f1Names
 
                     else if arity == 2 then
@@ -385,6 +388,9 @@ viewRoute showImplicantsInTable route =
                             in
                             Html.div []
                                 [ case arity of
+                                    0 ->
+                                        BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity0Config implicantsForTable bf
+
                                     1 ->
                                         BoolFun.truthTable FlipBitInFunctionIndex BoolFun.arity1Config implicantsForTable bf
 
@@ -498,40 +504,46 @@ viewProperty showImplicantsInTable arity functionIndex propSubroute bf =
                         ]
                     ]
                 , Html.h4 [] [ Html.text "Input variables" ]
-                , Html.table [ HA.class "functions-table" ]
-                    [ Html.thead []
-                        [ Html.tr []
-                            [ Html.th [] [ Html.text "Variable" ]
-                            , Html.th [] [ Html.text "Essential" ]
-                            , Html.th [] [ Html.text "Polarity" ]
+                , if arity == 0 then
+                    Html.p [] [ Html.text "This is a constant function — it has no input variables." ]
+
+                  else
+                    Html.div []
+                        [ Html.table [ HA.class "functions-table" ]
+                            [ Html.thead []
+                                [ Html.tr []
+                                    [ Html.th [] [ Html.text "Variable" ]
+                                    , Html.th [] [ Html.text "Essential" ]
+                                    , Html.th [] [ Html.text "Polarity" ]
+                                    ]
+                                ]
+                            , Html.tbody []
+                                (List.map3
+                                    (\letter isEssential polarity ->
+                                        Html.tr []
+                                            [ Html.td [] [ Html.text letter ]
+                                            , yesNoCell isEssential
+                                            , Html.td [] [ Html.text (BoolFun.showPolarity polarity) ]
+                                            ]
+                                    )
+                                    (BoolFun.varNames arity)
+                                    (BoolFun.essentialVariables bf)
+                                    (BoolFun.variablePolarities bf)
+                                )
+                            ]
+                        , let
+                            legendItem term explanation =
+                                Html.p [ HA.style "margin" "0.15em 0" ]
+                                    [ Html.b [] [ Html.text term ], Html.text explanation ]
+                          in
+                          Html.div
+                            [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
+                            [ legendItem "Essential" " — the function genuinely depends on the variable; flipping it changes the output for at least one input. Non-essential means it never affects the output."
+                            , legendItem "Positive" " — raising the variable (0→1) never decreases the output (the function is monotone increasing in it)."
+                            , legendItem "Negative" " — raising the variable (0→1) never increases the output (monotone decreasing)."
+                            , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
                             ]
                         ]
-                    , Html.tbody []
-                        (List.map3
-                            (\letter isEssential polarity ->
-                                Html.tr []
-                                    [ Html.td [] [ Html.text letter ]
-                                    , yesNoCell isEssential
-                                    , Html.td [] [ Html.text (BoolFun.showPolarity polarity) ]
-                                    ]
-                            )
-                            (BoolFun.varNames arity)
-                            (BoolFun.essentialVariables bf)
-                            (BoolFun.variablePolarities bf)
-                        )
-                    ]
-                , let
-                    legendItem term explanation =
-                        Html.p [ HA.style "margin" "0.15em 0" ]
-                            [ Html.b [] [ Html.text term ], Html.text explanation ]
-                  in
-                  Html.div
-                    [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
-                    [ legendItem "Essential" " — the function genuinely depends on the variable; flipping it changes the output for at least one input. Non-essential means it never affects the output."
-                    , legendItem "Positive" " — raising the variable (0→1) never decreases the output (the function is monotone increasing in it)."
-                    , legendItem "Negative" " — raising the variable (0→1) never increases the output (monotone decreasing)."
-                    , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
-                    ]
                 , Html.h4 [] [ Html.text "Prime implicants" ]
                 , case BoolFun.primeImplicants bf of
                     [] ->
@@ -699,7 +711,13 @@ viewMonotone bf =
 
 unsupportedArity : Html msg
 unsupportedArity =
-    Html.text ("Unsupported function arity (must be between 1 and " ++ String.fromInt BoolFun.maxArity ++ ")")
+    Html.text
+        ("Unsupported function arity (must be between "
+            ++ String.fromInt BoolFun.minArity
+            ++ " and "
+            ++ String.fromInt BoolFun.maxArity
+            ++ " inclusive)"
+        )
 
 
 yesNo : Bool -> Html msg

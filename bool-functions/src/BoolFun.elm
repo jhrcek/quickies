@@ -4,6 +4,7 @@ module BoolFun exposing
     , Implicant
     , Literal(..)
     , Polarity(..)
+    , arity0Config
     , arity1Config
     , arity2Config
     , arityNConfig
@@ -14,6 +15,7 @@ module BoolFun exposing
     , dualOf
     , essentialVariables
     , eval
+    , f0Names
     , f1Names
     , f2Names
     , flipBit
@@ -29,6 +31,7 @@ module BoolFun exposing
     , literals
     , maxArity
     , maxFunctionIndex
+    , minArity
     , mkBF
     , primeImplicants
     , restriction
@@ -65,7 +68,7 @@ type alias BfInternal =
 
 mkBF : Int -> Natural -> Maybe BF
 mkBF arity funIndex =
-    if arity < 1 || maxArity < arity then
+    if arity < minArity || maxArity < arity then
         Nothing
 
     else if N.isLessThan N.zero funIndex || N.isLessThan funIndex (maxFunctionIndex arity) then
@@ -73,6 +76,14 @@ mkBF arity funIndex =
 
     else
         Just (BF { arity = arity, funIndex = funIndex })
+
+
+f0Names : Array String
+f0Names =
+    Array.fromList
+        [ "FALSE"
+        , "TRUE"
+        ]
 
 
 f1Names : Array String
@@ -118,6 +129,13 @@ funCount arity =
     2 ^ (2 ^ arity)
 
 
+arity0Config : ArityConfig
+arity0Config =
+    { arity = 0
+    , getName = \i -> Array.get i f0Names |> Maybe.withDefault "f()"
+    }
+
+
 arity1Config : ArityConfig
 arity1Config =
     { arity = 1
@@ -134,7 +152,7 @@ arity2Config =
 
 arityNConfig : Int -> Maybe ArityConfig
 arityNConfig n =
-    if n < 1 || n > maxArity then
+    if n < minArity || n > maxArity then
         Nothing
 
     else
@@ -334,8 +352,9 @@ dualOf ((BF { arity }) as bf) =
 
 
 {-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x.
-Equivalently: for every pair of complementary rows i and (2^n − 1 − i),
-the truth-table values differ.
+Equivalently: every row i and its complement (2^n − 1 − i) carry different
+values. A constant function is never self-dual — at arity 0 the lone input is
+its own complement, so the differ-from-complement check fails.
 -}
 isSelfDual : BF -> Bool
 isSelfDual ((BF { arity }) as bf) =
@@ -343,7 +362,7 @@ isSelfDual ((BF { arity }) as bf) =
         rowCount =
             2 ^ arity
     in
-    List.range 0 (rowCount // 2 - 1)
+    List.range 0 (rowCount - 1)
         |> List.all (\i -> eval_internal bf i /= eval_internal bf (rowCount - 1 - i))
 
 
@@ -417,9 +436,9 @@ flipBit bitIndex n =
 
 
 {-| Restrict the i-th argument (1-based) of a function of arity n to a fixed
-Boolean value, producing a function of arity n−1. Returns `Nothing` when `i`
-is outside `[1, arity]`, or when the input has arity 1 (the resulting arity-0
-constant function is not representable by `BF`).
+Boolean value, producing a function of arity n−1. Restricting the single
+argument of an arity-1 function yields one of the arity-0 constants. Returns
+`Nothing` only when `i` is outside `[1, arity]`.
 -}
 restriction : Int -> Bool -> BF -> Maybe BF
 restriction i b ((BF { arity }) as bf) =
@@ -519,31 +538,26 @@ equal, so the function ignores the variable).
 -}
 variablePolarity : Int -> BF -> Polarity
 variablePolarity varIdx bf =
-    let
-        ( zeroImpliesOne, oneImpliesZero ) =
-            case ( restriction varIdx False bf, restriction varIdx True bf ) of
-                ( Just f0, Just f1 ) ->
-                    ( implies f0 f1, implies f1 f0 )
+    case ( restriction varIdx False bf, restriction varIdx True bf ) of
+        ( Just f0, Just f1 ) ->
+            case ( implies f0 f1, implies f1 f0 ) of
+                ( True, True ) ->
+                    Independent
 
-                _ ->
-                    -- arity 1: the cofactors are the arity-0 constants f(0) and
-                    -- f(1), which BF can't represent, so compare them directly.
-                    ( not (eval bf 0) || eval bf 1
-                    , not (eval bf 1) || eval bf 0
-                    )
-    in
-    case ( zeroImpliesOne, oneImpliesZero ) of
-        ( True, True ) ->
+                ( True, False ) ->
+                    PositiveUnate
+
+                ( False, True ) ->
+                    NegativeUnate
+
+                ( False, False ) ->
+                    Binate
+
+        _ ->
+            -- Unreachable: `varIdx` is always in [1, arity] (see `variablePolarities`),
+            -- and `restriction` now succeeds for every variable, even when the
+            -- cofactors are arity-0 constants.
             Independent
-
-        ( True, False ) ->
-            PositiveUnate
-
-        ( False, True ) ->
-            NegativeUnate
-
-        ( False, False ) ->
-            Binate
 
 
 showPolarity : Polarity -> String
@@ -821,6 +835,11 @@ isTruthPreserving (BF { arity, funIndex }) =
             2 ^ arity
     in
     getBit2 (rowCount - 1) funIndex
+
+
+minArity : Int
+minArity =
+    0
 
 
 maxArity : Int
