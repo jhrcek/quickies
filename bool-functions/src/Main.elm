@@ -20,7 +20,6 @@ import Url
 {-
    TODO:
    - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
-   - add possibility to see f|x=0 and f|x=1 restrictions next to function table
 -}
 
 
@@ -43,6 +42,11 @@ type alias Model =
     , showImplicantsInTable : Bool
     , settings : Settings
     , settingsOpen : Bool
+
+    -- Restriction (cofactor) highlighting: at most one cell pinned, at most one
+    -- hovered. `Maybe` makes "more than one selected" unrepresentable.
+    , pinnedRestriction : Maybe BoolFun.Restriction
+    , hoveredRestriction : Maybe BoolFun.Restriction
     }
 
 
@@ -54,6 +58,8 @@ init _ url key =
       , showImplicantsInTable = False
       , settings = Settings.default
       , settingsOpen = False
+      , pinnedRestriction = Nothing
+      , hoveredRestriction = Nothing
       }
     , Cmd.none
     )
@@ -71,6 +77,8 @@ type Msg
     | SetShowImplicantsInTable Bool
     | ToggleSettings
     | SetFormulaStyle Settings.FormulaStyle
+    | HoverRestriction (Maybe BoolFun.Restriction)
+    | PinRestriction (Maybe BoolFun.Restriction)
 
 
 type Delta
@@ -90,7 +98,14 @@ update msg model =
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            ( { model | url = url, route = Route.parseUrl url }
+            -- Reset any restriction highlight: navigating to a different
+            -- function/arity makes a pinned (varIndex, value) stale.
+            ( { model
+                | url = url
+                , route = Route.parseUrl url
+                , pinnedRestriction = Nothing
+                , hoveredRestriction = Nothing
+              }
             , Cmd.none
             )
 
@@ -158,6 +173,16 @@ update msg model =
             , Cmd.none
             )
 
+        HoverRestriction maybeRestriction ->
+            ( { model | hoveredRestriction = maybeRestriction }
+            , Cmd.none
+            )
+
+        PinRestriction maybeRestriction ->
+            ( { model | pinnedRestriction = maybeRestriction }
+            , Cmd.none
+            )
+
 
 {-| Navigate to the result of transforming the current route. The transforming
 functions clamp into the valid range, so this only fires from controls that are
@@ -194,7 +219,11 @@ viewBody model =
             Ok route ->
                 Html.div []
                     [ viewNavigation route
-                    , viewRoute model.settings model.showImplicantsInTable route
+                    , viewRoute model.settings
+                        model.showImplicantsInTable
+                        model.pinnedRestriction
+                        model.hoveredRestriction
+                        route
                     ]
 
             Err error ->
@@ -420,8 +449,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Settings -> Bool -> Route -> Html Msg
-viewRoute settings showImplicantsInTable route =
+viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> Route -> Html Msg
+viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction route =
     case route of
         Home ->
             Html.div []
@@ -459,18 +488,37 @@ viewRoute settings showImplicantsInTable route =
                             Html.div []
                                 [ case BoolFun.configForArity arity of
                                     Just config ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex settings config implicantsForTable bf
+                                        BoolFun.truthTable FlipBitInFunctionIndex
+                                            settings
+                                            config
+                                            (effectiveRestriction pinnedRestriction hoveredRestriction)
+                                            implicantsForTable
+                                            bf
 
                                     Nothing ->
                                         unsupportedArity
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
-                                , viewRestrictions arity propSubroute bf
+                                , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf
                                 , viewProperty arity functionIndex propSubroute bf
                                 ]
 
 
-viewRestrictions : Int -> PropertyRoute -> BoolFun.BF -> Html Msg
-viewRestrictions arity propSubroute bf =
+{-| The restriction whose sub-function is highlighted in the truth table. A pin
+is sticky: while a cell is pinned, hovering other cells has no effect; only when
+nothing is pinned does the hovered cell drive the highlight.
+-}
+effectiveRestriction : Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction
+effectiveRestriction pinnedRestriction hoveredRestriction =
+    case pinnedRestriction of
+        Just _ ->
+            pinnedRestriction
+
+        Nothing ->
+            hoveredRestriction
+
+
+viewRestrictions : Int -> PropertyRoute -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> BoolFun.BF -> Html Msg
+viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
     if arity <= 1 then
         Html.text ""
 
@@ -480,7 +528,7 @@ viewRestrictions arity propSubroute bf =
                 List.range 1 arity
 
             cell varIdx value =
-                case BoolFun.restriction varIdx value bf of
+                case BoolFun.restriction { varIndex = varIdx, value = value } bf of
                     Nothing ->
                         Html.td [] []
 
@@ -488,8 +536,21 @@ viewRestrictions arity propSubroute bf =
                         let
                             newIndex =
                                 BoolFun.funIndexOf restricted
+
+                            r =
+                                { varIndex = varIdx, value = value }
+
+                            isPinned =
+                                pinnedRestriction == Just r
+
+                            -- The pin glyph shows on hover (affordance) and stays while pinned.
+                            showPin =
+                                isPinned || hoveredRestriction == Just r
                         in
-                        Html.td []
+                        Html.td
+                            [ Events.onMouseEnter (HoverRestriction (Just r))
+                            , Events.onMouseLeave (HoverRestriction Nothing)
+                            ]
                             [ Html.a
                                 [ Route.href
                                     (Arity (arity - 1)
@@ -497,6 +558,26 @@ viewRestrictions arity propSubroute bf =
                                     )
                                 ]
                                 [ Html.text (N.toDecimalString newIndex) ]
+                            , Html.span
+                                [ HA.class "pin-slot"
+                                , Events.onClick
+                                    (PinRestriction
+                                        (if isPinned then
+                                            Nothing
+
+                                         else
+                                            Just r
+                                        )
+                                    )
+                                ]
+                                [ Html.text
+                                    (if showPin then
+                                        "📌"
+
+                                     else
+                                        ""
+                                    )
+                                ]
                             ]
 
             valueRow value =
@@ -522,6 +603,21 @@ viewRestrictions arity propSubroute bf =
                     [ valueRow False
                     , valueRow True
                     ]
+                ]
+            , Html.p [ HA.class "restriction-hint" ]
+                [ Html.text
+                    (case pinnedRestriction of
+                        Just _ ->
+                            "Click the pinned cell to unpin"
+
+                        Nothing ->
+                            case hoveredRestriction of
+                                Just _ ->
+                                    "Click to pin the restriction"
+
+                                Nothing ->
+                                    ""
+                    )
                 ]
             ]
 
@@ -971,5 +1067,18 @@ styles =
 }
 .settings-popup fieldset:last-child {
     margin-bottom: 0;
+}
+
+.pin-slot {
+    display: inline-block;
+    width: 1.25em;
+    text-align: center;
+    cursor: pointer;
+}
+.restriction-hint {
+    color: #888;
+    font-size: 0.85em;
+    min-height: 1.2em;
+    margin: 2px 10px;
 }
 """

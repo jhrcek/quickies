@@ -4,6 +4,7 @@ module BoolFun exposing
     , Implicant
     , Literal(..)
     , Polarity(..)
+    , Restriction
     , arityOf
     , bitwiseLeq
     , boolCell
@@ -60,6 +61,16 @@ type BF
 type alias BfInternal =
     { arity : Int
     , funIndex : Natural
+    }
+
+
+{-| A restriction (cofactor) of a function: the 1-based index of the variable
+being fixed (1 = variable 'a', the leftmost / most-significant column) together
+with the value it's fixed to.
+-}
+type alias Restriction =
+    { varIndex : Int
+    , value : Bool
     }
 
 
@@ -194,14 +205,53 @@ genericName n =
     "f(" ++ String.join "," (varNames n) ++ ")"
 
 
-truthTable : (Int -> msg) -> Settings -> ArityConfig -> List Implicant -> BF -> Html msg
-truthTable flipBitInFunctionIndex settings { getName } implicants ((BF { arity, funIndex }) as bf) =
+truthTable : (Int -> msg) -> Settings -> ArityConfig -> Maybe Restriction -> List Implicant -> BF -> Html msg
+truthTable flipBitInFunctionIndex settings { getName } maybeRestriction implicants ((BF { arity, funIndex }) as bf) =
     let
         rowCount =
             2 ^ arity
 
         doubleBorder =
             A.style "border-left" "3px double #333"
+
+        -- A row belongs to the restriction f|xᵥ=value when variable v's bit
+        -- (bit position arity - v of the row index) equals the fixed value.
+        rowInRestriction i =
+            case maybeRestriction of
+                Just { varIndex, value } ->
+                    getBit (arity - varIndex) i == value
+
+                Nothing ->
+                    False
+
+        -- Variable columns are 0-based; column c shows variable (c + 1). We
+        -- highlight the free variables and the result, but leave the restricted
+        -- variable's own column untouched (its value is constant on those rows).
+        highlightVarCell c i =
+            case maybeRestriction of
+                Just { varIndex } ->
+                    rowInRestriction i && c + 1 /= varIndex
+
+                Nothing ->
+                    False
+
+        highlightAttrs b =
+            -- Use an inset outline (not a thicker border) for the "thick border"
+            -- look: outline is painted on top and never takes up layout space, so
+            -- the cell keeps its size whether highlighted or not. A real border
+            -- change would grow the table and shift the restrictions table below,
+            -- which (combined with hover) causes rapid up/down flicker.
+            [ A.style "background-color" (highlightColor b)
+            , A.style "outline" "2px solid #000"
+            , A.style "outline-offset" "-2px"
+            ]
+
+        highlightIf cond b =
+            if cond then
+                highlightAttrs b
+
+            else
+                []
 
         implicantFns =
             List.map implicantToFunction implicants
@@ -254,13 +304,17 @@ truthTable flipBitInFunctionIndex settings { getName } implicants ((BF { arity, 
                 |> List.map
                     (\i ->
                         Html.tr []
-                            (List.map boolCell (lastNBits arity i)
+                            (List.indexedMap
+                                (\c b -> boolCellWith (highlightIf (highlightVarCell c i) b) b)
+                                (lastNBits arity i)
                                 ++ implicantBodyCells i
                                 ++ [ boolCellWith
                                         -- TODO fix width/height to prevent jumping when changing to different functions
-                                        [ Events.onClick (flipBitInFunctionIndex i)
-                                        , doubleBorder
-                                        ]
+                                        ([ Events.onClick (flipBitInFunctionIndex i)
+                                         , doubleBorder
+                                         ]
+                                            ++ highlightIf (rowInRestriction i) (eval_internal bf i)
+                                        )
                                         (eval_internal bf i)
                                    ]
                             )
@@ -299,6 +353,18 @@ boolColor b =
 
     else
         "lightcoral"
+
+
+{-| A more vivid version of `boolColor`, used to highlight the cells of a
+restricted sub-function in the truth table.
+-}
+highlightColor : Bool -> String
+highlightColor b =
+    if b then
+        "limegreen"
+
+    else
+        "orangered"
 
 
 showBool : Bool -> String
@@ -478,18 +544,18 @@ Boolean value, producing a function of arity n−1. Restricting the single
 argument of an arity-1 function yields one of the arity-0 constants. Returns
 `Nothing` only when `i` is outside `[1, arity]`.
 -}
-restriction : Int -> Bool -> BF -> Maybe BF
-restriction i b ((BF { arity }) as bf) =
-    if i < 1 || i > arity then
+restriction : Restriction -> BF -> Maybe BF
+restriction r ((BF { arity }) as bf) =
+    if r.varIndex < 1 || r.varIndex > arity then
         Nothing
 
     else
         let
             mask =
-                Bitwise.shiftLeftBy (arity - i) 1
+                Bitwise.shiftLeftBy (arity - r.varIndex) 1
 
             bBit =
-                if b then
+                if r.value then
                     mask
 
                 else
@@ -576,7 +642,11 @@ equal, so the function ignores the variable).
 -}
 variablePolarity : Int -> BF -> Polarity
 variablePolarity varIdx bf =
-    case ( restriction varIdx False bf, restriction varIdx True bf ) of
+    case
+        ( restriction { varIndex = varIdx, value = False } bf
+        , restriction { varIndex = varIdx, value = True } bf
+        )
+    of
         ( Just f0, Just f1 ) ->
             case ( implies f0 f1, implies f1 f0 ) of
                 ( True, True ) ->
