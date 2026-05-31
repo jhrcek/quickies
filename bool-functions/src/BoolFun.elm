@@ -8,6 +8,7 @@ module BoolFun exposing
     , arityOf
     , bitwiseLeq
     , boolCell
+    , boolCellHighlighted
     , boolColor
     , configForArity
     , dualOf
@@ -16,6 +17,7 @@ module BoolFun exposing
     , flipBit
     , funCount
     , funIndexOf
+    , highlightCellAttrs
     , implicantToFunction
     , implies
     , inputBits
@@ -235,20 +237,9 @@ truthTable flipBitInFunctionIndex settings { getName } maybeRestriction implican
                 Nothing ->
                     False
 
-        highlightAttrs b =
-            -- Use an inset outline (not a thicker border) for the "thick border"
-            -- look: outline is painted on top and never takes up layout space, so
-            -- the cell keeps its size whether highlighted or not. A real border
-            -- change would grow the table and shift the restrictions table below,
-            -- which (combined with hover) causes rapid up/down flicker.
-            [ A.style "background-color" (highlightColor b)
-            , A.style "outline" "2px solid #000"
-            , A.style "outline-offset" "-2px"
-            ]
-
         highlightIf cond b =
             if cond then
-                highlightAttrs b
+                highlightCellAttrs b
 
             else
                 []
@@ -365,6 +356,26 @@ highlightColor b =
 
     else
         "orangered"
+
+
+{-| Attributes giving a cell the restriction-highlight look: a vivid background
+plus an inset outline (an outline, not a thicker border, so it never changes the
+cell's size and can't cause layout flicker). Shared by the truth table and the
+restriction-summary table so both highlight identically.
+-}
+highlightCellAttrs : Bool -> List (Attribute a)
+highlightCellAttrs b =
+    [ A.style "background-color" (highlightColor b)
+    , A.style "outline" "2px solid #000"
+    , A.style "outline-offset" "-2px"
+    ]
+
+
+{-| A bool cell rendered with the restriction-highlight look (see `highlightCellAttrs`).
+-}
+boolCellHighlighted : Bool -> Html a
+boolCellHighlighted b =
+    boolCellWith (highlightCellAttrs b) b
 
 
 showBool : Bool -> String

@@ -3,6 +3,7 @@ module Route exposing
     , PropertyRoute(..)
     , Route(..)
     , RouteError(..)
+    , getArity
     , href
     , parseUrl
     , render
@@ -36,6 +37,18 @@ type PropertyRoute
     | Monotonic
     | Affine
     | SelfDual
+
+
+{-| The arity a route points at, or `Nothing` for `Home`.
+-}
+getArity : Route -> Maybe Int
+getArity route =
+    case route of
+        Home ->
+            Nothing
+
+        Arity arity _ ->
+            Just arity
 
 
 routeParser : Parser (Route -> a) a

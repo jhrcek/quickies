@@ -98,12 +98,30 @@ update msg model =
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            -- Reset any restriction highlight: navigating to a different
-            -- function/arity makes a pinned (varIndex, value) stale.
+            let
+                newRoute =
+                    Route.parseUrl url
+
+                -- A pinned restriction is `{ varIndex, value }` relative to the
+                -- arity. Keep it across navigation as long as the arity is
+                -- unchanged (e.g. editing the function by flipping output bits, or
+                -- switching property views), so the pin survives; drop it when the
+                -- arity changes and the pin would be stale.
+                keepPin =
+                    Maybe.map2 (==)
+                        (Result.toMaybe model.route |> Maybe.andThen Route.getArity)
+                        (Result.toMaybe newRoute |> Maybe.andThen Route.getArity)
+                        |> Maybe.withDefault False
+            in
             ( { model
                 | url = url
-                , route = Route.parseUrl url
-                , pinnedRestriction = Nothing
+                , route = newRoute
+                , pinnedRestriction =
+                    if keepPin then
+                        model.pinnedRestriction
+
+                    else
+                        Nothing
                 , hoveredRestriction = Nothing
               }
             , Cmd.none
@@ -606,8 +624,8 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
                         ]
                     ]
                 , case effectiveRestriction pinnedRestriction hoveredRestriction of
-                    Just { varIndex } ->
-                        viewRestrictionSummary arity varIndex bf
+                    Just highlight ->
+                        viewRestrictionSummary arity highlight bf
 
                     Nothing ->
                         Html.text ""
@@ -637,8 +655,8 @@ fixed (e.g. `f(a,b,c,False,e)`), the column headers are the cofactor's inputs in
 decimal, and the body cells are just its outputs. Lets you read each restriction
 as a whole, instead of as rows interleaved through the main truth table.
 -}
-viewRestrictionSummary : Int -> Int -> BoolFun.BF -> Html msg
-viewRestrictionSummary arity varIndex bf =
+viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.BF -> Html msg
+viewRestrictionSummary arity highlight bf =
     let
         columns =
             List.range 0 (2 ^ (arity - 1) - 1)
@@ -648,7 +666,7 @@ viewRestrictionSummary arity varIndex bf =
                 ++ String.join ","
                     (List.indexedMap
                         (\i name ->
-                            if i == varIndex - 1 then
+                            if i == highlight.varIndex - 1 then
                                 BoolFun.showBool value
 
                             else
@@ -659,15 +677,32 @@ viewRestrictionSummary arity varIndex bf =
                 ++ ")"
 
         valueRow value =
+            let
+                -- The row whose value matches the highlighted restriction gets
+                -- the same vivid-background + outline treatment as the matching
+                -- cells in the main truth table.
+                isHighlightedRow =
+                    value == highlight.value
+
+                outputCells =
+                    case BoolFun.restriction { varIndex = highlight.varIndex, value = value } bf of
+                        Just cofactor ->
+                            List.map
+                                (\i ->
+                                    if isHighlightedRow then
+                                        BoolFun.boolCellHighlighted (BoolFun.eval cofactor i)
+
+                                    else
+                                        BoolFun.boolCell (BoolFun.eval cofactor i)
+                                )
+                                columns
+
+                        Nothing ->
+                            List.map (\_ -> Html.td [] []) columns
+            in
             Html.tr []
                 (Html.th [] [ Html.text (rowHeaderLabel value) ]
-                    :: (case BoolFun.restriction { varIndex = varIndex, value = value } bf of
-                            Just cofactor ->
-                                List.map (\i -> BoolFun.boolCell (BoolFun.eval cofactor i)) columns
-
-                            Nothing ->
-                                List.map (\_ -> Html.td [] []) columns
-                       )
+                    :: outputCells
                 )
     in
     Html.table [ HA.class "functions-table" ]
