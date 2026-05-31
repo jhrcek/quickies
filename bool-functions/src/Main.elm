@@ -652,10 +652,12 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
 Each row is one cofactor (`f|xᵥ=False` on top, `f|xᵥ=True` below, lined up with
 the Restrictions table); the row header names the function with that variable
 fixed (e.g. `f(a,b,c,False,e)`), the column headers are the cofactor's inputs in
-decimal, and the body cells are just its outputs. Lets you read each restriction
-as a whole, instead of as rows interleaved through the main truth table.
+decimal, and the body cells are its outputs. Lets you read each restriction as a
+whole, instead of as rows interleaved through the main truth table. Like the main
+truth table, clicking a body cell edits the function by toggling the corresponding
+bit of its index.
 -}
-viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.BF -> Html msg
+viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.BF -> Html Msg
 viewRestrictionSummary arity highlight bf =
     let
         columns =
@@ -678,6 +680,9 @@ viewRestrictionSummary arity highlight bf =
 
         valueRow value =
             let
+                restr =
+                    { varIndex = highlight.varIndex, value = value }
+
                 -- The row whose value matches the highlighted restriction gets
                 -- the same vivid-background + outline treatment as the matching
                 -- cells in the main truth table.
@@ -685,15 +690,27 @@ viewRestrictionSummary arity highlight bf =
                     value == highlight.value
 
                 outputCells =
-                    case BoolFun.restriction { varIndex = highlight.varIndex, value = value } bf of
+                    case BoolFun.restriction restr bf of
                         Just cofactor ->
                             List.map
                                 (\i ->
-                                    if isHighlightedRow then
-                                        BoolFun.boolCellHighlighted (BoolFun.eval cofactor i)
+                                    let
+                                        -- Clicking edits the underlying function: toggle the
+                                        -- original-function bit this cofactor cell stands for.
+                                        clickAttr =
+                                            Events.onClick
+                                                (FlipBitInFunctionIndex
+                                                    (BoolFun.restrictionRowIndex arity restr i)
+                                                )
 
-                                    else
-                                        BoolFun.boolCell (BoolFun.eval cofactor i)
+                                        highlightAttrs =
+                                            if isHighlightedRow then
+                                                BoolFun.highlightCellAttrs (BoolFun.eval cofactor i)
+
+                                            else
+                                                []
+                                    in
+                                    BoolFun.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
                                 )
                                 columns
 

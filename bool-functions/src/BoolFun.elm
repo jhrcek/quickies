@@ -8,7 +8,7 @@ module BoolFun exposing
     , arityOf
     , bitwiseLeq
     , boolCell
-    , boolCellHighlighted
+    , boolCellWith
     , boolColor
     , configForArity
     , dualOf
@@ -34,6 +34,7 @@ module BoolFun exposing
     , pageSize
     , primeImplicants
     , restriction
+    , restrictionRowIndex
     , showBool
     , showPolarity
     , truthTable
@@ -371,13 +372,6 @@ highlightCellAttrs b =
     ]
 
 
-{-| A bool cell rendered with the restriction-highlight look (see `highlightCellAttrs`).
--}
-boolCellHighlighted : Bool -> Html a
-boolCellHighlighted b =
-    boolCellWith (highlightCellAttrs b) b
-
-
 showBool : Bool -> String
 showBool b =
     if b then
@@ -588,6 +582,39 @@ restriction r ((BF { arity }) as bf) =
                         ( N.zero, 0 )
         in
         mkBF (arity - 1) newFunIndex
+
+
+{-| The row index of the _original_ `arity`-ary function that a given input `i`
+to the cofactor `restriction r` corresponds to. Inverse of how `restriction`
+enumerates rows: the cofactor's input `i` is the `i`-th original row (in
+increasing order) whose restricted variable equals `r.value`, i.e. `i`'s bits
+with the fixed value bit inserted at the variable's position.
+
+Lets a click on a summary cell be mapped back to the bit of the original
+function's truth table that it represents.
+
+-}
+restrictionRowIndex : Int -> Restriction -> Int -> Int
+restrictionRowIndex arity r i =
+    let
+        -- Bit position of the restricted variable in the original row index.
+        p =
+            arity - r.varIndex
+
+        low =
+            Bitwise.and i (Bitwise.shiftLeftBy p 1 - 1)
+
+        high =
+            Bitwise.shiftRightZfBy p i
+
+        valueBit =
+            if r.value then
+                Bitwise.shiftLeftBy p 1
+
+            else
+                0
+    in
+    Bitwise.or (Bitwise.shiftLeftBy (p + 1) high) (Bitwise.or valueBit low)
 
 
 {-| For a function f of arity N, returns a list of N booleans describing
