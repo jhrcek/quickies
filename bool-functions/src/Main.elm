@@ -590,19 +590,27 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
         in
         Html.div []
             [ Html.h4 [] [ Html.text "Restrictions" ]
-            , Html.table [ HA.class "functions-table" ]
-                [ Html.thead []
-                    [ Html.tr []
-                        (Html.th [] []
-                            :: List.map
-                                (\letter -> Html.th [] [ Html.text letter ])
-                                (BoolFun.varNames arity)
-                        )
+            , Html.div [ HA.class "restrictions-layout" ]
+                [ Html.table [ HA.class "functions-table" ]
+                    [ Html.thead []
+                        [ Html.tr []
+                            (Html.th [] []
+                                :: List.map
+                                    (\letter -> Html.th [] [ Html.text letter ])
+                                    (BoolFun.varNames arity)
+                            )
+                        ]
+                    , Html.tbody []
+                        [ valueRow False
+                        , valueRow True
+                        ]
                     ]
-                , Html.tbody []
-                    [ valueRow False
-                    , valueRow True
-                    ]
+                , case effectiveRestriction pinnedRestriction hoveredRestriction of
+                    Just { varIndex } ->
+                        viewRestrictionSummary arity varIndex bf
+
+                    Nothing ->
+                        Html.text ""
                 ]
             , Html.p [ HA.class "restriction-hint" ]
                 [ Html.text
@@ -620,6 +628,60 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
                     )
                 ]
             ]
+
+
+{-| A compact, standalone view of the two cofactors of the highlighted variable.
+Each row is one cofactor (`f|xᵥ=False` on top, `f|xᵥ=True` below, lined up with
+the Restrictions table); the row header names the function with that variable
+fixed (e.g. `f(a,b,c,False,e)`), the column headers are the cofactor's inputs in
+decimal, and the body cells are just its outputs. Lets you read each restriction
+as a whole, instead of as rows interleaved through the main truth table.
+-}
+viewRestrictionSummary : Int -> Int -> BoolFun.BF -> Html msg
+viewRestrictionSummary arity varIndex bf =
+    let
+        columns =
+            List.range 0 (2 ^ (arity - 1) - 1)
+
+        rowHeaderLabel value =
+            "f("
+                ++ String.join ","
+                    (List.indexedMap
+                        (\i name ->
+                            if i == varIndex - 1 then
+                                BoolFun.showBool value
+
+                            else
+                                name
+                        )
+                        (BoolFun.varNames arity)
+                    )
+                ++ ")"
+
+        valueRow value =
+            Html.tr []
+                (Html.th [] [ Html.text (rowHeaderLabel value) ]
+                    :: (case BoolFun.restriction { varIndex = varIndex, value = value } bf of
+                            Just cofactor ->
+                                List.map (\i -> BoolFun.boolCell (BoolFun.eval cofactor i)) columns
+
+                            Nothing ->
+                                List.map (\_ -> Html.td [] []) columns
+                       )
+                )
+    in
+    Html.table [ HA.class "functions-table" ]
+        [ Html.thead []
+            [ Html.tr []
+                (Html.th [] []
+                    :: List.map (\i -> Html.th [] [ Html.text (String.fromInt i) ]) columns
+                )
+            ]
+        , Html.tbody []
+            [ valueRow False
+            , valueRow True
+            ]
+        ]
 
 
 viewImplicantsToggle : Bool -> PropertyRoute -> BoolFun.BF -> Html Msg
@@ -1080,5 +1142,9 @@ styles =
     font-size: 0.85em;
     min-height: 1.2em;
     margin: 2px 10px;
+}
+.restrictions-layout {
+    display: flex;
+    align-items: flex-start;
 }
 """
