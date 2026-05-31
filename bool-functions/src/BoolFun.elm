@@ -341,10 +341,12 @@ boolCellWith attrs b =
 boolColor : Bool -> String
 boolColor b =
     if b then
-        "lightgreen"
+        -- mint
+        "#A8DF9E"
 
     else
-        "lightcoral"
+        -- rose
+        "#F2A69E"
 
 
 {-| A more vivid version of `boolColor`, used to highlight the cells of a
@@ -353,10 +355,12 @@ restricted sub-function in the truth table.
 highlightColor : Bool -> String
 highlightColor b =
     if b then
-        "limegreen"
+        -- vivid green
+        "#49C754"
 
     else
-        "orangered"
+        -- vivid coral
+        "#FF5A4E"
 
 
 {-| Attributes giving a cell the restriction-highlight look: a vivid background
