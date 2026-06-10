@@ -46,6 +46,7 @@ type Msg
     | NextProblem
     | GoToConfig
     | KeyPressed String
+    | NoOp
 
 
 green : String
@@ -259,10 +260,22 @@ update msg model =
             else
                 ( model, Cmd.none )
 
+        NoOp ->
+            ( model, Cmd.none )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Browser.Events.onKeyDown (Decode.map KeyPressed (Decode.field "key" Decode.string))
+
+
+{-| Prevent buttons from gaining focus when clicked, so a later space
+press doesn't "click" the focused button in addition to the global
+key handler.
+-}
+noFocusOnMouseDown : Attribute Msg
+noFocusOnMouseDown =
+    Html.Events.preventDefaultOn "mousedown" (Decode.succeed ( NoOp, True ))
 
 
 styles :
@@ -414,6 +427,7 @@ viewConfig model =
             Html.button
                 (styles.button (model.numBits == bits) green
                     ++ [ onClick (SetNumBits bits)
+                       , noFocusOnMouseDown
                        , style "display" "flex"
                        , style "flex-direction" "column"
                        , style "align-items" "center"
@@ -430,7 +444,7 @@ viewConfig model =
 
         problemCountOption n =
             Html.button
-                (styles.button (model.numProblems == n) green ++ [ onClick (SetNumProblems n) ])
+                (styles.button (model.numProblems == n) green ++ [ onClick (SetNumProblems n), noFocusOnMouseDown ])
                 [ Html.text (String.fromInt n) ]
     in
     Html.div
@@ -451,7 +465,7 @@ viewConfig model =
             [ Html.label styles.label [ Html.text "Number of problems" ]
             , Html.div styles.flex (List.map problemCountOption [ 3, 10, 20 ])
             ]
-        , Html.button (styles.primary green ++ [ onClick StartGame ]) [ Html.text "Initialize Training" ]
+        , Html.button (styles.primary green ++ [ onClick StartGame, noFocusOnMouseDown ]) [ Html.text "Initialize Training" ]
         ]
 
 
@@ -544,7 +558,7 @@ viewGameButton : Model -> Html Msg
 viewGameButton model =
     case model.gameState of
         Playing ->
-            Html.button (styles.primary green ++ [ onClick CheckResult ]) [ Html.text "Check Result [Space]" ]
+            Html.button (styles.primary green ++ [ onClick CheckResult, noFocusOnMouseDown ]) [ Html.text "Check Result [Space]" ]
 
         Checked ->
             let
@@ -555,10 +569,10 @@ viewGameButton model =
                     else
                         "Next [Space]"
             in
-            Html.button (styles.primary green ++ [ onClick NextProblem ]) [ Html.text label ]
+            Html.button (styles.primary green ++ [ onClick NextProblem, noFocusOnMouseDown ]) [ Html.text label ]
 
         GameOver ->
-            Html.button (styles.primary red ++ [ onClick GoToConfig ]) [ Html.text "Try Again" ]
+            Html.button (styles.primary red ++ [ onClick GoToConfig, noFocusOnMouseDown ]) [ Html.text "Try Again" ]
 
         _ ->
             Html.text ""
@@ -723,6 +737,7 @@ viewToggleBit : Int -> Int -> Html Msg
 viewToggleBit i b =
     Html.button
         [ onClick (ToggleBit i)
+        , noFocusOnMouseDown
         , tabindex -1
         , style "width" "1.5ch"
         , style "height" "1.8ch"
@@ -817,7 +832,7 @@ viewResults model =
             [ statBox "TOTAL TIME" (formatTime totalTime)
             , statBox "AVG / BIT" (formatTime avgPerBit)
             ]
-        , Html.button (styles.primary green ++ [ onClick GoToConfig ]) [ Html.text "Try Again" ]
+        , Html.button (styles.primary green ++ [ onClick GoToConfig, noFocusOnMouseDown ]) [ Html.text "Try Again" ]
         ]
 
 
