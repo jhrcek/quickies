@@ -17,6 +17,10 @@ type FormulaStyle
     | Compact -- x̄, xy
 
 
+
+-- TODO make it configurable how to display each value (TRUE vs T vs unicode checkmark?)
+
+
 type alias Settings =
     { formula : FormulaStyle
     }

@@ -11,21 +11,24 @@ module BoolFun exposing
     , boolCellWith
     , boolColor
     , configForArity
+    , disjunction
     , dualOf
     , essentialVariables
     , eval
     , flipBit
+    , fromRows
     , funCount
     , funIndexOf
     , highlightCellAttrs
+    , implicantFromLiterals
     , implicantToFunction
+    , implicantToLiterals
     , implies
     , inputBits
     , inputs
     , isFalsityPreserving
     , isSelfDual
     , isTruthPreserving
-    , literals
     , maxArity
     , maxFunctionIndex
     , minArity
@@ -37,6 +40,7 @@ module BoolFun exposing
     , restrictionRowIndex
     , showBool
     , showPolarity
+    , toRows
     , truthTable
     , varNames
     , variablePolarities
@@ -322,10 +326,6 @@ varNames n =
         |> List.map String.fromChar
 
 
-
--- TODO make it configurable how to display each value (TRUE vs T vs unicode checkmark?)
-
-
 boolCell : Bool -> Html a
 boolCell b =
     boolCellWith [] b
@@ -414,69 +414,80 @@ toBitString (BF { arity, funIndex }) =
     String.padLeft (2 ^ arity) '0' (N.toBinaryString funIndex)
 
 
+{-| The function's truth table as a list of 2^n output values, row 0 first.
+The workhorse representation for pointwise operations: anything that reads or
+combines whole truth tables (dual, disjunction, implication, …) should go
+through `toRows`/`fromRows` rather than poking at `funIndex` bits directly.
+-}
+toRows : BF -> List Bool
+toRows bf =
+    toBitString bf
+        |> String.toList
+        |> List.reverse
+        |> List.map ((==) '1')
+
+
+{-| Build a function of the given arity from its truth table, row 0 first.
+Inverse of `toRows`; the list is expected to have 2^arity elements.
+-}
+fromRows : Int -> List Bool -> BF
+fromRows arity rows =
+    let
+        funIndex =
+            rows
+                |> List.foldl
+                    (\b acc ->
+                        String.cons
+                            (if b then
+                                '1'
+
+                             else
+                                '0'
+                            )
+                            acc
+                    )
+                    ""
+                |> N.fromBinaryString
+                |> Maybe.withDefault N.zero
+    in
+    BF { arity = arity, funIndex = funIndex }
+
+
 {-| True iff `f` implies `g`: at every input where `f` is True, `g` is also True
-(equivalently, `f ≤ g` pointwise). Since both truth tables are the bits of the
-functions' `funIndex`, this is just a subset check on those bits: `f` must not
-have a 1 anywhere `g` has a 0. Returns `False` when the arities differ.
+(equivalently, `f ≤ g` pointwise — a row-by-row check on the two truth tables).
+Returns `False` when the arities differ.
 -}
 implies : BF -> BF -> Bool
 implies ((BF f) as fBF) ((BF g) as gBF) =
-    if f.arity /= g.arity then
-        False
-
-    else
-        List.map2
-            (\fb gb -> not (fb == '1' && gb == '0'))
-            (String.toList (toBitString fBF))
-            (String.toList (toBitString gBF))
-            |> List.all identity
+    (f.arity == g.arity)
+        && (List.map2 (\fb gb -> not fb || gb) (toRows fBF) (toRows gBF)
+                |> List.all identity
+           )
 
 
 {-| Dual of a Boolean function: g(x) = ¬f(¬x).
-The truth-table bit at row i of g equals the negation of f's bit at row (2^n − 1 − i).
+Negating the input maps row i to row 2^n − 1 − i, so the dual's truth table is
+f's rows reversed and negated.
 -}
 dualOf : BF -> BF
 dualOf ((BF { arity }) as bf) =
-    let
-        rowCount =
-            2 ^ arity
-
-        dualIndex =
-            List.range 0 (rowCount - 1)
-                |> List.foldl
-                    (\i acc ->
-                        if not (eval_internal bf (rowCount - 1 - i)) then
-                            flipBit i acc
-
-                        else
-                            acc
-                    )
-                    N.zero
-    in
-    BF { arity = arity, funIndex = dualIndex }
+    toRows bf
+        |> List.reverse
+        |> List.map not
+        |> fromRows arity
 
 
 {-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x — equivalently,
-f equals its own dual. The dual's truth table is f's bits reversed (¬x maps row i
-to row 2^n−1−i) and negated, so self-duality is a string comparison on the
-funIndex bits: pad them to the full 2^n width, then check they equal their own
-reverse-and-flip. A constant function is never self-dual — a single bit never
-equals its own flip.
+f's truth table equals its own reverse-and-negate (see `dualOf`). A constant
+function is never self-dual — a single row never equals its own negation.
 -}
 isSelfDual : BF -> Bool
 isSelfDual bf =
     let
-        bits =
-            toBitString bf
-
-        flipBitChar c =
-            if c == '0' then
-                '1'
-
-            else
-                '0'
+        rows =
+            toRows bf
     in
-    bits == String.map flipBitChar (String.reverse bits)
+    rows == List.map not (List.reverse rows)
 
 
 inputs : Int -> List Int
@@ -765,23 +776,21 @@ of its fixed literals. Cells where the input matches the implicant's
 -}
 implicantToFunction : Implicant -> BF
 implicantToFunction (Implicant impl) =
-    let
-        rowCount =
-            2 ^ impl.arity
+    inputs impl.arity
+        |> List.map (\i -> Bitwise.and i impl.mask == Bitwise.and impl.value impl.mask)
+        |> fromRows impl.arity
 
-        funIndex =
-            List.range 0 (rowCount - 1)
-                |> List.foldl
-                    (\i acc ->
-                        if Bitwise.and i impl.mask == Bitwise.and impl.value impl.mask then
-                            flipBit i acc
 
-                        else
-                            acc
-                    )
-                    N.zero
-    in
-    BF { arity = impl.arity, funIndex = funIndex }
+{-| The disjunction (OR) of a list of functions: true at a row exactly when at
+least one of them is. The arity is an explicit argument so the empty list (the
+constant-false function) isn't ambiguous; the given functions are assumed to
+have that arity.
+-}
+disjunction : Int -> List BF -> BF
+disjunction arity fns =
+    List.map toRows fns
+        |> List.foldl (List.map2 (||)) (List.repeat (2 ^ arity) False)
+        |> fromRows arity
 
 
 {-| Human-readable form of an implicant: a conjunction of literals using the
@@ -804,7 +813,7 @@ viewImplicant settings ((Implicant impl) as implicant) =
                             Nothing
                 )
                 (varNames impl.arity)
-                (literals implicant)
+                (implicantToLiterals implicant)
                 |> List.filterMap identity
     in
     if List.isEmpty parts then
@@ -817,8 +826,8 @@ viewImplicant settings ((Implicant impl) as implicant) =
 {-| Decompose an implicant into a list of literals, one per variable, in the
 same order as `varNames`.
 -}
-literals : Implicant -> List Literal
-literals (Implicant impl) =
+implicantToLiterals : Implicant -> List Literal
+implicantToLiterals (Implicant impl) =
     List.range 1 impl.arity
         |> List.map
             (\i ->
@@ -835,6 +844,37 @@ literals (Implicant impl) =
                 else
                     Positive
             )
+
+
+{-| Build an implicant from a list of literals, one per variable, in the same
+MSB-first order as `varNames` / `implicantToLiterals` (the literal at 0-based index `k`
+corresponds to variable `k + 1`, occupying bit position `arity - 1 - k`). This
+is the inverse of `implicantToLiterals`.
+-}
+implicantFromLiterals : Int -> List Literal -> Implicant
+implicantFromLiterals arity lits =
+    let
+        ( mask, value ) =
+            List.indexedMap Tuple.pair lits
+                |> List.foldl
+                    (\( k, lit ) ( accMask, accValue ) ->
+                        let
+                            bit =
+                                Bitwise.shiftLeftBy (arity - 1 - k) 1
+                        in
+                        case lit of
+                            Positive ->
+                                ( Bitwise.or accMask bit, Bitwise.or accValue bit )
+
+                            Negative ->
+                                ( Bitwise.or accMask bit, accValue )
+
+                            DontCare ->
+                                ( accMask, accValue )
+                    )
+                    ( 0, 0 )
+    in
+    Implicant { arity = arity, mask = mask, value = value }
 
 
 {-| Find every prime implicant of a Boolean function using the
@@ -870,7 +910,7 @@ primeImplicants ((BF { arity }) as bf) =
                     , value = c.value
                     }
             )
-        |> List.sortBy (literals >> List.map literalSortKey)
+        |> List.sortBy (implicantToLiterals >> List.map literalSortKey)
 
 
 literalSortKey : Literal -> Int

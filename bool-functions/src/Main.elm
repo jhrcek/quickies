@@ -20,6 +20,16 @@ import Url
 {-
    TODO:
    - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
+   - now that we're paging the list of all functions (and so display just few at a time), we can display more details about each function:
+        - essential variables
+        - monotonicity in each variable
+
+   - Add SOP / POS editor page(s?) nested under functions/ARITY/editor
+       - show implication relationships among terms that user adds (showing redundancy)
+       - show CDNF / CCNF for of the current function,
+       - show blake canonical form (prime implicants with subsumption relationships)
+       - show whether given DNF is orthogonal (disjoint implicants)
+
 -}
 
 
@@ -47,19 +57,106 @@ type alias Model =
     -- hovered. `Maybe` makes "more than one selected" unrepresentable.
     , pinnedRestriction : Maybe BoolFun.Restriction
     , hoveredRestriction : Maybe BoolFun.Restriction
+
+    -- SOP editor state: the product terms currently being edited. Each term is a
+    -- list of literals, one per variable (so its length matches the arity). It is
+    -- normalized to the current arity whenever the SOP editor route is entered.
+    , sopTerms : List SopTerm
     }
+
+
+{-| A product term in the SOP editor: one literal per variable, in the same
+MSB-first order as `BoolFun.varNames` (index 0 = variable `a`). Its length
+always matches the arity it was normalized for.
+-}
+type alias SopTerm =
+    List BoolFun.Literal
+
+
+{-| Resize a term to `arity` literals: drop trailing literals (the last
+variables) when shrinking, pad with `DontCare` when growing. Preserves as much
+of the existing term as possible across arity changes.
+-}
+resizeSopTerm : Int -> SopTerm -> SopTerm
+resizeSopTerm arity term =
+    let
+        kept =
+            List.take arity term
+    in
+    kept ++ List.repeat (arity - List.length kept) BoolFun.DontCare
+
+
+{-| The default term for a given arity: variable `a` positive, the rest
+don't-care (e.g. arity 3 → `a`). For arity 0 this is the empty term (`⊤`).
+-}
+defaultSopTerm : Int -> SopTerm
+defaultSopTerm arity =
+    resizeSopTerm arity [ BoolFun.Positive ]
+
+
+{-| The initial SOP-editor state for an arity: a single default term.
+-}
+defaultSop : Int -> List SopTerm
+defaultSop arity =
+    [ defaultSopTerm arity ]
+
+
+{-| Normalize every term to the given arity (see `resizeSopTerm`). An empty
+list of terms (constant-false SOP) stays empty.
+-}
+normalizeSop : Int -> List SopTerm -> List SopTerm
+normalizeSop arity terms =
+    List.map (resizeSopTerm arity) terms
+
+
+{-| Advance a literal one step through the click cycle:
+`Positive → Negative → DontCare → Positive`.
+-}
+cycleLiteral : BoolFun.Literal -> BoolFun.Literal
+cycleLiteral lit =
+    case lit of
+        BoolFun.Positive ->
+            BoolFun.Negative
+
+        BoolFun.Negative ->
+            BoolFun.DontCare
+
+        BoolFun.DontCare ->
+            BoolFun.Positive
+
+
+{-| The arity the model's route points at, defaulting to `minArity` for routes
+(like `Home`) that have none.
+-}
+sopArity : Model -> Int
+sopArity model =
+    model.route
+        |> Result.toMaybe
+        |> Maybe.andThen Route.getArity
+        |> Maybe.withDefault BoolFun.minArity
 
 
 init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init _ url key =
+    let
+        route =
+            Route.parseUrl url
+
+        arity =
+            route
+                |> Result.toMaybe
+                |> Maybe.andThen Route.getArity
+                |> Maybe.withDefault BoolFun.minArity
+    in
     ( { key = key
       , url = url
-      , route = Route.parseUrl url
+      , route = route
       , showImplicantsInTable = False
       , settings = Settings.default
       , settingsOpen = False
       , pinnedRestriction = Nothing
       , hoveredRestriction = Nothing
+      , sopTerms = defaultSop arity
       }
     , Cmd.none
     )
@@ -79,6 +176,10 @@ type Msg
     | SetFormulaStyle Settings.FormulaStyle
     | HoverRestriction (Maybe BoolFun.Restriction)
     | PinRestriction (Maybe BoolFun.Restriction)
+    | SopAddTerm
+    | SopRemoveTerm Int -- term index
+    | SopToggleLiteral Int Int -- term index, variable index
+    | SopResetTerms
 
 
 type Delta
@@ -123,6 +224,17 @@ update msg model =
                     else
                         Nothing
                 , hoveredRestriction = Nothing
+
+                -- Keep the SOP terms consistent with the arity of the editor we
+                -- land on (resizing them), regardless of how we got here: deep
+                -- link, arity bump, or the "Open SOP editor" link.
+                , sopTerms =
+                    case newRoute of
+                        Ok (Arity arity SopEditor) ->
+                            normalizeSop arity model.sopTerms
+
+                        _ ->
+                            model.sopTerms
               }
             , Cmd.none
             )
@@ -201,6 +313,51 @@ update msg model =
             , Cmd.none
             )
 
+        SopAddTerm ->
+            ( { model | sopTerms = model.sopTerms ++ [ defaultSopTerm (sopArity model) ] }
+            , Cmd.none
+            )
+
+        SopRemoveTerm termIndex ->
+            ( { model
+                | sopTerms =
+                    model.sopTerms
+                        |> List.indexedMap Tuple.pair
+                        |> List.filter (\( i, _ ) -> i /= termIndex)
+                        |> List.map Tuple.second
+              }
+            , Cmd.none
+            )
+
+        SopToggleLiteral termIndex varIndex ->
+            ( { model
+                | sopTerms =
+                    List.indexedMap
+                        (\ti term ->
+                            if ti == termIndex then
+                                List.indexedMap
+                                    (\vi lit ->
+                                        if vi == varIndex then
+                                            cycleLiteral lit
+
+                                        else
+                                            lit
+                                    )
+                                    term
+
+                            else
+                                term
+                        )
+                        model.sopTerms
+              }
+            , Cmd.none
+            )
+
+        SopResetTerms ->
+            ( { model | sopTerms = defaultSop (sopArity model) }
+            , Cmd.none
+            )
+
 
 {-| Navigate to the result of transforming the current route. The transforming
 functions clamp into the valid range, so this only fires from controls that are
@@ -241,6 +398,7 @@ viewBody model =
                         model.showImplicantsInTable
                         model.pinnedRestriction
                         model.hoveredRestriction
+                        model.sopTerms
                         route
                     ]
 
@@ -415,6 +573,12 @@ buildBreadcrumbs route =
                                 []
                            )
 
+                SopEditor ->
+                    [ homeLink
+                    , arityControls True arity
+                    , Html.text "SOP Editor"
+                    ]
+
 
 propertyName : PropertyRoute -> String
 propertyName p =
@@ -467,8 +631,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> Route -> Html Msg
-viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction route =
+viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List SopTerm -> Route -> Html Msg
+viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction sopTerms route =
     case route of
         Home ->
             Html.div []
@@ -487,6 +651,9 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction ro
             case arityRoute of
                 AllFunctions page ->
                     viewAllFunctions settings arity page
+
+                SopEditor ->
+                    viewSopEditor settings arity sopTerms
 
                 Function functionIndex propSubroute ->
                     case BoolFun.mkBF arity functionIndex of
@@ -519,6 +686,189 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction ro
                                 , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf
                                 , viewProperty arity functionIndex propSubroute bf
                                 ]
+
+
+
+-- SOP EDITOR
+
+
+{-| The SOP editor page: an editable list of product terms on the left and a
+truth table of the function they define (the OR of all terms) on the right.
+-}
+viewSopEditor : Settings -> Int -> List SopTerm -> Html Msg
+viewSopEditor settings arity terms =
+    Html.div
+        [ HA.style "display" "flex"
+        , HA.style "gap" "2em"
+        , HA.style "align-items" "flex-start"
+        ]
+        [ viewSopTermsEditor settings arity terms
+        , viewSopTruthTable settings arity terms
+        ]
+
+
+{-| Left column: one editable row per term, plus Add/Reset controls.
+-}
+viewSopTermsEditor : Settings -> Int -> List SopTerm -> Html Msg
+viewSopTermsEditor settings arity terms =
+    let
+        termRows =
+            if List.isEmpty terms then
+                [ Html.div
+                    [ HA.style "color" "#888", HA.style "font-style" "italic" ]
+                    [ Html.text "No terms — the function is constant-false." ]
+                ]
+
+            else
+                List.indexedMap (viewSopTermRow settings arity) terms
+    in
+    -- The 10px margin matches the .truth-table margin so both columns align.
+    Html.div [ HA.style "margin" "10px" ]
+        [ Html.div [] termRows
+        , Html.div [ HA.style "margin-top" "0.5em" ]
+            [ Html.button [ Events.onClick SopAddTerm ] [ Html.text "Add term" ]
+            , Html.text " "
+            , Html.button [ Events.onClick SopResetTerms ] [ Html.text "Reset" ]
+            ]
+        ]
+
+
+{-| One product term: a clickable literal chip per variable, then a remove button.
+-}
+viewSopTermRow : Settings -> Int -> Int -> SopTerm -> Html Msg
+viewSopTermRow settings arity termIndex term =
+    let
+        chips =
+            List.map2
+                (\name ( varIndex, lit ) -> viewLiteralChip settings termIndex varIndex name lit)
+                (BoolFun.varNames arity)
+                (List.indexedMap Tuple.pair term)
+
+        removeButton =
+            Html.button
+                [ Events.onClick (SopRemoveTerm termIndex)
+                , HA.title "Remove term"
+                , HA.style "margin-left" "0.5em"
+                ]
+                [ Html.text "✗" ]
+    in
+    Html.div
+        [ HA.style "display" "flex"
+        , HA.style "align-items" "center"
+        , HA.style "gap" "0.25em"
+        , HA.style "margin-bottom" "0.25em"
+        ]
+        (chips ++ [ removeButton ])
+
+
+{-| A single literal, clickable to cycle variable → negated → don't-care.
+Don't-care literals are dimmed to signal the variable is unconstrained.
+-}
+viewLiteralChip : Settings -> Int -> Int -> String -> BoolFun.Literal -> Html Msg
+viewLiteralChip settings termIndex varIndex name lit =
+    let
+        ( content, dimmed ) =
+            case lit of
+                BoolFun.Positive ->
+                    ( Html.text name, False )
+
+                BoolFun.Negative ->
+                    ( Settings.viewNegation settings name, False )
+
+                BoolFun.DontCare ->
+                    ( Html.text name, True )
+    in
+    Html.button
+        [ Events.onClick (SopToggleLiteral termIndex varIndex)
+        , HA.title "Toggle: variable → negated → don't-care"
+        , HA.style "min-width" "2.5em"
+        , HA.style "cursor" "pointer"
+        , HA.style "opacity"
+            (if dimmed then
+                "0.3"
+
+             else
+                "1"
+            )
+        ]
+        [ content ]
+
+
+{-| Right column: a truth table with one column per variable, one per product
+term (showing where that term holds), and a final column for their OR. Mirrors
+the function-detail truth table; the result column is read-only here since the
+function is defined by the terms. Below the table, a link to the detail page
+of the function the expression represents.
+-}
+viewSopTruthTable : Settings -> Int -> List SopTerm -> Html Msg
+viewSopTruthTable settings arity terms =
+    let
+        implicants =
+            List.map (BoolFun.implicantFromLiterals arity) terms
+
+        termFns =
+            List.map BoolFun.implicantToFunction implicants
+
+        rowCount =
+            2 ^ arity
+
+        sopFn =
+            BoolFun.disjunction arity termFns
+
+        funIndex =
+            BoolFun.funIndexOf sopFn
+
+        doubleBorder =
+            HA.style "border-left" "3px double #333"
+
+        firstTermBorder idx =
+            if idx == 0 then
+                [ doubleBorder ]
+
+            else
+                []
+
+        termHeaderCells =
+            List.indexedMap
+                (\idx impl -> Html.th (firstTermBorder idx) [ BoolFun.viewImplicant settings impl ])
+                implicants
+
+        termBodyCells i =
+            List.indexedMap
+                (\idx fn -> BoolFun.boolCellWith (firstTermBorder idx) (BoolFun.eval fn i))
+                termFns
+
+        resultLabel =
+            "f(" ++ String.join "," (BoolFun.varNames arity) ++ ")"
+    in
+    Html.div []
+        [ Html.table [ HA.class "truth-table" ]
+            [ Html.thead []
+                [ Html.tr []
+                    (List.map (\l -> Html.th [] [ Html.text l ]) (BoolFun.varNames arity)
+                        ++ termHeaderCells
+                        ++ [ Html.th [ doubleBorder ] [ Html.text resultLabel ] ]
+                    )
+                ]
+            , Html.tbody []
+                (List.range 0 (rowCount - 1)
+                    |> List.map
+                        (\i ->
+                            Html.tr []
+                                (List.map BoolFun.boolCell (BoolFun.inputBits arity i)
+                                    ++ termBodyCells i
+                                    ++ [ BoolFun.boolCellWith [ doubleBorder ] (BoolFun.eval sopFn i) ]
+                                )
+                        )
+                )
+            ]
+        , Html.div [ HA.style "margin" "10px" ]
+            [ Html.text "This SOP expression represents function "
+            , Html.a
+                [ Route.href (Arity arity (Function funIndex PropertiesSummary)) ]
+                [ Html.text (N.toDecimalString funIndex) ]
+            ]
+        ]
 
 
 {-| The restriction whose sub-function is highlighted in the truth table. A pin
@@ -1037,7 +1387,12 @@ viewAllFunctions settings arity page =
                 ++ N.toDecimalString total
     in
     Html.div []
-        [ Html.table [ HA.class "functions-table" ] (header :: rows)
+        [ Html.div []
+            [ Html.a
+                [ Route.href (Arity arity SopEditor) ]
+                [ Html.text "Open SOP editor" ]
+            ]
+        , Html.table [ HA.class "functions-table" ] (header :: rows)
         , viewPager arity page pageCount
         , Html.div [] [ Html.text rangeLabel ]
         ]
