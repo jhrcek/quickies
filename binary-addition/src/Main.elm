@@ -14,8 +14,8 @@ import Time
 type GameState
     = Config
     | Playing
-    | Checked
-    | GameOver
+    | Solved
+    | Failed
     | Results
 
 
@@ -24,11 +24,9 @@ type alias Model =
     , numBits : Int
     , numProblems : Int
     , currentProblem : Int
-    , num1 : List Int
-    , num2 : List Int
-    , userResult : List Int
-    , correctResult : List Int
-    , carries : List Int
+    , num1 : List Bool
+    , num2 : List Bool
+    , userResult : List Bool
     , problemTimes : List Int
     , problemStartTime : Maybe Int
     }
@@ -39,7 +37,7 @@ type Msg
     | SetNumProblems Int
     | StartGame
     | GotStartTime Int
-    | GeneratedNumbers ( List Int, List Int )
+    | GeneratedNumbers ( List Bool, List Bool )
     | ToggleBit Int
     | CheckResult
     | GotEndTime Int
@@ -76,43 +74,55 @@ font =
 
 isRevealed : GameState -> Bool
 isRevealed state =
-    state == Checked || state == GameOver
+    state == Solved || state == Failed
 
 
-binaryToDecimal : List Int -> Int
+isLastProblem : Model -> Bool
+isLastProblem model =
+    model.currentProblem + 1 >= model.numProblems
+
+
+correctResult : Model -> List Bool
+correctResult model =
+    decimalToBinary (model.numBits + 1) (binaryToDecimal model.num1 + binaryToDecimal model.num2)
+
+
+binaryToDecimal : List Bool -> Int
 binaryToDecimal =
-    List.foldl (\b acc -> acc * 2 + b) 0
+    List.foldl
+        (\b acc ->
+            acc
+                * 2
+                + (if b then
+                    1
+
+                   else
+                    0
+                  )
+        )
+        0
 
 
-decimalToBinary : Int -> Int -> List Int
+decimalToBinary : Int -> Int -> List Bool
 decimalToBinary bits num =
     List.range 0 (bits - 1)
-        |> List.map (\i -> modBy 2 (num // (2 ^ (bits - 1 - i))))
+        |> List.map (\i -> modBy 2 (num // (2 ^ (bits - 1 - i))) == 1)
 
 
-calculateCarries : List Int -> List Int -> List Int
+{-| For each bit position, the carry coming into it from the position
+to its right (the carry out of the leftmost position is not included).
+-}
+calculateCarries : List Bool -> List Bool -> List Bool
 calculateCarries n1 n2 =
-    let
-        -- Calculate carries from right to left
-        carries =
-            List.map2 Tuple.pair (List.reverse n1) (List.reverse n2)
-                |> List.foldl
-                    (\( a, b ) ( carry, acc ) ->
-                        let
-                            newCarry =
-                                if a + b + carry >= 2 then
-                                    1
-
-                                else
-                                    0
-                        in
-                        ( newCarry, carry :: acc )
-                    )
-                    ( 0, [] )
-                |> Tuple.second
-    in
-    -- The result has numBits+1 elements, drop the last one (rightmost, no carry into it)
-    List.take (List.length n1) carries
+    List.map2 Tuple.pair (List.reverse n1) (List.reverse n2)
+        |> List.foldl
+            (\( bitA, bitB ) ( carryIn, acc ) ->
+                ( (bitA && bitB) || (carryIn && (bitA || bitB))
+                , carryIn :: acc
+                )
+            )
+            ( False, [] )
+        |> Tuple.second
 
 
 formatTime : Int -> String
@@ -121,7 +131,15 @@ formatTime ms =
         String.fromInt ms ++ "ms"
 
     else
-        String.fromFloat (toFloat (round (toFloat ms / 10)) / 100) ++ "s"
+        let
+            -- seconds rounded to 2 decimal places
+            centis =
+                (ms + 5) // 10
+        in
+        String.fromInt (centis // 100)
+            ++ "."
+            ++ String.padLeft 2 '0' (String.fromInt (modBy 100 centis))
+            ++ "s"
 
 
 init : () -> ( Model, Cmd Msg )
@@ -133,8 +151,6 @@ init _ =
       , num1 = []
       , num2 = []
       , userResult = []
-      , correctResult = []
-      , carries = []
       , problemTimes = []
       , problemStartTime = Nothing
       }
@@ -157,21 +173,19 @@ update msg model =
             )
 
         GotStartTime time ->
+            let
+                randomNumber =
+                    Random.list model.numBits (Random.uniform True [ False ])
+            in
             ( { model | problemStartTime = Just time }
-            , Random.generate GeneratedNumbers
-                (Random.pair
-                    (Random.list model.numBits (Random.int 0 1))
-                    (Random.list model.numBits (Random.int 0 1))
-                )
+            , Random.generate GeneratedNumbers (Random.pair randomNumber randomNumber)
             )
 
         GeneratedNumbers ( n1, n2 ) ->
             ( { model
                 | num1 = n1
                 , num2 = n2
-                , userResult = List.repeat (model.numBits + 1) 0
-                , correctResult = []
-                , carries = []
+                , userResult = List.repeat (model.numBits + 1) False
               }
             , Cmd.none
             )
@@ -186,7 +200,7 @@ update msg model =
                         List.indexedMap
                             (\i b ->
                                 if i == idx then
-                                    1 - b
+                                    not b
 
                                 else
                                     b
@@ -203,18 +217,8 @@ update msg model =
 
         GotEndTime endTime ->
             let
-                correct =
-                    decimalToBinary (model.numBits + 1) (binaryToDecimal model.num1 + binaryToDecimal model.num2)
-
                 isCorrect =
-                    model.userResult == correct
-
-                newState =
-                    if isCorrect then
-                        Checked
-
-                    else
-                        GameOver
+                    model.userResult == correctResult model
 
                 elapsedTime =
                     case model.problemStartTime of
@@ -225,9 +229,12 @@ update msg model =
                             0
             in
             ( { model
-                | correctResult = correct
-                , carries = calculateCarries model.num1 model.num2
-                , gameState = newState
+                | gameState =
+                    if isCorrect then
+                        Solved
+
+                    else
+                        Failed
                 , problemTimes =
                     if isCorrect then
                         model.problemTimes ++ [ elapsedTime ]
@@ -239,7 +246,7 @@ update msg model =
             )
 
         NextProblem ->
-            if model.currentProblem + 1 >= model.numProblems then
+            if isLastProblem model then
                 ( { model | gameState = Results }, Cmd.none )
 
             else
@@ -251,14 +258,15 @@ update msg model =
             ( { model | gameState = Config }, Cmd.none )
 
         KeyPressed key ->
-            if key == " " && model.gameState == Playing then
-                update CheckResult model
+            case ( key, model.gameState ) of
+                ( " ", Playing ) ->
+                    update CheckResult model
 
-            else if key == " " && model.gameState == Checked then
-                update NextProblem model
+                ( " ", Solved ) ->
+                    update NextProblem model
 
-            else
-                ( model, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
@@ -278,97 +286,124 @@ noFocusOnMouseDown =
     Html.Events.preventDefaultOn "mousedown" (Decode.succeed ( NoOp, True ))
 
 
-styles :
-    { card : String -> List (Attribute msg)
-    , button : Bool -> String -> List (Attribute a)
-    , primary : String -> List (Attribute b)
-    , label : List (Attribute c)
-    , heading : String -> List (Attribute d)
-    , subtitle : List (Attribute e)
-    , center : List (Attribute f)
-    , flex : List (Attribute g)
-    , mb : String -> List (Attribute h)
-    }
-styles =
-    { card =
-        \color ->
-            [ style "background" "rgba(20,20,30,0.9)"
-            , style "border" ("2px solid " ++ color)
-            , style "border-radius" "8px"
-            , style "box-shadow" ("0 0 40px " ++ color ++ "33, inset 0 0 60px rgba(0,0,0,0.5)")
-            , style "position" "relative"
-            , style "z-index" "1"
-            ]
-    , button =
-        \active color ->
-            [ style "padding" "0.75rem 1.25rem"
-            , style "background"
-                (if active then
-                    color
-
-                 else
-                    "transparent"
-                )
-            , style "color"
-                (if active then
-                    "#0a0a0f"
-
-                 else
-                    color
-                )
-            , style "border" ("1px solid " ++ color)
-            , style "border-radius" "4px"
-            , style "cursor" "pointer"
-            , style "font-family" "inherit"
-            , style "font-size" "1rem"
-            , style "font-weight" "600"
-            ]
-    , primary =
-        \color ->
-            [ style "width" "100%"
-            , style "padding" "1rem"
-            , style "background" ("linear-gradient(135deg, " ++ color ++ ", " ++ color ++ "cc)")
-            , style "color" "#0a0a0f"
-            , style "border" "none"
-            , style "border-radius" "6px"
-            , style "cursor" "pointer"
-            , style "font-family" "inherit"
-            , style "font-size" "1rem"
-            , style "font-weight" "700"
-            , style "letter-spacing" "0.1em"
-            , style "text-transform" "uppercase"
-            ]
-    , label =
-        [ style "display" "block"
-        , style "color" green
-        , style "margin-bottom" "0.75rem"
-        , style "font-size" "0.8rem"
-        , style "letter-spacing" "0.15em"
-        , style "text-transform" "uppercase"
-        ]
-    , heading =
-        \size ->
-            [ style "font-size" size
-            , style "font-weight" "700"
-            , style "color" green
-            , style "text-shadow" ("0 0 20px " ++ green ++ "80")
-            , style "letter-spacing" "0.1em"
-            , style "margin-bottom" "0.5rem"
-            ]
-    , subtitle =
-        [ style "color" "#666"
-        , style "font-size" "0.85rem"
-        , style "letter-spacing" "0.05em"
-        ]
-    , center = [ style "text-align" "center" ]
-    , flex = [ style "display" "flex", style "gap" "0.5rem" ]
-    , mb = \n -> [ style "margin-bottom" n ]
-    }
+cardStyles : String -> List (Attribute msg)
+cardStyles color =
+    [ style "background" "rgba(20,20,30,0.9)"
+    , style "border" ("2px solid " ++ color)
+    , style "border-radius" "8px"
+    , style "box-shadow" ("0 0 40px " ++ color ++ "33, inset 0 0 60px rgba(0,0,0,0.5)")
+    , style "position" "relative"
+    , style "z-index" "1"
+    ]
 
 
-bitColor : number -> String
+optionStyles : Bool -> String -> List (Attribute msg)
+optionStyles active color =
+    [ style "padding" "0.75rem 1.25rem"
+    , style "background"
+        (if active then
+            color
+
+         else
+            "transparent"
+        )
+    , style "color"
+        (if active then
+            "#0a0a0f"
+
+         else
+            color
+        )
+    , style "border" ("1px solid " ++ color)
+    , style "border-radius" "4px"
+    , style "cursor" "pointer"
+    , style "font-family" "inherit"
+    , style "font-size" "1rem"
+    , style "font-weight" "600"
+    ]
+
+
+primaryStyles : String -> List (Attribute msg)
+primaryStyles color =
+    [ style "width" "100%"
+    , style "padding" "1rem"
+    , style "background" ("linear-gradient(135deg, " ++ color ++ ", " ++ color ++ "cc)")
+    , style "color" "#0a0a0f"
+    , style "border" "none"
+    , style "border-radius" "6px"
+    , style "cursor" "pointer"
+    , style "font-family" "inherit"
+    , style "font-size" "1rem"
+    , style "font-weight" "700"
+    , style "letter-spacing" "0.1em"
+    , style "text-transform" "uppercase"
+    ]
+
+
+labelStyles : List (Attribute msg)
+labelStyles =
+    [ style "display" "block"
+    , style "color" green
+    , style "margin-bottom" "0.75rem"
+    , style "font-size" "0.8rem"
+    , style "letter-spacing" "0.15em"
+    , style "text-transform" "uppercase"
+    ]
+
+
+headingStyles : String -> List (Attribute msg)
+headingStyles size =
+    [ style "font-size" size
+    , style "font-weight" "700"
+    , style "color" green
+    , style "text-shadow" ("0 0 20px " ++ green ++ "80")
+    , style "letter-spacing" "0.1em"
+    , style "margin-bottom" "0.5rem"
+    ]
+
+
+subtitleStyles : List (Attribute msg)
+subtitleStyles =
+    [ style "color" "#666"
+    , style "font-size" "0.85rem"
+    , style "letter-spacing" "0.05em"
+    ]
+
+
+centerStyles : List (Attribute msg)
+centerStyles =
+    [ style "text-align" "center" ]
+
+
+flexStyles : List (Attribute msg)
+flexStyles =
+    [ style "display" "flex", style "gap" "0.5rem" ]
+
+
+mb : String -> List (Attribute msg)
+mb n =
+    [ style "margin-bottom" n ]
+
+
+primaryButton : String -> Msg -> String -> Html Msg
+primaryButton color msg label =
+    Html.button
+        (primaryStyles color ++ [ onClick msg, noFocusOnMouseDown ])
+        [ Html.text label ]
+
+
+bitText : Bool -> String
+bitText b =
+    if b then
+        "1"
+
+    else
+        "0"
+
+
+bitColor : Bool -> String
 bitColor b =
-    if b == 1 then
+    if b then
         green
 
     else
@@ -425,7 +460,7 @@ viewConfig model =
     let
         difficultyOption ( lbl, bits ) =
             Html.button
-                (styles.button (model.numBits == bits) green
+                (optionStyles (model.numBits == bits) green
                     ++ [ onClick (SetNumBits bits)
                        , noFocusOnMouseDown
                        , style "display" "flex"
@@ -444,28 +479,28 @@ viewConfig model =
 
         problemCountOption n =
             Html.button
-                (styles.button (model.numProblems == n) green ++ [ onClick (SetNumProblems n), noFocusOnMouseDown ])
+                (optionStyles (model.numProblems == n) green ++ [ onClick (SetNumProblems n), noFocusOnMouseDown ])
                 [ Html.text (String.fromInt n) ]
     in
     Html.div
-        (styles.card green
+        (cardStyles green
             ++ [ style "padding" "3rem"
                , style "max-width" "500px"
                , style "width" "100%"
                ]
         )
-        [ Html.h1 (styles.heading "1.8rem" ++ styles.center) [ Html.text "BINARY ADDITION" ]
-        , Html.p (styles.subtitle ++ styles.center ++ styles.mb "2.5rem") [ Html.text "TRAINING PROTOCOL v1.0" ]
-        , Html.div (styles.mb "2rem")
-            [ Html.label styles.label [ Html.text "Difficulty" ]
-            , Html.div styles.flex
+        [ Html.h1 (headingStyles "1.8rem" ++ centerStyles) [ Html.text "BINARY ADDITION" ]
+        , Html.p (subtitleStyles ++ centerStyles ++ mb "2.5rem") [ Html.text "TRAINING PROTOCOL v1.0" ]
+        , Html.div (mb "2rem")
+            [ Html.label labelStyles [ Html.text "Difficulty" ]
+            , Html.div flexStyles
                 (List.map difficultyOption [ ( "Easy", 4 ), ( "Medium", 8 ), ( "Hard", 16 ) ])
             ]
-        , Html.div (styles.mb "2.5rem")
-            [ Html.label styles.label [ Html.text "Number of problems" ]
-            , Html.div styles.flex (List.map problemCountOption [ 3, 10, 20 ])
+        , Html.div (mb "2.5rem")
+            [ Html.label labelStyles [ Html.text "Number of problems" ]
+            , Html.div flexStyles (List.map problemCountOption [ 3, 10, 20 ])
             ]
-        , Html.button (styles.primary green ++ [ onClick StartGame, noFocusOnMouseDown ]) [ Html.text "Initialize Training" ]
+        , primaryButton green StartGame "Initialize Training"
         ]
 
 
@@ -476,14 +511,14 @@ viewGame model =
             isRevealed model.gameState
 
         color =
-            if model.gameState == GameOver then
+            if model.gameState == Failed then
                 red
 
             else
                 green
     in
     Html.div
-        (styles.card color
+        (cardStyles color
             ++ [ style "padding" "2rem"
                , style "min-width" "320px"
                ]
@@ -533,22 +568,21 @@ viewGame model =
 
 viewStatusLabel : GameState -> Html msg
 viewStatusLabel state =
+    let
+        statusSpan color txt =
+            Html.span
+                [ style "color" color
+                , style "font-size" "0.85rem"
+                , style "letter-spacing" "0.1em"
+                ]
+                [ Html.text txt ]
+    in
     case state of
-        GameOver ->
-            Html.span
-                [ style "color" red
-                , style "font-size" "0.85rem"
-                , style "letter-spacing" "0.1em"
-                ]
-                [ Html.text "GAME OVER" ]
+        Failed ->
+            statusSpan red "GAME OVER"
 
-        Checked ->
-            Html.span
-                [ style "color" green
-                , style "font-size" "0.85rem"
-                , style "letter-spacing" "0.1em"
-                ]
-                [ Html.text "✓ CORRECT" ]
+        Solved ->
+            statusSpan green "✓ CORRECT"
 
         _ ->
             Html.text ""
@@ -558,21 +592,20 @@ viewGameButton : Model -> Html Msg
 viewGameButton model =
     case model.gameState of
         Playing ->
-            Html.button (styles.primary green ++ [ onClick CheckResult, noFocusOnMouseDown ]) [ Html.text "Check Result [Space]" ]
+            primaryButton green CheckResult "Check Result [Space]"
 
-        Checked ->
-            let
-                label =
-                    if model.currentProblem + 1 >= model.numProblems then
-                        "View Results"
+        Solved ->
+            primaryButton green
+                NextProblem
+                (if isLastProblem model then
+                    "View Results"
 
-                    else
-                        "Next [Space]"
-            in
-            Html.button (styles.primary green ++ [ onClick NextProblem, noFocusOnMouseDown ]) [ Html.text label ]
+                 else
+                    "Next [Space]"
+                )
 
-        GameOver ->
-            Html.button (styles.primary red ++ [ onClick GoToConfig, noFocusOnMouseDown ]) [ Html.text "Try Again" ]
+        Failed ->
+            primaryButton red GoToConfig "Try Again"
 
         _ ->
             Html.text ""
@@ -585,7 +618,7 @@ viewGrid model revealed =
             Html.span [ style "text-align" "center", style "color" clr ] [ Html.text txt ]
 
         bitCell b =
-            cell (bitColor b) (String.fromInt b)
+            cell (bitColor b) (bitText b)
 
         labelCell clr txt =
             Html.span
@@ -616,7 +649,7 @@ viewGrid model revealed =
             Html.span [] []
 
         carryColor c =
-            if revealed && c == 1 then
+            if revealed && c then
                 orange
 
             else
@@ -633,12 +666,12 @@ viewGrid model revealed =
                 "carry:"
             , emptyCell
             ]
-                ++ List.map (\c -> cell (carryColor c) (String.fromInt c))
+                ++ List.map (\c -> cell (carryColor c) (bitText c))
                     (if revealed then
-                        model.carries
+                        calculateCarries model.num1 model.num2
 
                      else
-                        List.repeat model.numBits 0
+                        List.repeat model.numBits False
                     )
 
         num1Row =
@@ -659,11 +692,11 @@ viewGrid model revealed =
 
         resultRow =
             prefixCell "="
-                :: (if model.gameState == GameOver then
-                        List.map2 viewResultBitWithCheck model.userResult model.correctResult
+                :: (if model.gameState == Failed then
+                        List.map2 viewResultBitWithCheck model.userResult (correctResult model)
 
                     else if revealed then
-                        List.map viewResultBit model.correctResult
+                        List.map viewResultBit (correctResult model)
 
                     else
                         List.indexedMap viewToggleBit model.userResult
@@ -684,14 +717,14 @@ viewGrid model revealed =
         (carryRow ++ num1Row ++ num2Row ++ separator ++ resultRow)
 
 
-viewResultBit : Int -> Html msg
+viewResultBit : Bool -> Html msg
 viewResultBit b =
     Html.span
         (resultBitStyles (bitColor b) "none")
-        [ Html.text (String.fromInt b) ]
+        [ Html.text (bitText b) ]
 
 
-viewResultBitWithCheck : Int -> Int -> Html msg
+viewResultBitWithCheck : Bool -> Bool -> Html msg
 viewResultBitWithCheck userBit correctBit =
     let
         isCorrect =
@@ -713,7 +746,7 @@ viewResultBitWithCheck userBit correctBit =
     in
     Html.span
         (resultBitStyles color decoration)
-        [ Html.text (String.fromInt userBit) ]
+        [ Html.text (bitText userBit) ]
 
 
 resultBitStyles : String -> String -> List (Attribute msg)
@@ -733,7 +766,7 @@ resultBitStyles color decoration =
     ]
 
 
-viewToggleBit : Int -> Int -> Html Msg
+viewToggleBit : Int -> Bool -> Html Msg
 viewToggleBit i b =
     Html.button
         [ onClick (ToggleBit i)
@@ -745,7 +778,7 @@ viewToggleBit i b =
         , style "align-items" "center"
         , style "justify-content" "center"
         , style "background"
-            (if b == 1 then
+            (if b then
                 "rgba(0,255,136,0.2)"
 
              else
@@ -754,7 +787,7 @@ viewToggleBit i b =
         , style "color" (bitColor b)
         , style "border"
             ("1px solid "
-                ++ (if b == 1 then
+                ++ (if b then
                         green
 
                     else
@@ -769,7 +802,7 @@ viewToggleBit i b =
         , style "padding" "0"
         , style "line-height" "1"
         ]
-        [ Html.text (String.fromInt b) ]
+        [ Html.text (bitText b) ]
 
 
 viewResults : Model -> Html Msg
@@ -808,15 +841,15 @@ viewResults model =
                 ]
     in
     Html.div
-        (styles.card green
+        (cardStyles green
             ++ [ style "padding" "3rem"
                , style "max-width" "500px"
                , style "width" "100%"
                , style "text-align" "center"
                ]
         )
-        [ Html.h1 (styles.heading "1.5rem") [ Html.text "TRAINING COMPLETE" ]
-        , Html.p (styles.subtitle ++ styles.mb "2rem")
+        [ Html.h1 (headingStyles "1.5rem") [ Html.text "TRAINING COMPLETE" ]
+        , Html.p (subtitleStyles ++ mb "2rem")
             [ Html.text
                 (String.fromInt model.numProblems
                     ++ " problems × "
@@ -832,7 +865,7 @@ viewResults model =
             [ statBox "TOTAL TIME" (formatTime totalTime)
             , statBox "AVG / BIT" (formatTime avgPerBit)
             ]
-        , Html.button (styles.primary green ++ [ onClick GoToConfig, noFocusOnMouseDown ]) [ Html.text "Try Again" ]
+        , primaryButton green GoToConfig "Try Again"
         ]
 
 
