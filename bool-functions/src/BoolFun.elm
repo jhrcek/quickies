@@ -10,6 +10,7 @@ module BoolFun exposing
     , boolCell
     , boolCellWith
     , boolColor
+    , chowParameters
     , configForArity
     , disjunction
     , dualOf
@@ -1011,6 +1012,24 @@ tryMerge a b =
 
         else
             Nothing
+
+
+{-| Chow parameters of the function, in Chow's original counting convention:
+`[m₀, m₁, …, mₙ]` where `m₀` is the number of inputs on which the function is
+true (its weight) and `mᵢ` counts the true inputs where variable i is 1
+(variables in `varNames` order). By Chow's theorem these n+1 numbers determine
+a threshold function uniquely among all Boolean functions.
+-}
+chowParameters : BF -> List Int
+chowParameters ((BF { arity }) as bf) =
+    let
+        trueRows =
+            List.filter (eval_internal bf) (inputs arity)
+
+        mi v =
+            List.length (List.filter (getBit (arity - v)) trueRows)
+    in
+    List.length trueRows :: List.map mi (List.range 1 arity)
 
 
 isFalsityPreserving : BF -> Bool

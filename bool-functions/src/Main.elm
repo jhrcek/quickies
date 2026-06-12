@@ -1178,6 +1178,8 @@ viewProperty arity functionIndex propSubroute bf =
                             , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
                             ]
                         ]
+                , Html.h4 [] [ Html.text "Chow parameters" ]
+                , viewChowParameters arity bf
                 ]
 
         FalsePreserving ->
@@ -1205,6 +1207,50 @@ viewProperty arity functionIndex propSubroute bf =
 
         SelfDual ->
             viewSelfDual arity bf
+
+
+viewChowParameters : Int -> BoolFun.BF -> Html msg
+viewChowParameters arity bf =
+    let
+        params =
+            BoolFun.chowParameters bf
+
+        chowName sub =
+            [ Html.text "m", Html.sub [] [ Html.text sub ] ]
+
+        paramRow label value =
+            Html.tr []
+                [ Html.td [] label
+                , Html.td [] [ Html.text (String.fromInt value) ]
+                ]
+
+        legendItem term explanation =
+            Html.p [ HA.style "margin" "0.15em 0" ]
+                (Html.b [] term :: [ Html.text explanation ])
+    in
+    Html.div []
+        [ Html.table [ HA.class "functions-table" ]
+            [ Html.thead []
+                [ Html.tr []
+                    [ Html.th [] [ Html.text "Parameter" ]
+                    , Html.th [] [ Html.text "Value" ]
+                    ]
+                ]
+            , Html.tbody []
+                (paramRow (chowName "0" ++ [ Html.text " (weight)" ]) (List.head params |> Maybe.withDefault 0)
+                    :: List.map2
+                        (\letter m -> paramRow (chowName letter) m)
+                        (BoolFun.varNames arity)
+                        (List.drop 1 params)
+                )
+            ]
+        , Html.div
+            [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
+            [ legendItem (chowName "0") " — the number of inputs on which the function is true (the function's weight)."
+            , legendItem (chowName "x") " — the number of true rows in which variable x is 1."
+            , legendItem [ Html.text "Chow's theorem" ] " — a threshold function is uniquely determined among all Boolean functions by these n+1 numbers."
+            ]
+        ]
 
 
 viewSelfDual : Int -> BoolFun.BF -> Html Msg
