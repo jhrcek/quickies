@@ -1433,10 +1433,18 @@ viewAllFunctions settings arity page =
                 ++ N.toDecimalString total
     in
     Html.div []
-        [ Html.div []
-            [ Html.a
+        [ Html.p []
+            [ Html.text "Click a function's index in the table to see its details, jump to a "
+            , Html.button
+                [ HA.class "link-button"
+                , Events.onClick (GoToRandomFunction arity)
+                ]
+                [ Html.text "random function" ]
+            , Html.text ", or build your own in the "
+            , Html.a
                 [ Route.href (Arity arity SopEditor) ]
-                [ Html.text "Open SOP editor" ]
+                [ Html.text "SOP editor" ]
+            , Html.text "."
             ]
         , Html.table [ HA.class "functions-table" ] (header :: rows)
         , viewPager arity page pageCount
@@ -1511,12 +1519,6 @@ viewPager arity page pageCount =
         , Html.text (" of " ++ N.toDecimalString pageCount ++ " ")
         , navButton (not onLast) (N.add page N.one) "Next page" "▶"
         , navButton (not onLast) pageCount "Last page" "⏭"
-        , Html.text " "
-        , Html.button
-            [ Events.onClick (GoToRandomFunction arity)
-            , HA.title "Go to random function"
-            ]
-            [ Html.text "⚄" ]
         ]
 
 
@@ -1582,6 +1584,16 @@ styles =
 }
 .settings-popup fieldset:last-child {
     margin-bottom: 0;
+}
+
+.link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #00e;
+    text-decoration: underline;
+    cursor: pointer;
 }
 
 .pin-slot {
