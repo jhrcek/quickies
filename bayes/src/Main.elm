@@ -28,7 +28,6 @@ type alias Model =
     , pBGivenA : Float
     , pBGivenNotA : Float
     , dragState : Maybe DragSlider
-    , viewportWidth : Int
     , viewportHeight : Int
     , hoveredProbability : Maybe ProbabilityType
     }
@@ -61,12 +60,11 @@ init _ =
       , pBGivenA = 0.5
       , pBGivenNotA = 0.3
       , dragState = Nothing
-      , viewportWidth = 1024
       , viewportHeight = 768
       , hoveredProbability = Nothing
       }
     , Task.perform
-        (\{ viewport } -> WindowResized (round viewport.width) (round viewport.height))
+        (\{ viewport } -> WindowResized (round viewport.height))
         Browser.Dom.getViewport
     )
 
@@ -75,7 +73,7 @@ type Msg
     = DragStarted DragSlider
     | DragAt Float Float
     | DragStopped
-    | WindowResized Int Int
+    | WindowResized Int
     | ProbabilityHovered (Maybe ProbabilityType)
 
 
@@ -87,20 +85,14 @@ update msg model =
 
         DragAt x y ->
             case model.dragState of
-                Just drag ->
-                    let
-                        squareSize =
-                            toFloat model.viewportHeight - 2 * squareTop
-                    in
-                    case drag of
-                        DragA ->
-                            pure { model | pA = fromSvgX squareSize x }
+                Just DragA ->
+                    pure { model | pA = fromSvgX (squareSize model) x }
 
-                        DragBGivenA ->
-                            pure { model | pBGivenA = fromSvgY squareSize y }
+                Just DragBGivenA ->
+                    pure { model | pBGivenA = fromSvgY (squareSize model) y }
 
-                        DragBGivenNotA ->
-                            pure { model | pBGivenNotA = fromSvgY squareSize y }
+                Just DragBGivenNotA ->
+                    pure { model | pBGivenNotA = fromSvgY (squareSize model) y }
 
                 Nothing ->
                     pure model
@@ -108,8 +100,8 @@ update msg model =
         DragStopped ->
             pure { model | dragState = Nothing }
 
-        WindowResized width height ->
-            pure { model | viewportWidth = width, viewportHeight = height }
+        WindowResized height ->
+            pure { model | viewportHeight = height }
 
         ProbabilityHovered probType ->
             pure { model | hoveredProbability = probType }
@@ -122,7 +114,7 @@ pure a =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Browser.Events.onResize WindowResized
+    Browser.Events.onResize (\_ height -> WindowResized height)
 
 
 type alias DerivedProbabilities =
@@ -141,84 +133,48 @@ type alias DerivedProbabilities =
     }
 
 
-lookupProb : ProbabilityType -> DerivedProbabilities -> Float
-lookupProb probType probs =
-    case probType of
-        PA ->
-            probs.pA
+probText : DerivedProbabilities -> ProbabilityType -> String
+probText probs probType =
+    let
+        ( name, value ) =
+            case probType of
+                PA ->
+                    ( "P(A)", probs.pA )
 
-        PNotA ->
-            probs.pNotA
+                PNotA ->
+                    ( "P(¬A)", probs.pNotA )
 
-        PBGivenA ->
-            probs.pBGivenA
+                PBGivenA ->
+                    ( "P(B|A)", probs.pBGivenA )
 
-        PNotBGivenA ->
-            probs.pNotBGivenA
+                PNotBGivenA ->
+                    ( "P(¬B|A)", probs.pNotBGivenA )
 
-        PBGivenNotA ->
-            probs.pBGivenNotA
+                PBGivenNotA ->
+                    ( "P(B|¬A)", probs.pBGivenNotA )
 
-        PNotBGivenNotA ->
-            probs.pNotBGivenNotA
+                PNotBGivenNotA ->
+                    ( "P(¬B|¬A)", probs.pNotBGivenNotA )
 
-        PB ->
-            probs.pB
+                PB ->
+                    ( "P(B)", probs.pB )
 
-        PNotB ->
-            probs.pNotB
+                PNotB ->
+                    ( "P(¬B)", probs.pNotB )
 
-        PAGivenB ->
-            probs.pAGivenB
+                PAGivenB ->
+                    ( "P(A|B)", probs.pAGivenB )
 
-        PNotAGivenB ->
-            probs.pNotAGivenB
+                PNotAGivenB ->
+                    ( "P(¬A|B)", probs.pNotAGivenB )
 
-        PAGivenNotB ->
-            probs.pAGivenNotB
+                PAGivenNotB ->
+                    ( "P(A|¬B)", probs.pAGivenNotB )
 
-        PNotAGivenNotB ->
-            probs.pNotAGivenNotB
-
-
-probLabel : ProbabilityType -> String
-probLabel probType =
-    case probType of
-        PA ->
-            "P(A)"
-
-        PNotA ->
-            "P(¬A)"
-
-        PBGivenA ->
-            "P(B|A)"
-
-        PNotBGivenA ->
-            "P(¬B|A)"
-
-        PBGivenNotA ->
-            "P(B|¬A)"
-
-        PNotBGivenNotA ->
-            "P(¬B|¬A)"
-
-        PB ->
-            "P(B)"
-
-        PNotB ->
-            "P(¬B)"
-
-        PAGivenB ->
-            "P(A|B)"
-
-        PNotAGivenB ->
-            "P(¬A|B)"
-
-        PAGivenNotB ->
-            "P(A|¬B)"
-
-        PNotAGivenNotB ->
-            "P(¬A|¬B)"
+                PNotAGivenNotB ->
+                    ( "P(¬A|¬B)", probs.pNotAGivenNotB )
+    in
+    name ++ "=" ++ Round.round 3 value
 
 
 computeDerivedProbabilities : { r | pA : Float, pBGivenA : Float, pBGivenNotA : Float } -> DerivedProbabilities
@@ -229,9 +185,6 @@ computeDerivedProbabilities { pA, pBGivenA, pBGivenNotA } =
 
         pNotBGivenA =
             1 - pBGivenA
-
-        pNotBGivenNotA =
-            1 - pBGivenNotA
 
         pB =
             pA * pBGivenA + pNotA * pBGivenNotA
@@ -248,29 +201,23 @@ computeDerivedProbabilities { pA, pBGivenA, pBGivenNotA } =
 
         pAGivenNotB =
             if pNotB > 0 then
-                (pA * (1 - pBGivenA)) / pNotB
+                (pA * pNotBGivenA) / pNotB
 
             else
                 0
-
-        pNotAGivenB =
-            1 - pAGivenB
-
-        pNotAGivenNotB =
-            1 - pAGivenNotB
     in
     { pA = pA
     , pNotA = pNotA
     , pBGivenA = pBGivenA
     , pBGivenNotA = pBGivenNotA
     , pNotBGivenA = pNotBGivenA
-    , pNotBGivenNotA = pNotBGivenNotA
+    , pNotBGivenNotA = 1 - pBGivenNotA
     , pB = pB
     , pNotB = pNotB
     , pAGivenB = pAGivenB
     , pAGivenNotB = pAGivenNotB
-    , pNotAGivenB = pNotAGivenB
-    , pNotAGivenNotB = pNotAGivenNotB
+    , pNotAGivenB = 1 - pAGivenB
+    , pNotAGivenNotB = 1 - pAGivenNotB
     }
 
 
@@ -280,8 +227,8 @@ view model =
         probs =
             computeDerivedProbabilities model
 
-        squareSize =
-            toFloat model.viewportHeight - 2 * squareTop
+        size =
+            squareSize model
     in
     Html.div
         [ HA.style "display" "flex"
@@ -289,40 +236,37 @@ view model =
         , HA.style "align-items" "flex-start"
         ]
         [ Svg.svg
-            [ SA.width (toS (squareLeft * 2 + squareSize))
-            , SA.height (toS (squareTop * 2 + squareSize))
+            [ SA.width (toS (squareLeft * 2 + size))
+            , SA.height (toS (squareTop * 2 + size))
             , SE.onMouseUp DragStopped
             , SE.on "mousemove" (Decode.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker, diagonalStripePattern ]
-            , drawPartitions squareSize probs model.hoveredProbability
-            , drawSquare squareSize
+            , drawPartitions size probs model.hoveredProbability
+            , outlinedRect "1" (Rect squareLeft squareTop size size)
             ]
         ]
 
 
-drawSquare : Float -> Svg Msg
-drawSquare squareSize =
-    Svg.rect
-        [ SA.x (toS squareLeft)
-        , SA.y (toS squareTop)
-        , SA.width (toS squareSize)
-        , SA.height (toS squareSize)
-        , SA.fill "none"
-        , SA.stroke "black"
-        , SA.strokeWidth "1"
-        ]
-        []
+squareSize : Model -> Float
+squareSize model =
+    toFloat model.viewportHeight - 2 * squareTop
 
 
 drawPartitions : Float -> DerivedProbabilities -> Maybe ProbabilityType -> Svg Msg
-drawPartitions squareSize probs hoveredProbability =
+drawPartitions size probs hoveredProbability =
     let
         svgX =
-            toSvgX squareSize
+            toSvgX size
 
         svgY =
-            toSvgY squareSize
+            toSvgY size
+
+        right =
+            squareLeft + size
+
+        bottom =
+            squareTop + size
 
         xA =
             svgX probs.pA
@@ -342,41 +286,6 @@ drawPartitions squareSize probs hoveredProbability =
         xAGivenNotB =
             svgX probs.pAGivenNotB
 
-        lineWithKnob x1 y1 x2 y2 slider =
-            Svg.g []
-                [ Svg.line
-                    [ SA.x1 (toS x1)
-                    , SA.y1 (toS y1)
-                    , SA.x2 (toS x2)
-                    , SA.y2 (toS y2)
-                    , SA.stroke "black"
-                    , SA.strokeWidth "1"
-                    , SA.markerEnd "url(#triangle)"
-                    ]
-                    []
-                , Svg.circle
-                    -- Invisible circle for easier dragging
-                    [ SA.r "10"
-                    , SA.cx (toS x2)
-                    , SA.cy (toS y2)
-                    , SA.fill "transparent"
-                    , SA.cursor "pointer"
-                    , SE.onMouseDown (DragStarted slider)
-                    ]
-                    []
-                ]
-
-        grayLine x1 y1 x2 y2 =
-            Svg.line
-                [ SA.x1 (toS x1)
-                , SA.y1 (toS y1)
-                , SA.x2 (toS x2)
-                , SA.y2 (toS y2)
-                , SA.stroke "lightgray"
-                , SA.strokeWidth "1"
-                ]
-                []
-
         textLabel x y anchor baseline color probType =
             Svg.text_
                 [ SA.x (toS x)
@@ -390,181 +299,182 @@ drawPartitions squareSize probs hoveredProbability =
                 , SE.on "mouseenter" (Decode.succeed <| ProbabilityHovered (Just probType))
                 , SE.on "mouseleave" (Decode.succeed <| ProbabilityHovered Nothing)
                 ]
-                [ Svg.text <| probLabel probType ++ "=" ++ Round.round 3 (lookupProb probType probs) ]
+                [ Svg.text <| probText probs probType ]
 
-        verticalA =
-            lineWithKnob xA (svgY 1) xA (svgY 0) DragA
-
-        horizontalBGivenA =
-            lineWithKnob xA yBGivenA (svgX 0 - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
-
-        horizontalBGivenNotA =
-            lineWithKnob xA yBGivenNotA (svgX 1 + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
-
-        horizontalB =
-            grayLine (svgX 0) yB (svgX 1) yB
-
-        verticalAGivenB =
-            grayLine xAGivenB yB xAGivenB (svgY 0)
-
-        verticalAGivenNotB =
-            grayLine xAGivenNotB (svgY 1) xAGivenNotB yB
-
-        -- Text labels for probabilities
         lblOffset =
             15
 
-        -- Bottom edge
-        pABottomLabel =
-            textLabel (squareLeft + (xA - squareLeft) / 2) (squareTop + squareSize + lblOffset) "middle" "hanging" "black" PA
+        labels =
+            [ -- Bottom edge
+              textLabel (mid squareLeft xA) (bottom + lblOffset) "middle" "hanging" "black" PA
+            , textLabel (mid xA right) (bottom + lblOffset) "middle" "hanging" "black" PNotA
+            , textLabel (mid squareLeft xAGivenB) (bottom + 2 * lblOffset) "middle" "hanging" "lightgray" PAGivenB
+            , textLabel (mid xAGivenB right) (bottom + 2 * lblOffset) "middle" "hanging" "lightgray" PNotAGivenB
 
-        pNotABottomLabel =
-            textLabel (xA + (svgX 1 - xA) / 2) (squareTop + squareSize + lblOffset) "middle" "hanging" "black" PNotA
+            -- Left edge
+            , textLabel (squareLeft - lblOffset) (mid yBGivenA bottom) "end" "middle" "black" PBGivenA
+            , textLabel (squareLeft - lblOffset) (mid squareTop yBGivenA) "end" "middle" "black" PNotBGivenA
+            , textLabel (squareLeft - lblOffset) (mid yB bottom) "end" "middle" "lightgray" PB
+            , textLabel (squareLeft - lblOffset) (mid squareTop yB) "end" "middle" "lightgray" PNotB
 
-        pAGivenBBottomLabel =
-            textLabel (squareLeft + (xAGivenB - squareLeft) / 2) (squareTop + squareSize + 2 * lblOffset) "middle" "hanging" "lightgray" PAGivenB
+            -- Right edge
+            , textLabel (right + lblOffset) (mid squareTop yBGivenNotA) "start" "middle" "black" PNotBGivenNotA
+            , textLabel (right + lblOffset) (mid yBGivenNotA bottom) "start" "middle" "black" PBGivenNotA
 
-        pNotAGivenBBottomLabel =
-            textLabel (xAGivenB + (svgX 1 - xAGivenB) / 2) (squareTop + squareSize + 2 * lblOffset) "middle" "hanging" "lightgray" PNotAGivenB
+            -- Top edge
+            , textLabel (mid squareLeft xAGivenNotB) (squareTop - lblOffset) "middle" "baseline" "lightgray" PAGivenNotB
+            , textLabel (mid xAGivenNotB right) (squareTop - lblOffset) "middle" "baseline" "lightgray" PNotAGivenNotB
+            ]
 
-        -- Left edge
-        pBGivenALeftLabel =
-            textLabel (squareLeft - lblOffset) (yBGivenA + (squareTop + squareSize - yBGivenA) / 2) "end" "middle" "black" PBGivenA
-
-        pNotBGivenALeftLabel =
-            textLabel (squareLeft - lblOffset) (squareTop + (yBGivenA - squareTop) / 2) "end" "middle" "black" PNotBGivenA
-
-        pBLeftLabel =
-            textLabel (squareLeft - lblOffset) (yB + (squareTop + squareSize - yB) / 2) "end" "middle" "lightgray" PB
-
-        pNotBLeftLabel =
-            textLabel (squareLeft - lblOffset) (squareTop + (yB - squareTop) / 2) "end" "middle" "lightgray" PNotB
-
-        -- Right edge
-        pNotBGivenNotARightLabel =
-            textLabel (svgX 1 + lblOffset) (squareTop + (yBGivenNotA - squareTop) / 2) "start" "middle" "black" PNotBGivenNotA
-
-        pBGivenNotARightLabel =
-            textLabel (svgX 1 + lblOffset) (yBGivenNotA + (squareTop + squareSize - yBGivenNotA) / 2) "start" "middle" "black" PBGivenNotA
-
-        -- Top edge
-        pAGivenNotBTopLabel =
-            textLabel (squareLeft + (xAGivenNotB - squareLeft) / 2) (squareTop - lblOffset) "middle" "baseline" "lightgray" PAGivenNotB
-
-        pNotAGivenNotBTopLabel =
-            textLabel (xAGivenNotB + (svgX 1 - xAGivenNotB) / 2) (squareTop - lblOffset) "middle" "baseline" "lightgray" PNotAGivenNotB
-
-        highlightRect x y w h =
-            Svg.rect
-                [ SA.x (toS x)
-                , SA.y (toS y)
-                , SA.width (toS w)
-                , SA.height (toS h)
-                , SA.fill "url(#diagonalStripes)"
-                ]
-                []
-
-        borderRect x y w h =
-            Svg.rect
-                [ SA.x (toS x)
-                , SA.y (toS y)
-                , SA.width (toS w)
-                , SA.height (toS h)
-                , SA.fill "none"
-                , SA.stroke "black"
-                , SA.strokeWidth "3"
-                ]
-                []
+        square =
+            Rect squareLeft squareTop size size
 
         highlights =
-            Svg.g [] <|
-                case hoveredProbability of
-                    Nothing ->
-                        []
+            case hoveredProbability of
+                Nothing ->
+                    []
 
-                    Just p ->
-                        case p of
-                            PA ->
-                                [ highlightRect squareLeft squareTop (xA - squareLeft) squareSize
-                                , borderRect squareLeft squareTop squareSize squareSize
-                                ]
+                Just probType ->
+                    let
+                        ( highlighted, outlined ) =
+                            case probType of
+                                PA ->
+                                    within square (leftOf xA)
 
-                            PNotA ->
-                                [ highlightRect xA squareTop (squareLeft + squareSize - xA) squareSize
-                                , borderRect squareLeft squareTop squareSize squareSize
-                                ]
+                                PNotA ->
+                                    within square (rightOf xA)
 
-                            PBGivenA ->
-                                [ highlightRect squareLeft yBGivenA (xA - squareLeft) (squareTop + squareSize - yBGivenA)
-                                , borderRect squareLeft squareTop (xA - squareLeft) squareSize
-                                ]
+                                PBGivenA ->
+                                    within (leftOf xA square) (below yBGivenA)
 
-                            PNotBGivenA ->
-                                [ highlightRect squareLeft squareTop (xA - squareLeft) (yBGivenA - squareTop)
-                                , borderRect squareLeft squareTop (xA - squareLeft) squareSize
-                                ]
+                                PNotBGivenA ->
+                                    within (leftOf xA square) (above yBGivenA)
 
-                            PBGivenNotA ->
-                                [ highlightRect xA yBGivenNotA (squareLeft + squareSize - xA) (squareTop + squareSize - yBGivenNotA)
-                                , borderRect xA squareTop (squareLeft + squareSize - xA) squareSize
-                                ]
+                                PBGivenNotA ->
+                                    within (rightOf xA square) (below yBGivenNotA)
 
-                            PNotBGivenNotA ->
-                                [ highlightRect xA squareTop (squareLeft + squareSize - xA) (yBGivenNotA - squareTop)
-                                , borderRect xA squareTop (squareLeft + squareSize - xA) squareSize
-                                ]
+                                PNotBGivenNotA ->
+                                    within (rightOf xA square) (above yBGivenNotA)
 
-                            PB ->
-                                [ highlightRect squareLeft yB squareSize (squareTop + squareSize - yB)
-                                , borderRect squareLeft squareTop squareSize squareSize
-                                ]
+                                PB ->
+                                    within square (below yB)
 
-                            PNotB ->
-                                [ highlightRect squareLeft squareTop squareSize (yB - squareTop)
-                                , borderRect squareLeft squareTop squareSize squareSize
-                                ]
+                                PNotB ->
+                                    within square (above yB)
 
-                            PAGivenB ->
-                                [ highlightRect squareLeft yB (xAGivenB - squareLeft) (squareTop + squareSize - yB)
-                                , borderRect squareLeft yB squareSize (squareTop + squareSize - yB)
-                                ]
+                                PAGivenB ->
+                                    within (below yB square) (leftOf xAGivenB)
 
-                            PNotAGivenB ->
-                                [ highlightRect xAGivenB yB (squareLeft + squareSize - xAGivenB) (squareTop + squareSize - yB)
-                                , borderRect squareLeft yB squareSize (squareTop + squareSize - yB)
-                                ]
+                                PNotAGivenB ->
+                                    within (below yB square) (rightOf xAGivenB)
 
-                            PAGivenNotB ->
-                                [ highlightRect squareLeft squareTop (xAGivenNotB - squareLeft) (yB - squareTop)
-                                , borderRect squareLeft squareTop squareSize (yB - squareTop)
-                                ]
+                                PAGivenNotB ->
+                                    within (above yB square) (leftOf xAGivenNotB)
 
-                            PNotAGivenNotB ->
-                                [ highlightRect xAGivenNotB squareTop (squareLeft + squareSize - xAGivenNotB) (yB - squareTop)
-                                , borderRect squareLeft squareTop squareSize (yB - squareTop)
-                                ]
+                                PNotAGivenNotB ->
+                                    within (above yB square) (rightOf xAGivenNotB)
+                    in
+                    [ stripedRect highlighted, outlinedRect "3" outlined ]
     in
+    Svg.g [] <|
+        List.concat
+            [ [ grayLine squareLeft yB right yB
+              , grayLine xAGivenB yB xAGivenB bottom
+              , grayLine xAGivenNotB squareTop xAGivenNotB yB
+              ]
+            , labels
+            , [ lineWithKnob xA squareTop xA bottom DragA
+              , lineWithKnob xA yBGivenA (squareLeft - 1 {- -1 prevents flipping slider marker when P(A)=0 -}) yBGivenA DragBGivenA
+              , lineWithKnob xA yBGivenNotA (right + 1 {- +1 prevents flipping slider marker when P(A)=1 -}) yBGivenNotA DragBGivenNotA
+              , Svg.g [] highlights
+              ]
+            ]
+
+
+lineWithKnob : Float -> Float -> Float -> Float -> DragSlider -> Svg Msg
+lineWithKnob x1 y1 x2 y2 slider =
     Svg.g []
-        [ horizontalB
-        , verticalAGivenB
-        , verticalAGivenNotB
-        , pABottomLabel
-        , pNotABottomLabel
-        , pAGivenBBottomLabel
-        , pNotAGivenBBottomLabel
-        , pBGivenALeftLabel
-        , pNotBGivenALeftLabel
-        , pBLeftLabel
-        , pNotBLeftLabel
-        , pNotBGivenNotARightLabel
-        , pBGivenNotARightLabel
-        , pAGivenNotBTopLabel
-        , pNotAGivenNotBTopLabel
-        , verticalA
-        , horizontalBGivenA
-        , horizontalBGivenNotA
-        , highlights
+        [ Svg.line
+            [ SA.x1 (toS x1)
+            , SA.y1 (toS y1)
+            , SA.x2 (toS x2)
+            , SA.y2 (toS y2)
+            , SA.stroke "black"
+            , SA.strokeWidth "1"
+            , SA.markerEnd "url(#triangle)"
+            ]
+            []
+        , Svg.circle
+            -- Invisible circle for easier dragging
+            [ SA.r "10"
+            , SA.cx (toS x2)
+            , SA.cy (toS y2)
+            , SA.fill "transparent"
+            , SA.cursor "pointer"
+            , SE.onMouseDown (DragStarted slider)
+            ]
+            []
         ]
+
+
+grayLine : Float -> Float -> Float -> Float -> Svg msg
+grayLine x1 y1 x2 y2 =
+    Svg.line
+        [ SA.x1 (toS x1)
+        , SA.y1 (toS y1)
+        , SA.x2 (toS x2)
+        , SA.y2 (toS y2)
+        , SA.stroke "lightgray"
+        , SA.strokeWidth "1"
+        ]
+        []
+
+
+type alias Rect =
+    { x : Float, y : Float, w : Float, h : Float }
+
+
+leftOf : Float -> Rect -> Rect
+leftOf x r =
+    { r | w = x - r.x }
+
+
+rightOf : Float -> Rect -> Rect
+rightOf x r =
+    { r | x = x, w = r.x + r.w - x }
+
+
+below : Float -> Rect -> Rect
+below y r =
+    { r | y = y, h = r.y + r.h - y }
+
+
+above : Float -> Rect -> Rect
+above y r =
+    { r | h = y - r.y }
+
+
+{-| Pair a region with a sub-region restricted within it:
+(highlighted sub-region, outlined enclosing region).
+-}
+within : Rect -> (Rect -> Rect) -> ( Rect, Rect )
+within region restrict =
+    ( restrict region, region )
+
+
+stripedRect : Rect -> Svg msg
+stripedRect r =
+    Svg.rect (SA.fill "url(#diagonalStripes)" :: rectAttrs r) []
+
+
+outlinedRect : String -> Rect -> Svg msg
+outlinedRect strokeWidth r =
+    Svg.rect (SA.fill "none" :: SA.stroke "black" :: SA.strokeWidth strokeWidth :: rectAttrs r) []
+
+
+rectAttrs : Rect -> List (Svg.Attribute msg)
+rectAttrs { x, y, w, h } =
+    [ SA.x (toS x), SA.y (toS y), SA.width (toS w), SA.height (toS h) ]
 
 
 sliderMarker : Svg msg
@@ -622,33 +532,38 @@ offsetY =
     Decode.field "offsetY" Decode.float
 
 
-{-| Maps [0,1] ⇒ [squareLeft, squareLeft + squareSize].
+mid : Float -> Float -> Float
+mid a b =
+    (a + b) / 2
+
+
+{-| Maps [0,1] ⇒ [squareLeft, squareLeft + size].
 -}
 toSvgX : Float -> Float -> Float
-toSvgX squareSize fraction =
-    squareLeft + fraction * squareSize
+toSvgX size fraction =
+    squareLeft + fraction * size
 
 
-{-| Maps [0,1] ⇒ [squareTop + squareSize, squareTop].
+{-| Maps [0,1] ⇒ [squareTop + size, squareTop].
 We invert (1 - fraction) so that fraction=0 => bottom, fraction=1 => top.
 -}
 toSvgY : Float -> Float -> Float
-toSvgY squareSize fraction =
-    squareTop + (1 - fraction) * squareSize
+toSvgY size fraction =
+    squareTop + (1 - fraction) * size
 
 
 {-| Inverse of toSvgX, clamped to [0,1].
 -}
 fromSvgX : Float -> Float -> Float
-fromSvgX squareSize rawX =
-    clamp 0 1 ((rawX - squareLeft) / squareSize)
+fromSvgX size rawX =
+    clamp 0 1 ((rawX - squareLeft) / size)
 
 
 {-| Inverse of toSvgY, clamped to [0,1]. fraction=0 => bottom, fraction=1 => top.
 -}
 fromSvgY : Float -> Float -> Float
-fromSvgY squareSize rawY =
-    clamp 0 1 (1 - ((rawY - squareTop) / squareSize))
+fromSvgY size rawY =
+    clamp 0 1 (1 - ((rawY - squareTop) / size))
 
 
 squareLeft : Float
