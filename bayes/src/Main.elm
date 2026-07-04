@@ -79,37 +79,34 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
+    ( case msg of
         DragStarted slider ->
-            pure { model | dragState = Just slider }
+            { model | dragState = Just slider }
 
         DragAt x y ->
             case model.dragState of
                 Just DragA ->
-                    pure { model | pA = fromSvgX (squareSize model) x }
+                    { model | pA = fromSvgX (squareSize model) x }
 
                 Just DragBGivenA ->
-                    pure { model | pBGivenA = fromSvgY (squareSize model) y }
+                    { model | pBGivenA = fromSvgY (squareSize model) y }
 
                 Just DragBGivenNotA ->
-                    pure { model | pBGivenNotA = fromSvgY (squareSize model) y }
+                    { model | pBGivenNotA = fromSvgY (squareSize model) y }
 
                 Nothing ->
-                    pure model
+                    model
 
         DragStopped ->
-            pure { model | dragState = Nothing }
+            { model | dragState = Nothing }
 
         WindowResized height ->
-            pure { model | viewportHeight = height }
+            { model | viewportHeight = height }
 
         ProbabilityHovered probType ->
-            pure { model | hoveredProbability = probType }
-
-
-pure : a -> ( a, Cmd msg )
-pure a =
-    ( a, Cmd.none )
+            { model | hoveredProbability = probType }
+    , Cmd.none
+    )
 
 
 subscriptions : Model -> Sub Msg
@@ -241,7 +238,7 @@ view model =
             , SE.onMouseUp DragStopped
             , SE.on "mousemove" (Decode.map2 DragAt offsetX offsetY)
             ]
-            [ Svg.defs [] [ sliderMarker, diagonalStripePattern ]
+            [ Svg.defs [] [ sliderMarker, diagonalStripePattern, labelGlowFilter "black", labelGlowFilter "lightgray" ]
             , drawPartitions size probs model.hoveredProbability
             , outlinedRect "1" (Rect squareLeft squareTop size size)
             ]
@@ -288,17 +285,24 @@ drawPartitions size probs hoveredProbability =
 
         textLabel x y anchor baseline color probType =
             Svg.text_
-                [ SA.x (toS x)
-                , SA.y (toS y)
-                , SA.fontSize "12"
-                , SA.fontFamily "monospace"
-                , SA.textAnchor anchor
-                , SA.fill color
-                , SA.alignmentBaseline baseline
-                , SA.style "user-select: none"
-                , SE.on "mouseenter" (Decode.succeed <| ProbabilityHovered (Just probType))
-                , SE.on "mouseleave" (Decode.succeed <| ProbabilityHovered Nothing)
-                ]
+                ([ SA.x (toS x)
+                 , SA.y (toS y)
+                 , SA.fontSize "12"
+                 , SA.fontFamily "monospace"
+                 , SA.textAnchor anchor
+                 , SA.fill color
+                 , SA.alignmentBaseline baseline
+                 , SA.style "user-select: none"
+                 , SE.on "mouseenter" (Decode.succeed <| ProbabilityHovered (Just probType))
+                 , SE.on "mouseleave" (Decode.succeed <| ProbabilityHovered Nothing)
+                 ]
+                    ++ (if hoveredProbability == Just probType then
+                            [ SA.filter ("url(#" ++ labelGlowId color ++ ")") ]
+
+                        else
+                            []
+                       )
+                )
                 [ Svg.text <| probText probs probType ]
 
         lblOffset =
@@ -497,6 +501,64 @@ sliderMarker =
             ]
             []
         ]
+
+
+{-| A soft grey halo rendered behind the hovered probability label:
+fatten the text shape, blur it, tint it, and draw the original text on top.
+The halo shade is chosen to contrast with the label's text color, so defs
+must contain a filter for every color textLabel is used with.
+-}
+labelGlowFilter : String -> Svg msg
+labelGlowFilter textColor =
+    let
+        glowColor =
+            if textColor == "black" then
+                -- light halo behind dark text
+                "#adaaa2"
+
+            else
+                -- dark halo behind light text
+                "#787878"
+    in
+    Svg.filter
+        [ SA.id (labelGlowId textColor)
+        , SA.x "-50%"
+        , SA.y "-150%"
+        , SA.width "200%"
+        , SA.height "400%"
+        ]
+        [ Svg.feMorphology
+            [ SA.in_ "SourceAlpha"
+            , SA.operator "dilate"
+            , SA.radius "2"
+            ]
+            []
+        , Svg.feGaussianBlur
+            [ SA.stdDeviation "2.5"
+            , SA.result "blurred"
+            ]
+            []
+        , Svg.feFlood
+            [ SA.floodColor glowColor
+            , SA.floodOpacity "0.8"
+            ]
+            []
+        , Svg.feComposite
+            [ SA.in2 "blurred"
+            , SA.operator "in"
+            , SA.result "glow"
+            ]
+            []
+        , Svg.feMerge []
+            [ Svg.feMergeNode [ SA.in_ "glow" ] []
+            , Svg.feMergeNode [ SA.in_ "SourceGraphic" ] []
+            ]
+        ]
+
+
+labelGlowId : String -> String
+labelGlowId textColor =
+    "labelGlow-" ++ textColor
 
 
 diagonalStripePattern : Svg msg
