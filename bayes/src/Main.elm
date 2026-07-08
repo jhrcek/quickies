@@ -239,6 +239,7 @@ view model =
             , SE.on "mousemove" (Decode.map2 DragAt offsetX offsetY)
             ]
             [ Svg.defs [] [ sliderMarker, diagonalStripePattern, labelGlowFilter "black", labelGlowFilter "lightgray" ]
+            , Svg.g [] (trajectoryCurves model)
             , drawPartitions size probs model.hoveredProbability
             , outlinedRect "1" (Rect squareLeft squareTop size size)
             ]
@@ -248,6 +249,65 @@ view model =
 squareSize : Model -> Float
 squareSize model =
     toFloat model.viewportHeight - 2 * squareTop
+
+
+{-| While a handle is dragged, show the trajectories of the two posterior
+corners (P(A|B), P(B)) and (P(A|¬B), P(B)) as the dragged parameter sweeps
+[0,1]. P(A|B) and P(A|¬B) are rational functions of each draggable parameter,
+so these corners move along curves; the likelihood corners move along straight
+lines and are not shown.
+-}
+trajectoryCurves : Model -> List (Svg msg)
+trajectoryCurves model =
+    case model.dragState of
+        Nothing ->
+            []
+
+        Just slider ->
+            let
+                size =
+                    squareSize model
+
+                inputsAt t =
+                    case slider of
+                        DragA ->
+                            { pA = t, pBGivenA = model.pBGivenA, pBGivenNotA = model.pBGivenNotA }
+
+                        DragBGivenA ->
+                            { pA = model.pA, pBGivenA = t, pBGivenNotA = model.pBGivenNotA }
+
+                        DragBGivenNotA ->
+                            { pA = model.pA, pBGivenA = model.pBGivenA, pBGivenNotA = t }
+
+                sampledProbs =
+                    List.map
+                        (\i -> computeDerivedProbabilities (inputsAt (toFloat i / 200)))
+                        (List.range 0 200)
+
+                curve toPoint =
+                    Svg.polyline
+                        [ SA.points <|
+                            String.join " " <|
+                                List.map
+                                    (\p ->
+                                        let
+                                            ( x, y ) =
+                                                toPoint p
+                                        in
+                                        toS (toSvgX size x) ++ "," ++ toS (toSvgY size y)
+                                    )
+                                    sampledProbs
+                        , SA.fill "none"
+                        , SA.stroke "#a8c8f0"
+                        , SA.strokeWidth "1.5"
+                        , SA.strokeDasharray "4 3"
+                        , SA.pointerEvents "none"
+                        ]
+                        []
+            in
+            [ curve (\p -> ( p.pAGivenB, p.pB ))
+            , curve (\p -> ( p.pAGivenNotB, p.pB ))
+            ]
 
 
 drawPartitions : Float -> DerivedProbabilities -> Maybe ProbabilityType -> Svg Msg
