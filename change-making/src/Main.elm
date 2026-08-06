@@ -875,7 +875,7 @@ viewSectionVectors model =
                            , th (thStyle "left") [ text "" ]
                            ]
                     )
-                    :: List.indexedMap (viewRepRow coins gVec mVec) shown
+                    :: List.indexedMap (viewRepRow gVec mVec) shown
                 )
             , if total > List.length shown then
                 p [ HA.style "color" "#666", HA.style "font-size" "13px" ]
@@ -888,8 +888,8 @@ viewSectionVectors model =
         ]
 
 
-viewRepRow : List Int -> List Int -> List Int -> Int -> List Int -> Html Msg
-viewRepRow coins gVec mVec rowIdx vector =
+viewRepRow : List Int -> List Int -> Int -> List Int -> Html Msg
+viewRepRow gVec mVec rowIdx vector =
     let
         isG =
             vector == gVec
@@ -1056,9 +1056,6 @@ viewSectionLemma model =
 viewSectionNumberLine : List Int -> List ScanEntry -> List Candidate -> Html Msg
 viewSectionNumberLine coins scan candidates =
     let
-        n =
-            List.length coins
-
         limit =
             List.length scan
 
@@ -1284,8 +1281,9 @@ viewNumberLineSvg coins scan candidates =
                 else
                     []
                )
-            ++ [ boundaryLine (limit + 1) ("c₁+c₂ = " ++ String.fromInt (limit + 1)) ]
-            ++ List.map candidateDot candidates
+            ++ (boundaryLine (limit + 1) ("c₁+c₂ = " ++ String.fromInt (limit + 1))
+                    :: List.map candidateDot candidates
+               )
         )
 
 
