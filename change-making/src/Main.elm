@@ -1225,11 +1225,27 @@ viewNumberLineSvg coins scan candidates =
                 1
 
         boundaryLine v lbl =
+            let
+                lineX =
+                    xPos v
+
+                -- Keep the label inside the viewBox: anchor it away from a
+                -- nearby edge instead of centering it on the dashed line.
+                ( anchor, textX ) =
+                    if lineX < 60 then
+                        ( "start", lineX - 2 )
+
+                    else if lineX > plotLeft + plotWidth - 60 then
+                        ( "end", lineX + 2 )
+
+                    else
+                        ( "middle", lineX )
+            in
             Svg.g []
                 [ Svg.line
-                    [ SA.x1 (String.fromFloat (xPos v))
+                    [ SA.x1 (String.fromFloat lineX)
                     , SA.y1 "18"
-                    , SA.x2 (String.fromFloat (xPos v))
+                    , SA.x2 (String.fromFloat lineX)
                     , SA.y2 "78"
                     , SA.stroke "#333"
                     , SA.strokeWidth "1"
@@ -1237,10 +1253,10 @@ viewNumberLineSvg coins scan candidates =
                     ]
                     []
                 , Svg.text_
-                    [ SA.x (String.fromFloat (xPos v))
+                    [ SA.x (String.fromFloat textX)
                     , SA.y "12"
                     , SA.fontSize "12"
-                    , SA.textAnchor "middle"
+                    , SA.textAnchor anchor
                     , SA.fill "#333"
                     ]
                     [ Svg.text lbl ]
