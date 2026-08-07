@@ -3,7 +3,7 @@ port module Main exposing (main)
 import Browser
 import File.Download as Download
 import Html exposing (Html)
-import Html.Attributes exposing (disabled, id, placeholder, src, style, title, value)
+import Html.Attributes exposing (disabled, id, placeholder, style, title, value)
 import Html.Events as Events
 
 
@@ -37,8 +37,7 @@ type alias AnkiCard =
 
 
 type alias Model =
-    { selectedWord : Maybe String
-    , text : String
+    { text : String
     , mode : Mode
     , ankiEnglishCzech : String
     , ankiPortuguese : String
@@ -65,10 +64,17 @@ type Msg
 port textSelected : (String -> msg) -> Sub msg
 
 
+port openDictionary : String -> Cmd msg
+
+
+searchUrl : String
+searchUrl =
+    "https://slovniky.lingea.cz/portugalsko-cesky/"
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { selectedWord = Nothing
-      , text = ""
+    ( { text = ""
       , mode = Editing
       , ankiEnglishCzech = ""
       , ankiPortuguese = ""
@@ -83,7 +89,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         WordClicked word ->
-            ( { model | selectedWord = Just (cleanWord word) }, Cmd.none )
+            ( model, openDictionary (searchUrl ++ cleanWord word) )
 
         TextChanged newText ->
             ( { model | text = newText }, Cmd.none )
@@ -223,47 +229,15 @@ view model =
                         , style "cursor" "pointer"
                         ]
                         [ Html.text "Edit text" ]
+                    , Html.div
+                        [ style "color" "#6b7280"
+                        , style "font-size" "13px"
+                        ]
+                        [ Html.text ("Click a word in text to search it on " ++ searchUrl ++ " (opens in a popup window)") ]
                     , viewPortugueseText model.text
                     , viewAnkiSection model
                     ]
             )
-        , case model.mode of
-            Reading ->
-                Html.div
-                    [ style "flex" "1"
-                    , style "border-left" "1px solid #e5e7eb"
-                    ]
-                    [ let
-                        searchUrl =
-                            "https://slovniky.lingea.cz/portugalsko-cesky/"
-                      in
-                      case model.selectedWord of
-                        Nothing ->
-                            Html.div
-                                [ style "display" "flex"
-                                , style "align-items" "center"
-                                , style "justify-content" "center"
-                                , style "width" "100%"
-                                , style "height" "100%"
-                                , style "padding" "16px"
-                                , style "text-align" "center"
-                                , style "color" "#6b7280"
-                                , style "font-size" "16px"
-                                ]
-                                [ Html.text ("Click a word in text to search it on " ++ searchUrl) ]
-
-                        Just word ->
-                            Html.iframe
-                                [ src (searchUrl ++ word)
-                                , style "width" "100%"
-                                , style "height" "100%"
-                                , style "border" "none"
-                                ]
-                                []
-                    ]
-
-            Editing ->
-                Html.text ""
         ]
 
 

@@ -11,6 +11,10 @@
   <script src="elm.min.js"></script>
   <script>
     var app = Elm.Main.init({ node: document.getElementById("elm") });
+    app.ports.openDictionary.subscribe(function (url) {
+      var win = window.open(url, "dictionary", "width=800,height=1000");
+      if (win) { win.focus(); }
+    });
     document.addEventListener("mouseup", function (e) {
       var readingText = document.getElementById("reading-text");
       if (readingText && readingText.contains(e.target)) {
