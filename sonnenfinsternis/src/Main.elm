@@ -383,7 +383,7 @@ view model =
         , H.p [ HA.style "font-size" "12px", HA.style "color" "#94a3b8", HA.style "margin-top" "20px" ]
             [ H.text "Begriffe nach dem Wissenskarten-Artikel der "
             , H.a
-                [ HA.href "https://www.medienwerkstatt-online.de/lws_wissen/vorlagen/showcard.php"
+                [ HA.href "https://www.medienwerkstatt-online.de/lws_wissen/vorlagen/showcard.php?id=4451"
                 , HA.style "color" "#64748b"
                 ]
                 [ H.text "Medienwerkstatt" ]
