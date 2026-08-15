@@ -10,12 +10,17 @@ eclipse type. A third slider moves an observer along the eclipse path,
 which is the key to understanding the hybrid eclipse: the middle of the
 path is up to one Earth radius closer to the Moon than its start/end.
 
+All user visible text lives in `I18n`; the flags in the top right switch
+between German and Czech.
+
 -}
 
 import Browser
+import EclipseType exposing (EclipseType(..))
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events as HE
+import I18n exposing (Language(..), Strings)
 import Svg as S exposing (Svg)
 import Svg.Attributes as SA
 
@@ -37,12 +42,13 @@ type alias Model =
     { moonDistance : Float -- schematic Earth-Moon distance in scene units
     , moonOffset : Float -- north-south offset of the Moon from the Sun-Earth line
     , observerAngle : Float -- observer position along the eclipse path, in degrees from the sub-solar point
+    , language : Language
     }
 
 
 init : Model
 init =
-    { moonDistance = 154, moonOffset = 0, observerAngle = 0 }
+    { moonDistance = 154, moonOffset = 0, observerAngle = 0, language = German }
 
 
 
@@ -54,6 +60,7 @@ type Msg
     | OffsetChanged String
     | ObserverChanged String
     | PresetClicked Float Float Float
+    | LanguageClicked Language
 
 
 update : Msg -> Model -> Model
@@ -70,6 +77,9 @@ update msg model =
 
         PresetClicked distance offset observer ->
             { model | moonDistance = distance, moonOffset = offset, observerAngle = observer }
+
+        LanguageClicked language ->
+            { model | language = language }
 
 
 parseWithDefault : Float -> String -> Float
@@ -148,30 +158,6 @@ vScale k a =
 vLen : Point -> Float
 vLen a =
     sqrt (a.x * a.x + a.y * a.y)
-
-
-type EclipseType
-    = Total
-    | Annular
-    | Hybrid
-    | Partial
-    | NoEclipse
-
-
-isCentral : EclipseType -> Bool
-isCentral t =
-    case t of
-        Total ->
-            True
-
-        Annular ->
-            True
-
-        Hybrid ->
-            True
-
-        _ ->
-            False
 
 
 type alias Geo =
@@ -302,7 +288,7 @@ type Seen
 
 observerSees : Geo -> Model -> Seen
 observerSees g model =
-    if isCentral g.eclipse then
+    if EclipseType.isCentral g.eclipse then
         let
             ratio =
                 centralSizeRatio g model.observerAngle
@@ -353,6 +339,9 @@ view model =
 
         seen =
             observerSees g model
+
+        s =
+            I18n.strings model.language
     in
     H.div
         [ HA.style "max-width" "1000px"
@@ -361,15 +350,23 @@ view model =
         , HA.style "font-family" "system-ui, sans-serif"
         , HA.style "color" "#1f2937"
         ]
-        [ H.h1 [ HA.style "font-size" "26px", HA.style "margin-bottom" "4px" ]
-            [ H.text "Arten der Sonnenfinsternis" ]
+        [ H.div
+            [ HA.style "display" "flex"
+            , HA.style "justify-content" "space-between"
+            , HA.style "align-items" "flex-start"
+            , HA.style "gap" "16px"
+            ]
+            [ H.h1 [ HA.style "font-size" "26px", HA.style "margin" "0 0 4px" ]
+                [ H.text s.title ]
+            , viewLanguagePicker model.language
+            ]
         , H.p [ HA.style "font-size" "15px", HA.style "line-height" "1.55", HA.style "color" "#475569" ]
-            [ H.text "Welcher Finsternistyp entsteht, hängt davon ab, wohin Kernschatten und Halbschatten des Mondes fallen. Verändere den Abstand des Mondes und den Versatz seiner Bahn – oder wähle eine Voreinstellung. Die Darstellung ist schematisch und nicht maßstabsgetreu." ]
-        , viewPresets g.eclipse
-        , viewControls model
-        , viewBanner g.eclipse
-        , viewScene model g
-        , viewLegend g.eclipse
+            [ H.text s.intro ]
+        , viewPresets s g.eclipse
+        , viewControls s model
+        , viewBanner s g.eclipse
+        , viewScene s model g
+        , viewLegend s g.eclipse
         , H.div
             [ HA.style "display" "flex"
             , HA.style "flex-wrap" "wrap"
@@ -377,19 +374,74 @@ view model =
             , HA.style "align-items" "stretch"
             , HA.style "margin-top" "16px"
             ]
-            [ viewObserverPanel seen
-            , viewExplanation g.eclipse
+            [ viewObserverPanel s seen
+            , viewExplanation s g.eclipse
             ]
         , H.p [ HA.style "font-size" "12px", HA.style "color" "#94a3b8", HA.style "margin-top" "20px" ]
-            [ H.text "Begriffe nach dem Wissenskarten-Artikel der "
+            [ H.text s.sourcePrefix
             , H.a
                 [ HA.href "https://www.medienwerkstatt-online.de/lws_wissen/vorlagen/showcard.php?id=4451"
                 , HA.style "color" "#64748b"
                 ]
-                [ H.text "Medienwerkstatt" ]
-            , H.text "."
+                [ H.text s.sourceLink ]
+            , H.text s.sourceSuffix
             ]
         ]
+
+
+
+-- LANGUAGE PICKER
+
+
+viewLanguagePicker : Language -> Html Msg
+viewLanguagePicker current =
+    H.div
+        [ HA.style "display" "flex"
+        , HA.style "gap" "6px"
+        , HA.style "flex-shrink" "0"
+        , HA.style "padding-top" "4px"
+        ]
+        (List.map (flagButton current) I18n.languages)
+
+
+flagButton : Language -> Language -> Html Msg
+flagButton current language =
+    let
+        active =
+            current == language
+    in
+    H.button
+        [ HE.onClick (LanguageClicked language)
+        , HA.title (I18n.languageName language)
+        , HA.attribute "aria-label" (I18n.languageName language)
+        , HA.attribute "aria-pressed"
+            (if active then
+                "true"
+
+             else
+                "false"
+            )
+        , HA.style "padding" "2px"
+        , HA.style "line-height" "0"
+        , HA.style "cursor" "pointer"
+        , HA.style "border-radius" "5px"
+        , HA.style "background" "#ffffff"
+        , HA.style "border"
+            (if active then
+                "2px solid #334155"
+
+             else
+                "2px solid #e2e8f0"
+            )
+        , HA.style "opacity"
+            (if active then
+                "1"
+
+             else
+                "0.55"
+            )
+        ]
+        [ I18n.flag language ]
 
 
 
@@ -397,8 +449,7 @@ view model =
 
 
 type alias Preset =
-    { label : String
-    , eclipseType : EclipseType
+    { eclipseType : EclipseType
     , distance : Float
     , offset : Float
     , observer : Float
@@ -407,15 +458,15 @@ type alias Preset =
 
 presets : List Preset
 presets =
-    [ Preset "Partiell" Partial 200 55 70
-    , Preset "Total" Total 120 0 0
-    , Preset "Ringförmig" Annular 300 0 0
-    , Preset "Hybrid" Hybrid 154 0 0
+    [ Preset Partial 200 55 70
+    , Preset Total 120 0 0
+    , Preset Annular 300 0 0
+    , Preset Hybrid 154 0 0
     ]
 
 
-viewPresets : EclipseType -> Html Msg
-viewPresets current =
+viewPresets : Strings -> EclipseType -> Html Msg
+viewPresets s current =
     H.div
         [ HA.style "display" "flex"
         , HA.style "gap" "8px"
@@ -424,20 +475,20 @@ viewPresets current =
         , HA.style "margin" "10px 0"
         ]
         (H.span [ HA.style "font-size" "14px", HA.style "font-weight" "600", HA.style "color" "#334155" ]
-            [ H.text "Voreinstellungen:" ]
-            :: List.map (presetButton current) presets
+            [ H.text s.presetsLabel ]
+            :: List.map (presetButton s current) presets
         )
 
 
-presetButton : EclipseType -> Preset -> Html Msg
-presetButton current preset =
+presetButton : Strings -> EclipseType -> Preset -> Html Msg
+presetButton s current preset =
     let
         active =
             current == preset.eclipseType
 
         ( bg, fg, border ) =
             if active then
-                ( typeColor preset.eclipseType, "#ffffff", typeColor preset.eclipseType )
+                ( EclipseType.color preset.eclipseType, "#ffffff", EclipseType.color preset.eclipseType )
 
             else
                 ( "#ffffff", "#334155", "#cbd5e1" )
@@ -453,24 +504,24 @@ presetButton current preset =
         , HA.style "font-weight" "600"
         , HA.style "cursor" "pointer"
         ]
-        [ H.text preset.label ]
+        [ H.text (s.typeShortName preset.eclipseType) ]
 
 
 
 -- CONTROLS
 
 
-viewControls : Model -> Html Msg
-viewControls model =
+viewControls : Strings -> Model -> Html Msg
+viewControls s model =
     H.div
         [ HA.style "display" "flex"
         , HA.style "flex-wrap" "wrap"
         , HA.style "gap" "18px"
         , HA.style "margin" "8px 0 14px"
         ]
-        [ sliderBlock "Abstand Erde–Mond" "nah" "fern" 100 330 model.moonDistance DistanceChanged
-        , sliderBlock "Bahnversatz des Mondes" "nördlich" "südlich" -80 80 model.moonOffset OffsetChanged
-        , sliderBlock "Beobachter auf dem Finsternispfad" "Anfang" "Ende" -85 85 model.observerAngle ObserverChanged
+        [ sliderBlock s.distanceLabel s.distanceNear s.distanceFar 100 330 model.moonDistance DistanceChanged
+        , sliderBlock s.offsetLabel s.offsetNorth s.offsetSouth -80 80 model.moonOffset OffsetChanged
+        , sliderBlock s.observerLabel s.observerStart s.observerEnd -85 85 model.observerAngle ObserverChanged
         ]
 
 
@@ -500,7 +551,7 @@ sliderBlock label leftHint rightHint minV maxV val toMsg =
             , HA.style "font-size" "12px"
             , HA.style "color" "#64748b"
             ]
-            [ H.text leftHint, H.text rightHint ]
+            [ H.text leftHint, H.text " - ", H.text rightHint ]
         ]
 
 
@@ -508,18 +559,18 @@ sliderBlock label leftHint rightHint minV maxV val toMsg =
 -- CURRENT TYPE BANNER
 
 
-viewBanner : EclipseType -> Html Msg
-viewBanner t =
+viewBanner : Strings -> EclipseType -> Html Msg
+viewBanner s t =
     H.div [ HA.style "margin" "6px 0 10px", HA.style "font-size" "17px" ]
-        [ H.text "Aktueller Typ: "
+        [ H.text s.currentType
         , H.span
-            [ HA.style "background" (typeColor t)
+            [ HA.style "background" (EclipseType.color t)
             , HA.style "color" "#ffffff"
             , HA.style "padding" "3px 14px"
             , HA.style "border-radius" "999px"
             , HA.style "font-weight" "700"
             ]
-            [ H.text (typeName t) ]
+            [ H.text (s.typeName t) ]
         ]
 
 
@@ -527,8 +578,8 @@ viewBanner t =
 -- MAIN SCENE
 
 
-viewScene : Model -> Geo -> Html Msg
-viewScene model g =
+viewScene : Strings -> Model -> Geo -> Html Msg
+viewScene s model g =
     S.svg
         [ SA.viewBox ("0 0 " ++ fs sceneWidth ++ " " ++ fs sceneHeight)
         , HA.style "width" "100%"
@@ -575,15 +626,15 @@ viewScene model g =
                     ]
                     []
                ]
-            ++ (if isCentral g.eclipse then
+            ++ (if EclipseType.isCentral g.eclipse then
                     viewPathArcs g
 
                 else
                     []
                )
-            ++ apexMarker g
-            ++ observerMarker model
-            ++ sceneLabels g
+            ++ apexMarker s g
+            ++ observerMarker s model
+            ++ sceneLabels s g
         )
 
 
@@ -710,8 +761,8 @@ viewPathArcs g =
         (List.range 0 33)
 
 
-apexMarker : Geo -> List (Svg msg)
-apexMarker g =
+apexMarker : Strings -> Geo -> List (Svg msg)
+apexMarker s g =
     [ S.circle
         [ SA.cx (fs g.apex.x)
         , SA.cy (fs g.apex.y)
@@ -729,12 +780,12 @@ apexMarker g =
         , SA.fill "#e11d48"
         , SA.fontWeight "600"
         ]
-        [ S.text "Spitze des Kernschattens" ]
+        [ S.text s.umbraApex ]
     ]
 
 
-observerMarker : Model -> List (Svg msg)
-observerMarker model =
+observerMarker : Strings -> Model -> List (Svg msg)
+observerMarker s model =
     let
         o =
             observerPoint model.observerAngle
@@ -756,15 +807,15 @@ observerMarker model =
         , SA.fill "#111827"
         , SA.fontWeight "600"
         ]
-        [ S.text "Beobachter" ]
+        [ S.text s.observer ]
     ]
 
 
-sceneLabels : Geo -> List (Svg msg)
-sceneLabels g =
-    [ sceneLabel sunX (centerY + sunR + 26) "Sonne"
-    , sceneLabel g.moon.x (g.moon.y - moonR - 10) "Mond"
-    , sceneLabel earthX (centerY + earthR + 26) "Erde"
+sceneLabels : Strings -> Geo -> List (Svg msg)
+sceneLabels s g =
+    [ sceneLabel sunX (centerY + sunR + 26) s.sun
+    , sceneLabel g.moon.x (g.moon.y - moonR - 10) s.moon
+    , sceneLabel earthX (centerY + earthR + 26) s.earth
     ]
 
 
@@ -785,8 +836,8 @@ sceneLabel x y label =
 -- LEGEND
 
 
-viewLegend : EclipseType -> Html Msg
-viewLegend eclipse =
+viewLegend : Strings -> EclipseType -> Html Msg
+viewLegend s eclipse =
     H.div
         [ HA.style "display" "flex"
         , HA.style "flex-wrap" "wrap"
@@ -795,13 +846,13 @@ viewLegend eclipse =
         , HA.style "color" "#475569"
         , HA.style "margin-top" "8px"
         ]
-        ([ legendSwatch "#1e293b" "0.85" "Kernschatten (Umbra)"
-         , legendSwatch "#9db4c8" "0.45" "Halbschatten (Penumbra)"
-         , legendSwatch "#8b5cf6" "0.28" "Verlängerter Kernschatten (Antumbra)"
+        ([ legendSwatch "#1e293b" "0.85" s.legendUmbra
+         , legendSwatch "#9db4c8" "0.45" s.legendPenumbra
+         , legendSwatch "#8b5cf6" "0.28" s.legendAntumbra
          ]
-            ++ (if isCentral eclipse then
-                    [ legendSwatch "#e11d48" "1" "Pfad: hier total sichtbar"
-                    , legendSwatch "#f59e0b" "1" "Pfad: hier ringförmig sichtbar"
+            ++ (if EclipseType.isCentral eclipse then
+                    [ legendSwatch "#e11d48" "1" s.legendPathTotal
+                    , legendSwatch "#f59e0b" "1" s.legendPathAnnular
                     ]
 
                 else
@@ -830,11 +881,11 @@ legendSwatch color opacity label =
 -- OBSERVER PANEL
 
 
-viewObserverPanel : Seen -> Html Msg
-viewObserverPanel seen =
+viewObserverPanel : Strings -> Seen -> Html Msg
+viewObserverPanel s seen =
     let
         ( title, detail ) =
-            seenDescription seen
+            seenDescription s seen
     in
     H.div
         [ HA.style "width" "320px"
@@ -845,7 +896,7 @@ viewObserverPanel seen =
         , HA.style "padding" "16px"
         ]
         ([ H.h3 [ HA.style "margin" "0 0 10px", HA.style "font-size" "17px" ]
-            [ H.text "Blick des Beobachters" ]
+            [ H.text s.observerPanelTitle ]
          , S.svg
             [ SA.viewBox "0 0 300 280"
             , HA.style "width" "100%"
@@ -864,7 +915,7 @@ viewObserverPanel seen =
                 :: panelContent seen
             )
          , H.p [ HA.style "margin" "10px 0 0", HA.style "font-size" "15px" ]
-            [ H.text "Der Beobachter sieht: "
+            [ H.text s.observerSees
             , H.strong [] [ H.text title ]
             ]
          , H.p [ HA.style "margin" "4px 0 0", HA.style "font-size" "13px", HA.style "color" "#64748b" ]
@@ -873,7 +924,7 @@ viewObserverPanel seen =
             ++ (case ratioOf seen of
                     Just ratio ->
                         [ H.p [ HA.style "margin" "6px 0 0", HA.style "font-size" "13px", HA.style "color" "#64748b" ]
-                            [ H.text ("Scheinbarer Monddurchmesser: " ++ String.fromInt (round (ratio * 100)) ++ " % des Sonnendurchmessers") ]
+                            [ H.text (s.apparentDiameter (round (ratio * 100))) ]
                         ]
 
                     Nothing ->
@@ -977,104 +1028,28 @@ ratioOf seen =
             Nothing
 
 
-seenDescription : Seen -> ( String, String )
-seenDescription seen =
+seenDescription : Strings -> Seen -> ( String, String )
+seenDescription s seen =
     case seen of
         SeenTotal _ ->
-            ( "eine totale Verfinsterung"
-            , "Die Sonne ist vollständig verdeckt – die Korona leuchtet auf."
-            )
+            s.seenTotal
 
         SeenAnnular _ ->
-            ( "eine ringförmige Verfinsterung"
-            , "Ein heller Sonnenring umgibt die dunkle Mondscheibe."
-            )
+            s.seenAnnular
 
         SeenPartial _ _ ->
-            ( "eine partielle Verfinsterung"
-            , "Der Mond verdeckt die Sonne nur teilweise."
-            )
+            s.seenPartial
 
         SeenNothing ->
-            ( "keine Verfinsterung"
-            , "Der Mondschatten trifft diesen Ort nicht."
-            )
+            s.seenNothing
 
 
 
 -- EXPLANATION
 
 
-typeName : EclipseType -> String
-typeName t =
-    case t of
-        Total ->
-            "Totale Sonnenfinsternis"
-
-        Annular ->
-            "Ringförmige Sonnenfinsternis"
-
-        Hybrid ->
-            "Hybride Sonnenfinsternis"
-
-        Partial ->
-            "Partielle Sonnenfinsternis"
-
-        NoEclipse ->
-            "Keine Sonnenfinsternis"
-
-
-typeColor : EclipseType -> String
-typeColor t =
-    case t of
-        Total ->
-            "#b91c1c"
-
-        Annular ->
-            "#d97706"
-
-        Hybrid ->
-            "#7c3aed"
-
-        Partial ->
-            "#0369a1"
-
-        NoEclipse ->
-            "#64748b"
-
-
-typeExplanation : EclipseType -> List String
-typeExplanation t =
-    case t of
-        Total ->
-            [ "Der Mond ist der Erde relativ nah: Sein Kernschatten (Umbra) erreicht die Erdoberfläche. Von dort aus erscheint der Mond größer als die Sonne und verdeckt sie vollständig – nur die Sonnenkorona bleibt als leuchtender Kranz sichtbar."
-            , "Wer außerhalb des schmalen Kernschattenpfads im Halbschatten steht, sieht nur eine partielle Finsternis."
-            ]
-
-        Annular ->
-            [ "Der Mond ist relativ weit von der Erde entfernt: Sein Kernschatten endet schon vor der Erdoberfläche. Die Erde liegt im verlängerten Kernschatten (Antumbra)."
-            , "Der Mond erscheint dadurch kleiner als die Sonne und kann sie nicht ganz verdecken – ein heller Sonnenring bleibt sichtbar."
-            ]
-
-        Hybrid ->
-            [ "Der seltene Grenzfall: Die Spitze des Kernschattens reicht gerade eben bis zur Erde. Weil die Erdoberfläche gekrümmt ist, ist die Mitte des Finsternispfads dem Mond um bis zu einen Erdradius näher als Anfang und Ende des Pfads."
-            , "In der Pfadmitte ragt die Erdoberfläche in den Kernschatten hinein – dort ist die Finsternis total. Am Anfang und Ende des Pfads liegt die Oberfläche knapp hinter der Schattenspitze in der Antumbra – dort erscheint sie ringförmig. Ein und dieselbe Finsternis beginnt also ringförmig, wird total und endet wieder ringförmig!"
-            , "Der farbige Rand der Erde zeigt, wo auf dem Pfad die Finsternis total (rot) bzw. ringförmig (orange) erscheint. Verschiebe den Regler „Beobachter auf dem Finsternispfad“, um beide Phasen zu sehen."
-            ]
-
-        Partial ->
-            [ "Kernschatten und Antumbra verfehlen die Erde – nur der Halbschatten (Penumbra) streift sie."
-            , "Der Mond schiebt sich von der Erde aus gesehen nur teilweise vor die Sonne. Nirgendwo auf der Erde ist diese Finsternis total oder ringförmig."
-            ]
-
-        NoEclipse ->
-            [ "Der Schatten des Mondes verfehlt die Erde vollständig – nirgends ist eine Finsternis zu sehen."
-            , "Das ist der Normalfall bei Neumond, weil die Mondbahn um etwa 5° gegen die Erdbahn geneigt ist."
-            ]
-
-
-viewExplanation : EclipseType -> Html Msg
-viewExplanation t =
+viewExplanation : Strings -> EclipseType -> Html Msg
+viewExplanation s t =
     H.div
         [ HA.style "flex" "1"
         , HA.style "min-width" "300px"
@@ -1086,9 +1061,9 @@ viewExplanation t =
         (H.h3
             [ HA.style "margin" "0 0 10px"
             , HA.style "font-size" "17px"
-            , HA.style "color" (typeColor t)
+            , HA.style "color" (EclipseType.color t)
             ]
-            [ H.text (typeName t) ]
+            [ H.text (s.typeName t) ]
             :: List.map
                 (\paragraph ->
                     H.p
@@ -1098,7 +1073,7 @@ viewExplanation t =
                         ]
                         [ H.text paragraph ]
                 )
-                (typeExplanation t)
+                (s.typeExplanation t)
         )
 
 
