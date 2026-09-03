@@ -9,6 +9,16 @@ else is a no-op. All chess rules -- castling, en passant, pins, check evasion,
 promotion -- come from `romstad/elm-chess`, so none of them are reimplemented
 here.
 
+A game does not have to start from the initial position: "Set up position"
+opens an editor where pieces are dragged onto an empty board from a palette
+below it, or where a position is pasted as a FEN string. `Setup` holds the
+position being built and does the FEN reading and writing.
+
+The game itself is kept as a starting position plus the moves played from it,
+rather than as the library's `Game`. A `Game` always begins at
+`Position.initial` and the type offers no way to start anywhere else, which is
+exactly what the editor needs to do.
+
 Pieces are drawn as SVG (see `Pieces`) rather than with the Unicode chess
 glyphs. Glyph rendering depended on whichever symbol font the browser happened
 to pick, in two ways that both went wrong: U+265F (pawn) is the only one of the
@@ -24,20 +34,21 @@ side effect an Elm decoder cannot perform (it would need a port).
 
 -}
 
+import Array exposing (Array)
 import Browser
 import Browser.Events
-import Game exposing (Game)
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events as HE
 import Json.Decode as D
 import Move exposing (Move)
 import Notation
-import Piece
+import Piece exposing (Piece)
 import PieceColor exposing (PieceColor)
-import PieceType
+import PieceType exposing (PieceType)
 import Pieces
 import Position exposing (Position)
+import Setup exposing (Setup)
 import Square exposing (Square)
 import SquareFile
 import SquareRank
@@ -60,13 +71,23 @@ main =
 
 
 type alias Model =
-    { game : Game
+    { -- The position the game starts from, which is `Position.initial` until
+      -- the editor says otherwise.
+      start : Position
+    , moves : Array Move
 
-    -- Current half-move index; 0 is the starting position. `Game` is opaque and
-    -- exposes no accessor for it, so we keep it in sync ourselves.
+    -- The position after each move; `positions` is always one longer than
+    -- `moves`, and `positions[0]` is `start`.
+    , positions : Array Position
+
+    -- Current half-move index into `positions`.
     , ply : Int
     , drag : Maybe Drag
     , promoting : Maybe (List Move)
+
+    -- `Just` while the position editor is open, in which case it replaces the
+    -- board and the move list.
+    , editor : Maybe Editor
     }
 
 
@@ -81,11 +102,56 @@ type alias Drag =
     }
 
 
+type alias Editor =
+    { setup : Setup
+
+    -- Every earlier state of `setup`, most recent first; one is pushed per
+    -- change, so "Undo" walks back through them.
+    , undo : List Setup
+
+    -- What is in the FEN field. It is rewritten from `setup` after every
+    -- change made on the board, and drives `setup` when it is edited by hand.
+    , fenInput : String
+    , fenError : Maybe String
+    , drag : Maybe EditorDrag
+    }
+
+
+type alias EditorDrag =
+    { piece : Piece
+
+    -- The square the piece came from, or `Nothing` when it came from the
+    -- palette and is therefore a new piece.
+    , from : Maybe Square
+    , at : ( Float, Float )
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { game = Game.empty, ply = 0, drag = Nothing, promoting = Nothing }
-    , Cmd.none
-    )
+    ( newGame Position.initial, Cmd.none )
+
+
+newGame : Position -> Model
+newGame position =
+    { start = position
+    , moves = Array.empty
+    , positions = Array.fromList [ position ]
+    , ply = 0
+    , drag = Nothing
+    , promoting = Nothing
+    , editor = Nothing
+    }
+
+
+currentPosition : Model -> Position
+currentPosition model =
+    Maybe.withDefault model.start (Array.get model.ply model.positions)
+
+
+lastPly : Model -> Int
+lastPly model =
+    Array.length model.moves
 
 
 
@@ -100,6 +166,14 @@ type Msg
     | ChoosePromotion Move
     | CancelPromotion
     | GoTo Int
+    | OpenEditor
+    | CloseEditor
+    | EditorPick Piece (Maybe Square) ( Float, Float )
+    | EditorClear
+    | EditorUndo
+    | EditorSideToMove PieceColor
+    | EditorFen String
+    | EditorConfirm
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -113,7 +187,7 @@ updateModel msg model =
         DragStart square at ->
             let
                 position =
-                    Game.position model.game
+                    currentPosition model
             in
             if Position.colorOn square position == Just (Position.sideToMove position) then
                 { model
@@ -130,33 +204,43 @@ updateModel msg model =
                 model
 
         DragMove at ->
-            { model | drag = Maybe.map (\drag -> { drag | at = at }) model.drag }
+            case model.editor of
+                Just editor ->
+                    withEditor { editor | drag = Maybe.map (\drag -> { drag | at = at }) editor.drag } model
+
+                Nothing ->
+                    { model | drag = Maybe.map (\drag -> { drag | at = at }) model.drag }
 
         DragEnd ->
-            { model | drag = Nothing }
+            case model.editor of
+                -- Released away from any square. A piece dragged off the board
+                -- is taken off it; one dragged out of the palette and dropped
+                -- there is simply not placed.
+                Just editor ->
+                    case Maybe.andThen .from editor.drag of
+                        Just square ->
+                            withEditor (clearDrag (editorChange (Setup.remove square) editor)) model
+
+                        Nothing ->
+                            withEditor (clearDrag editor) model
+
+                Nothing ->
+                    { model | drag = Nothing }
 
         DropOn square ->
-            case model.drag of
+            case model.editor of
+                Just editor ->
+                    case editor.drag of
+                        Nothing ->
+                            model
+
+                        Just drag ->
+                            withEditor
+                                (clearDrag (editorChange (movePiece drag square) editor))
+                                model
+
                 Nothing ->
-                    model
-
-                Just drag ->
-                    -- Anything not in this list is an illegal move, and is
-                    -- silently ignored.
-                    case List.filter (\move -> Move.to move == square) drag.moves of
-                        [] ->
-                            { model | drag = Nothing }
-
-                        [ move ] ->
-                            applyMove move model
-
-                        -- Several legal moves share a target square only when a
-                        -- pawn promotes; ask which piece to promote to.
-                        candidates ->
-                            { model
-                                | drag = Nothing
-                                , promoting = Just (List.sortBy promotionOrder candidates)
-                            }
+                    dropOnBoard square model
 
         ChoosePromotion move ->
             applyMove move model
@@ -165,39 +249,120 @@ updateModel msg model =
             { model | promoting = Nothing }
 
         GoTo ply ->
-            goTo ply model
+            { model
+                | ply = clamp 0 (lastPly model) ply
+                , drag = Nothing
+                , promoting = Nothing
+            }
+
+        OpenEditor ->
+            { model
+                | editor = Just (newEditor Setup.empty)
+                , drag = Nothing
+                , promoting = Nothing
+            }
+
+        CloseEditor ->
+            { model | editor = Nothing }
+
+        EditorPick piece from at ->
+            updateEditor
+                (\editor -> { editor | drag = Just { piece = piece, from = from, at = at } })
+                model
+
+        EditorClear ->
+            updateEditor (editorChange Setup.clear) model
+
+        EditorUndo ->
+            updateEditor
+                (\editor ->
+                    case editor.undo of
+                        [] ->
+                            editor
+
+                        previous :: rest ->
+                            showFen { editor | setup = previous, undo = rest }
+                )
+                model
+
+        EditorSideToMove color ->
+            updateEditor (editorChange (Setup.setSideToMove color)) model
+
+        EditorFen text ->
+            updateEditor
+                (\editor ->
+                    case Setup.fromFen text of
+                        Ok setup ->
+                            { editor
+                                | setup = setup
+                                , undo =
+                                    if setup == editor.setup then
+                                        editor.undo
+
+                                    else
+                                        editor.setup :: editor.undo
+                                , fenInput = text
+                                , fenError = Nothing
+                            }
+
+                        Err message ->
+                            { editor | fenInput = text, fenError = Just message }
+                )
+                model
+
+        EditorConfirm ->
+            case model.editor of
+                Just editor ->
+                    case ( Setup.errors editor.setup, Setup.toPosition editor.setup ) of
+                        ( [], Just position ) ->
+                            newGame position
+
+                        _ ->
+                            model
+
+                Nothing ->
+                    model
 
 
-{-| Play a move at the current ply. Any continuation past it is discarded, which
-is what `Game.addMove` does anyway.
+dropOnBoard : Square -> Model -> Model
+dropOnBoard square model =
+    case model.drag of
+        Nothing ->
+            model
+
+        Just drag ->
+            -- Anything not in this list is an illegal move, and is silently
+            -- ignored.
+            case List.filter (\move -> Move.to move == square) drag.moves of
+                [] ->
+                    { model | drag = Nothing }
+
+                [ move ] ->
+                    applyMove move model
+
+                -- Several legal moves share a target square only when a pawn
+                -- promotes; ask which piece to promote to.
+                candidates ->
+                    { model
+                        | drag = Nothing
+                        , promoting = Just (List.sortBy promotionOrder candidates)
+                    }
+
+
+{-| Play a move at the current ply. Any continuation past it is discarded.
 -}
 applyMove : Move -> Model -> Model
 applyMove move model =
     { model
-        | game = Game.addMove move model.game
+        | moves = Array.push move (Array.slice 0 model.ply model.moves)
+        , positions =
+            Array.push
+                (Position.doMove move (currentPosition model))
+                (Array.slice 0 (model.ply + 1) model.positions)
         , ply = model.ply + 1
         , drag = Nothing
         , promoting = Nothing
     }
-
-
-goTo : Int -> Model -> Model
-goTo ply model =
-    let
-        clamped =
-            clamp 0 (lastPly model) ply
-    in
-    { model
-        | game = Game.goToMove clamped model.game
-        , ply = clamped
-        , drag = Nothing
-        , promoting = Nothing
-    }
-
-
-lastPly : Model -> Int
-lastPly model =
-    List.length (Game.moves model.game)
 
 
 promotionOrder : Move -> Int
@@ -220,23 +385,99 @@ promotionOrder move =
 
 
 
+-- UPDATE: EDITOR
+
+
+newEditor : Setup -> Editor
+newEditor setup =
+    { setup = setup
+    , undo = []
+    , fenInput = Setup.toFen setup
+    , fenError = Nothing
+    , drag = Nothing
+    }
+
+
+updateEditor : (Editor -> Editor) -> Model -> Model
+updateEditor change model =
+    case model.editor of
+        Just editor ->
+            withEditor (change editor) model
+
+        Nothing ->
+            model
+
+
+withEditor : Editor -> Model -> Model
+withEditor editor model =
+    { model | editor = Just editor }
+
+
+clearDrag : Editor -> Editor
+clearDrag editor =
+    { editor | drag = Nothing }
+
+
+{-| Apply a change to the position being built, remembering the state before it
+so that it can be undone. A change that leaves the position as it was -- a piece
+dropped back on the square it came from, say -- is not worth an undo step.
+-}
+editorChange : (Setup -> Setup) -> Editor -> Editor
+editorChange change editor =
+    let
+        setup =
+            change editor.setup
+    in
+    if setup == editor.setup then
+        editor
+
+    else
+        showFen { editor | setup = setup, undo = editor.setup :: editor.undo }
+
+
+showFen : Editor -> Editor
+showFen editor =
+    { editor | fenInput = Setup.toFen editor.setup, fenError = Nothing }
+
+
+movePiece : EditorDrag -> Square -> Setup -> Setup
+movePiece drag target setup =
+    (case drag.from of
+        Just from ->
+            Setup.remove from setup
+
+        Nothing ->
+            setup
+    )
+        |> Setup.put target drag.piece
+
+
+
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.drag of
-        Nothing ->
-            Sub.none
+    let
+        dragging =
+            case model.editor of
+                Just editor ->
+                    editor.drag /= Nothing
 
-        Just _ ->
-            -- These listen on `document`, so a square's own mouseup handler
-            -- (DropOn) always fires first during bubbling; DragEnd therefore
-            -- only ever cancels a drag released off the board.
-            Sub.batch
-                [ Browser.Events.onMouseMove (D.map DragMove mousePosition)
-                , Browser.Events.onMouseUp (D.succeed DragEnd)
-                ]
+                Nothing ->
+                    model.drag /= Nothing
+    in
+    if dragging then
+        -- These listen on `document`, so a square's own mouseup handler
+        -- (DropOn) always fires first during bubbling; DragEnd therefore only
+        -- ever sees a drag released off the board.
+        Sub.batch
+            [ Browser.Events.onMouseMove (D.map DragMove mousePosition)
+            , Browser.Events.onMouseUp (D.succeed DragEnd)
+            ]
+
+    else
+        Sub.none
 
 
 mousePosition : D.Decoder ( Float, Float )
@@ -270,10 +511,6 @@ px n =
 
 view : Model -> Html Msg
 view model =
-    let
-        position =
-            Game.position model.game
-    in
     H.div
         [ HA.style "font-family" "system-ui, sans-serif"
         , HA.style "padding" "20px"
@@ -282,27 +519,54 @@ view model =
         , HA.style "align-items" "flex-start"
         , HA.style "user-select" "none"
         ]
-        [ H.div []
-            [ H.div
-                [ HA.style "margin-bottom" "8px"
-                , HA.style "color" "#334155"
-                ]
-                [ H.text (statusText position) ]
-            , viewBoard model position
-            ]
-        , viewHistory model
-        , viewHeldPiece model position
+        (case model.editor of
+            Just editor ->
+                viewEditor editor
+
+            Nothing ->
+                viewGame model
+        )
+
+
+viewGame : Model -> List (Html Msg)
+viewGame model =
+    let
+        position =
+            currentPosition model
+    in
+    [ H.div []
+        [ heading (statusText position)
+        , boardFrame (List.map (viewSquare model position) Square.all ++ viewPromotion model position)
         ]
+    , viewHistory model
+    , viewFloatingPiece
+        (Maybe.andThen
+            (\drag ->
+                Maybe.map (\piece -> ( piece, drag.at ))
+                    (Position.pieceOn drag.from position)
+            )
+            model.drag
+        )
+    ]
+
+
+heading : String -> Html Msg
+heading text =
+    H.div
+        [ HA.style "margin-bottom" "8px"
+        , HA.style "color" "#334155"
+        ]
+        [ H.text text ]
 
 
 statusText : Position -> String
 statusText position =
     let
         mover =
-            colorName (Position.sideToMove position)
+            Setup.colorName (Position.sideToMove position)
     in
     if Position.isCheckmate position then
-        "Checkmate -- " ++ colorName (PieceColor.opposite (Position.sideToMove position)) ++ " wins"
+        "Checkmate -- " ++ Setup.colorName (PieceColor.opposite (Position.sideToMove position)) ++ " wins"
 
     else if List.isEmpty (Position.moves position) then
         "Stalemate -- draw"
@@ -314,44 +578,69 @@ statusText position =
         mover ++ " to move"
 
 
-colorName : PieceColor -> String
-colorName color =
-    if color == PieceColor.white then
-        "White"
-
-    else
-        "Black"
-
-
 
 -- VIEW: BOARD
 
 
-viewBoard : Model -> Position -> Html Msg
-viewBoard model position =
+boardFrame : List (Html Msg) -> Html Msg
+boardFrame children =
     H.div
         [ HA.style "position" "relative"
         , HA.style "width" (px boardSize)
         , HA.style "height" (px boardSize)
         , HA.style "border" "2px solid #334155"
         ]
-        (List.map (viewSquare model position) Square.all
-            ++ viewPromotion model position
-        )
+        children
 
 
-viewSquare : Model -> Position -> Square -> Html Msg
-viewSquare model position square =
+{-| One square of the board, placed at its coordinates and carrying the
+coordinate labels along the two edges that get them.
+-}
+squareCell : Square -> String -> List (H.Attribute Msg) -> List (Html Msg) -> Html Msg
+squareCell square background attributes children =
     let
         fileIndex =
             SquareFile.toIndex (Square.file square)
 
         rankIndex =
             SquareRank.toIndex (Square.rank square)
+    in
+    H.div
+        (HA.style "position" "absolute"
+            :: HA.style "left" (px (fileIndex * squareSize))
+            :: HA.style "top" (px ((7 - rankIndex) * squareSize))
+            :: HA.style "width" (px squareSize)
+            :: HA.style "height" (px squareSize)
+            :: HA.style "background-color" background
+            :: HA.style "display" "flex"
+            :: HA.style "align-items" "center"
+            :: HA.style "justify-content" "center"
+            :: attributes
+        )
+        (viewCoordinates fileIndex rankIndex (isDark square) ++ children)
 
-        isDark =
-            modBy 2 (fileIndex + rankIndex) == 0
 
+isDark : Square -> Bool
+isDark square =
+    modBy 2
+        (SquareFile.toIndex (Square.file square)
+            + SquareRank.toIndex (Square.rank square)
+        )
+        == 0
+
+
+plainBackground : Square -> String
+plainBackground square =
+    if isDark square then
+        "#b58863"
+
+    else
+        "#f0d9b5"
+
+
+viewSquare : Model -> Position -> Square -> Html Msg
+viewSquare model position square =
+    let
         isTarget =
             case model.drag of
                 Just drag ->
@@ -365,7 +654,7 @@ viewSquare model position square =
 
         background =
             if isTarget then
-                if isDark then
+                if isDark square then
                     "#8fb84a"
 
                 else
@@ -374,40 +663,26 @@ viewSquare model position square =
             else if isOrigin then
                 "#d6c34a"
 
-            else if isDark then
-                "#b58863"
-
             else
-                "#f0d9b5"
+                plainBackground square
     in
-    H.div
-        [ HA.style "position" "absolute"
-        , HA.style "left" (px (fileIndex * squareSize))
-        , HA.style "top" (px ((7 - rankIndex) * squareSize))
-        , HA.style "width" (px squareSize)
-        , HA.style "height" (px squareSize)
-        , HA.style "background-color" background
-        , HA.style "display" "flex"
-        , HA.style "align-items" "center"
-        , HA.style "justify-content" "center"
-        , HE.on "mouseup" (D.succeed (DropOn square))
-        ]
-        (viewCoordinates fileIndex rankIndex isDark
-            ++ viewSquareContents model position square
-        )
+    squareCell square
+        background
+        [ HE.on "mouseup" (D.succeed (DropOn square)) ]
+        (viewSquareContents model position square)
 
 
 {-| File letters along the bottom rank, rank digits along the a-file.
 -}
 viewCoordinates : Int -> Int -> Bool -> List (Html Msg)
-viewCoordinates fileIndex rankIndex isDark =
+viewCoordinates fileIndex rankIndex dark =
     let
         label corner text =
             H.span
                 (HA.style "position" "absolute"
                     :: HA.style "font-size" "10px"
                     :: HA.style "color"
-                        (if isDark then
+                        (if dark then
                             "#f0d9b5"
 
                          else
@@ -458,60 +733,48 @@ viewSquareContents model position square =
                 []
 
             Just piece ->
-                let
-                    canDrag =
-                        Piece.color piece == Position.sideToMove position
-                in
-                [ H.div
-                    (HA.style "cursor"
-                        (if canDrag then
-                            "grab"
+                if Piece.color piece == Position.sideToMove position then
+                    [ viewGrabbablePiece (DragStart square) piece ]
 
-                         else
-                            "default"
-                        )
-                        :: (if canDrag then
-                                [ HE.preventDefaultOn "mousedown"
-                                    (D.map (\at -> ( DragStart square at, True )) mousePosition)
-                                ]
-
-                            else
-                                []
-                           )
-                    )
+                else
                     [ Pieces.view pieceSize piece ]
-                ]
 
 
-viewHeldPiece : Model -> Position -> Html Msg
-viewHeldPiece model position =
-    case model.drag of
+{-| A piece that starts a drag when pressed. `toMsg` receives the cursor
+position the drag starts at.
+-}
+viewGrabbablePiece : (( Float, Float ) -> Msg) -> Piece -> Html Msg
+viewGrabbablePiece toMsg piece =
+    H.div
+        [ HA.style "cursor" "grab"
+        , HE.preventDefaultOn "mousedown"
+            (D.map (\at -> ( toMsg at, True )) mousePosition)
+        ]
+        [ Pieces.view pieceSize piece ]
+
+
+{-| The piece being dragged, drawn under the cursor.
+-}
+viewFloatingPiece : Maybe ( Piece, ( Float, Float ) ) -> Html Msg
+viewFloatingPiece held =
+    case held of
         Nothing ->
             H.text ""
 
-        Just drag ->
-            case Position.pieceOn drag.from position of
-                Nothing ->
-                    H.text ""
-
-                Just piece ->
-                    let
-                        ( x, y ) =
-                            drag.at
-                    in
-                    H.div
-                        [ HA.style "position" "fixed"
-                        , HA.style "left" (px (round x - squareSize // 2))
-                        , HA.style "top" (px (round y - squareSize // 2))
-                        , HA.style "width" (px squareSize)
-                        , HA.style "height" (px squareSize)
-                        , HA.style "display" "flex"
-                        , HA.style "align-items" "center"
-                        , HA.style "justify-content" "center"
-                        , HA.style "pointer-events" "none"
-                        , HA.style "z-index" "10"
-                        ]
-                        [ Pieces.view pieceSize piece ]
+        Just ( piece, ( x, y ) ) ->
+            H.div
+                [ HA.style "position" "fixed"
+                , HA.style "left" (px (round x - squareSize // 2))
+                , HA.style "top" (px (round y - squareSize // 2))
+                , HA.style "width" (px squareSize)
+                , HA.style "height" (px squareSize)
+                , HA.style "display" "flex"
+                , HA.style "align-items" "center"
+                , HA.style "justify-content" "center"
+                , HA.style "pointer-events" "none"
+                , HA.style "z-index" "10"
+                ]
+                [ Pieces.view pieceSize piece ]
 
 
 
@@ -592,22 +855,201 @@ viewPromotionChoice color move =
 
 
 
+-- VIEW: POSITION EDITOR
+
+
+viewEditor : Editor -> List (Html Msg)
+viewEditor editor =
+    [ H.div []
+        [ heading "Set up a position"
+        , boardFrame (List.map (viewEditorSquare editor) Square.all)
+        , viewPalette PieceColor.white
+        , viewPalette PieceColor.black
+        ]
+    , viewEditorPanel editor
+    , viewFloatingPiece (Maybe.map (\drag -> ( drag.piece, drag.at )) editor.drag)
+    ]
+
+
+viewEditorSquare : Editor -> Square -> Html Msg
+viewEditorSquare editor square =
+    squareCell square
+        (plainBackground square)
+        [ HE.on "mouseup" (D.succeed (DropOn square)) ]
+        (if Maybe.andThen .from editor.drag == Just square then
+            []
+
+         else
+            case Setup.pieceOn square editor.setup of
+                Nothing ->
+                    []
+
+                Just piece ->
+                    [ viewGrabbablePiece (EditorPick piece (Just square)) piece ]
+        )
+
+
+{-| One row of the palette: a square per piece type, in the given colour. The
+pieces here are an inexhaustible supply, so dragging one out leaves it in place.
+-}
+viewPalette : PieceColor -> Html Msg
+viewPalette color =
+    H.div
+        [ HA.style "display" "flex"
+        , HA.style "justify-content" "center"
+        , HA.style "width" (px (boardSize + 4))
+        , HA.style "margin-top" "8px"
+        ]
+        (List.map (viewPaletteSquare color) paletteOrder)
+
+
+paletteOrder : List PieceType
+paletteOrder =
+    [ PieceType.king
+    , PieceType.queen
+    , PieceType.rook
+    , PieceType.bishop
+    , PieceType.knight
+    , PieceType.pawn
+    ]
+
+
+viewPaletteSquare : PieceColor -> PieceType -> Html Msg
+viewPaletteSquare color kind =
+    let
+        piece =
+            Piece.make color kind
+    in
+    H.div
+        [ HA.style "width" (px squareSize)
+        , HA.style "height" (px squareSize)
+        , HA.style "background-color" "#f8fafc"
+        , HA.style "border" "1px solid #cbd5e1"
+        , HA.style "display" "flex"
+        , HA.style "align-items" "center"
+        , HA.style "justify-content" "center"
+        ]
+        [ viewGrabbablePiece (EditorPick piece Nothing) piece ]
+
+
+viewEditorPanel : Editor -> Html Msg
+viewEditorPanel editor =
+    let
+        problems =
+            Setup.errors editor.setup
+    in
+    H.div
+        [ HA.style "width" "320px"
+        , HA.style "display" "flex"
+        , HA.style "flex-direction" "column"
+        , HA.style "gap" "12px"
+        , HA.style "font-size" "14px"
+        ]
+        [ H.div [ HA.style "color" "#64748b" ]
+            [ H.text "Drag pieces from the palette onto the board. Drag a piece off the board to take it off again." ]
+        , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
+            [ viewSideToMove editor PieceColor.white
+            , viewSideToMove editor PieceColor.black
+            ]
+        , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
+            [ editorButton "Clear board" EditorClear (not (Setup.isEmpty editor.setup))
+            , editorButton "Undo" EditorUndo (not (List.isEmpty editor.undo))
+            ]
+        , H.div []
+            [ H.label
+                [ HA.style "display" "block"
+                , HA.style "margin-bottom" "4px"
+                , HA.style "color" "#334155"
+                ]
+                [ H.text "FEN" ]
+            , H.input
+                [ HA.value editor.fenInput
+                , HE.onInput EditorFen
+                , HA.spellcheck False
+
+                -- The page as a whole is unselectable so that dragging pieces
+                -- around does not select the text near them, which would leave
+                -- the pasted-into field unselectable too.
+                , HA.style "user-select" "text"
+                , HA.style "width" "100%"
+                , HA.style "box-sizing" "border-box"
+                , HA.style "font-family" "monospace"
+                , HA.style "font-size" "12px"
+                , HA.style "padding" "5px"
+                , HA.style "border" ("1px solid " ++ pick (editor.fenError == Nothing) "#cbd5e1" "#dc2626")
+                ]
+                []
+            ]
+        , viewProblems (List.filterMap identity [ editor.fenError ] ++ problems)
+        , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
+            [ editorButton "Use this position" EditorConfirm (List.isEmpty problems)
+            , editorButton "Cancel" CloseEditor True
+            ]
+        ]
+
+
+pick : Bool -> a -> a -> a
+pick condition ifTrue ifFalse =
+    if condition then
+        ifTrue
+
+    else
+        ifFalse
+
+
+viewSideToMove : Editor -> PieceColor -> Html Msg
+viewSideToMove editor color =
+    let
+        selected =
+            editor.setup.sideToMove == color
+    in
+    H.button
+        [ HE.onClick (EditorSideToMove color)
+        , HA.style "flex" "1"
+        , HA.style "padding" "5px 0"
+        , HA.style "cursor" "pointer"
+        , HA.style "border" ("1px solid " ++ pick selected "#2563eb" "#cbd5e1")
+        , HA.style "background-color" (pick selected "#bfdbfe" "#f8fafc")
+        ]
+        [ H.text (Setup.colorName color ++ " to move") ]
+
+
+editorButton : String -> Msg -> Bool -> Html Msg
+editorButton label msg enabled =
+    H.button
+        [ HE.onClick msg
+        , HA.disabled (not enabled)
+        , HA.style "flex" "1"
+        , HA.style "padding" "5px 0"
+        , HA.style "cursor" (pick enabled "pointer" "default")
+        ]
+        [ H.text label ]
+
+
+viewProblems : List String -> Html Msg
+viewProblems problems =
+    if List.isEmpty problems then
+        H.text ""
+
+    else
+        H.div
+            [ HA.style "color" "#b91c1c"
+            , HA.style "display" "flex"
+            , HA.style "flex-direction" "column"
+            , HA.style "gap" "4px"
+            ]
+            (List.map (\problem -> H.div [] [ H.text problem ]) problems)
+
+
+
 -- VIEW: MOVE HISTORY
 
 
-{-| The SAN of each move, which needs the position the move was played in, so
-the game is replayed from the start.
+{-| The SAN of each move, which needs the position the move was played in.
 -}
-sanMoves : Game -> List String
-sanMoves game =
-    Game.moves game
-        |> List.foldl
-            (\move ( position, acc ) ->
-                ( Position.doMove move position, Notation.toSan move position :: acc )
-            )
-            ( Position.initial, [] )
-        |> Tuple.second
-        |> List.reverse
+sanMoves : Model -> List String
+sanMoves model =
+    List.map2 Notation.toSan (Array.toList model.moves) (Array.toList model.positions)
 
 
 viewHistory : Model -> Html Msg
@@ -625,7 +1067,7 @@ viewHistory model =
             , pagerButton ToEnd "End" (GoTo end) (model.ply < end)
             ]
         , H.div
-            [ HA.style "height" (px (boardSize - 30))
+            [ HA.style "height" (px (boardSize - 64))
             , HA.style "overflow-y" "auto"
             , HA.style "border" "1px solid #cbd5e1"
             , HA.style "padding" "6px"
@@ -636,9 +1078,34 @@ viewHistory model =
                 [ H.div [ HA.style "color" "#94a3b8" ] [ H.text "No moves yet" ] ]
 
              else
-                List.indexedMap (viewHistoryRow model.ply) (pairUp (List.indexedMap Tuple.pair (sanMoves model.game)))
+                List.indexedMap (viewHistoryRow model.ply) (pairUp (numberedMoves model))
             )
+        , H.button
+            [ HE.onClick OpenEditor
+            , HA.style "width" "100%"
+            , HA.style "margin-top" "8px"
+            , HA.style "padding" "5px 0"
+            , HA.style "cursor" "pointer"
+            ]
+            [ H.text "Set up position" ]
         ]
+
+
+{-| The moves paired with the ply they lead to, with a hole in front of the
+first one when the game starts with Black to move, so that each row still holds
+one move number's worth of play.
+-}
+numberedMoves : Model -> List (Maybe ( Int, String ))
+numberedMoves model =
+    let
+        entries =
+            List.indexedMap (\index san -> Just ( index + 1, san )) (sanMoves model)
+    in
+    if Position.sideToMove model.start == PieceColor.black then
+        Nothing :: entries
+
+    else
+        entries
 
 
 {-| The pager icons are drawn rather than written with the media-control
@@ -664,13 +1131,7 @@ pagerButton icon title msg enabled =
         , HA.style "padding" "5px 0"
         , HA.style "display" "flex"
         , HA.style "justify-content" "center"
-        , HA.style "cursor"
-            (if enabled then
-                "pointer"
-
-             else
-                "default"
-            )
+        , HA.style "cursor" (pick enabled "pointer" "default")
         ]
         [ viewPagerIcon enabled icon ]
 
@@ -679,11 +1140,7 @@ viewPagerIcon : Bool -> PagerIcon -> Html msg
 viewPagerIcon enabled icon =
     let
         color =
-            if enabled then
-                "#1a1a1a"
-
-            else
-                "#b0b6bf"
+            pick enabled "#1a1a1a" "#b0b6bf"
 
         bar x =
             S.rect
@@ -714,9 +1171,9 @@ viewPagerIcon enabled icon =
         )
 
 
-{-| Group half-moves into (white, maybe black) pairs, one per move number.
+{-| Group half-moves into (white, black) pairs, one per move number.
 -}
-pairUp : List a -> List ( a, Maybe a )
+pairUp : List (Maybe a) -> List ( Maybe a, Maybe a )
 pairUp list =
     case list of
         [] ->
@@ -728,32 +1185,32 @@ pairUp list =
                     [ ( first, Nothing ) ]
 
                 second :: remaining ->
-                    ( first, Just second ) :: pairUp remaining
+                    ( first, second ) :: pairUp remaining
 
 
-viewHistoryRow : Int -> Int -> ( ( Int, String ), Maybe ( Int, String ) ) -> Html Msg
+viewHistoryRow : Int -> Int -> ( Maybe ( Int, String ), Maybe ( Int, String ) ) -> Html Msg
 viewHistoryRow currentPly index ( white, black ) =
     H.div [ HA.style "display" "flex", HA.style "gap" "4px" ]
         (H.span
             [ HA.style "width" "28px", HA.style "color" "#94a3b8" ]
             [ H.text (String.fromInt (index + 1) ++ ".") ]
-            :: viewSan currentPly white
-            :: (case black of
-                    Just b ->
-                        [ viewSan currentPly b ]
+            :: List.filterMap identity
+                [ Maybe.map (viewSan currentPly) white
 
-                    Nothing ->
-                        []
-               )
+                -- The hole before Black's first move, which needs to be seen to
+                -- keep the move numbers lined up with the moves.
+                , if white == Nothing then
+                    Just (H.span [ HA.style "color" "#94a3b8" ] [ H.text "..." ])
+
+                  else
+                    Nothing
+                , Maybe.map (viewSan currentPly) black
+                ]
         )
 
 
 viewSan : Int -> ( Int, String ) -> Html Msg
-viewSan currentPly ( moveIndex, san ) =
-    let
-        ply =
-            moveIndex + 1
-    in
+viewSan currentPly ( ply, san ) =
     H.span
         [ HE.onClick (GoTo ply)
         , HA.style "cursor" "pointer"
