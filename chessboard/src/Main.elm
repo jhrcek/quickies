@@ -169,6 +169,7 @@ type Msg
     | OpenEditor
     | CloseEditor
     | EditorPick Piece (Maybe Square) ( Float, Float )
+    | EditorReset
     | EditorClear
     | EditorUndo
     | EditorSideToMove PieceColor
@@ -269,6 +270,9 @@ updateModel msg model =
             updateEditor
                 (\editor -> { editor | drag = Just { piece = piece, from = from, at = at } })
                 model
+
+        EditorReset ->
+            updateEditor (editorChange (always Setup.initial)) model
 
         EditorClear ->
             updateEditor (editorChange Setup.clear) model
@@ -951,6 +955,7 @@ viewEditorPanel editor =
             [ viewSideToMove editor PieceColor.white
             , viewSideToMove editor PieceColor.black
             ]
+        , editorButton "Starting position" EditorReset (editor.setup /= Setup.initial)
         , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
             [ editorButton "Clear board" EditorClear (not (Setup.isEmpty editor.setup))
             , editorButton "Undo" EditorUndo (not (List.isEmpty editor.undo))

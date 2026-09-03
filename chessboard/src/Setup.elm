@@ -1,5 +1,5 @@
 module Setup exposing
-    ( Setup, empty
+    ( Setup, empty, initial
     , pieceOn, isEmpty, put, remove, clear, setSideToMove
     , toFen, fromFen, toPosition, errors
     , colorName
@@ -20,7 +20,7 @@ reader for pasted input: it returns `Just` for every string it is given,
 silently reading whatever it can and defaulting the rest, so "hello world" comes
 back as an empty board with White to move.
 
-@docs Setup, empty
+@docs Setup, empty, initial
 @docs pieceOn, isEmpty, put, remove, clear, setSideToMove
 @docs toFen, fromFen, toPosition, errors
 @docs colorName
@@ -65,6 +65,17 @@ empty =
     , castling = noCastling
     , epSquare = Nothing
     }
+
+
+{-| The standard starting position, so that a position which differs from it in
+only a few pieces does not have to be dragged together square by square.
+-}
+initial : Setup
+initial =
+    -- Read back from the position rather than written out again, so that the
+    -- two cannot drift apart. The board `Position.initial` prints is always a
+    -- FEN this module can read, so the fallback never happens.
+    Result.withDefault empty (fromFen (Position.toFen Position.initial))
 
 
 noCastling : Castling
