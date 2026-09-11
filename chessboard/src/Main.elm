@@ -32,11 +32,21 @@ drag-and-drop API, because HTML5 DnD requires calling
 `event.dataTransfer.setData` inside `dragstart` to work in Firefox, which is a
 side effect an Elm decoder cannot perform (it would need a port).
 
+Either side can be handed to a small engine (see `Engine`). The engine is a
+pure function from a position and a depth to a move, and it is run with
+iterative deepening: depth 1, then 2, and so on, each depth in its own
+`update` step with a `Process.sleep 0` in between so that the browser gets to
+paint the "thinking" status. The wall clock decides when to stop. There is no
+way to interrupt a pure computation, so instead the next depth is started only
+when it looks likely to finish inside the budget, taking it to cost several
+times what the previous one did.
+
 -}
 
 import Array exposing (Array)
 import Browser
 import Browser.Events
+import Engine
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events as HE
@@ -48,12 +58,15 @@ import PieceColor exposing (PieceColor)
 import PieceType exposing (PieceType)
 import Pieces
 import Position exposing (Position)
+import Process
 import Setup exposing (Setup)
 import Square exposing (Square)
 import SquareFile
 import SquareRank
 import Svg as S
 import Svg.Attributes as SA
+import Task
+import Time
 
 
 main : Program () Model Msg
@@ -88,6 +101,49 @@ type alias Model =
     -- `Just` while the position editor is open, in which case it replaces the
     -- board and the move list.
     , editor : Maybe Editor
+
+    -- The side the engine plays, or `Nothing` when both sides are the user's.
+    , engine : Maybe PieceColor
+
+    -- `Just` while the engine is searching for its move.
+    , thinking : Maybe Thinking
+
+    -- How many searches have been started, so that each can be told apart from
+    -- the ones before it (see `Thinking.id`).
+    , searches : Int
+
+    -- What the engine's last completed search found, for display.
+    , report : Maybe Report
+    }
+
+
+{-| A search in progress. The results of the depths searched so far are kept
+here, and the next depth picks up from them.
+-}
+type alias Thinking =
+    { -- Each search gets its own id, and messages carrying a stale id are
+      -- ignored. Without this, a search abandoned because the user did
+      -- something (took a move back, say) could still deliver its result
+      -- into a search started afterwards.
+      id : Int
+    , position : Position
+
+    -- Milliseconds, both zero until the first iteration starts.
+    , startedAt : Int
+    , tickedAt : Int
+
+    -- The deepest depth completed, and what it found.
+    , depth : Int
+    , best : Maybe Move
+    , score : Int
+    }
+
+
+type alias Report =
+    { depth : Int
+
+    -- Centipawns from White's point of view.
+    , score : Int
     }
 
 
@@ -129,18 +185,37 @@ type alias EditorDrag =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( newGame Position.initial, Cmd.none )
+    ( { start = Position.initial
+      , moves = Array.empty
+      , positions = Array.fromList [ Position.initial ]
+      , ply = 0
+      , drag = Nothing
+      , promoting = Nothing
+      , editor = Nothing
+      , engine = Nothing
+      , thinking = Nothing
+      , searches = 0
+      , report = Nothing
+      }
+    , Cmd.none
+    )
 
 
-newGame : Position -> Model
-newGame position =
-    { start = position
-    , moves = Array.empty
-    , positions = Array.fromList [ position ]
-    , ply = 0
-    , drag = Nothing
-    , promoting = Nothing
-    , editor = Nothing
+{-| Start over from the given position. The engine keeps playing the side it
+was playing.
+-}
+newGame : Position -> Model -> Model
+newGame position model =
+    { model
+        | start = position
+        , moves = Array.empty
+        , positions = Array.fromList [ position ]
+        , ply = 0
+        , drag = Nothing
+        , promoting = Nothing
+        , editor = Nothing
+        , thinking = Nothing
+        , report = Nothing
     }
 
 
@@ -175,11 +250,21 @@ type Msg
     | EditorSideToMove PieceColor
     | EditorFen String
     | EditorConfirm
+    | EngineSide (Maybe PieceColor)
+    | Iterate Int Time.Posix
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    ( updateModel msg model, Cmd.none )
+    case msg of
+        Iterate id now ->
+            iterate id (Time.posixToMillis now) model
+
+        _ ->
+            -- Every other message may change whose turn it is, or what the
+            -- position is, so the engine's situation is reconsidered after
+            -- each of them.
+            considerEngine (updateModel msg model)
 
 
 updateModel : Msg -> Model -> Model
@@ -319,13 +404,20 @@ updateModel msg model =
                 Just editor ->
                     case ( Setup.errors editor.setup, Setup.toPosition editor.setup ) of
                         ( [], Just position ) ->
-                            newGame position
+                            newGame position model
 
                         _ ->
                             model
 
                 Nothing ->
                     model
+
+        EngineSide side ->
+            { model | engine = side }
+
+        -- Handled in `update`.
+        Iterate _ _ ->
+            model
 
 
 dropOnBoard : Square -> Model -> Model
@@ -386,6 +478,182 @@ promotionOrder move =
 
         _ ->
             4
+
+
+
+-- UPDATE: ENGINE
+
+
+{-| Whether the engine should be looking for a move: it is its turn in a game
+that is not over, and the user is looking at the end of the game rather than
+browsing its history.
+-}
+engineTurn : Model -> Bool
+engineTurn model =
+    let
+        position =
+            currentPosition model
+    in
+    model.editor
+        == Nothing
+        && model.ply
+        == lastPly model
+        && model.engine
+        == Just (Position.sideToMove position)
+        && not (List.isEmpty (Position.moves position))
+
+
+{-| Start a search if it is the engine's turn and none is running; abandon any
+running one if it is not. A search is only ever running at the last ply of the
+game, so any change to the game invalidates it, and this is where that
+happens.
+-}
+considerEngine : Model -> ( Model, Cmd Msg )
+considerEngine model =
+    if engineTurn model then
+        case model.thinking of
+            Just _ ->
+                ( model, Cmd.none )
+
+            Nothing ->
+                let
+                    id =
+                        model.searches + 1
+                in
+                ( { model
+                    | searches = id
+                    , thinking =
+                        Just
+                            { id = id
+                            , position = currentPosition model
+                            , startedAt = 0
+                            , tickedAt = 0
+                            , depth = 0
+                            , best = Nothing
+                            , score = 0
+                            }
+                  }
+                , scheduleIteration id
+                )
+
+    else
+        ( { model | thinking = Nothing }, Cmd.none )
+
+
+{-| The sleep lets the browser paint before the next depth, which blocks the
+page while it runs, begins.
+-}
+scheduleIteration : Int -> Cmd Msg
+scheduleIteration id =
+    Process.sleep 0
+        |> Task.andThen (\_ -> Time.now)
+        |> Task.perform (Iterate id)
+
+
+{-| Milliseconds the engine may spend on a move. Depths are searched one after
+another, and a further one is started only if it is expected to end within
+this budget, so a move usually takes less than this and only occasionally
+more.
+-}
+timeBudget : Int
+timeBudget =
+    4000
+
+
+{-| Plenty for any position that reaches it quickly, and a stop for endgames
+where the tree is so small that time alone would not stop the search for a
+long while.
+-}
+maxDepth : Int
+maxDepth =
+    8
+
+
+{-| One step of iterative deepening: either search the next depth, or play the
+best move found so far. `now` is the time this step started; the time it took
+the previous step to get here is what the previous depth cost.
+-}
+iterate : Int -> Int -> Model -> ( Model, Cmd Msg )
+iterate id now model =
+    case model.thinking of
+        Just thinking ->
+            if thinking.id /= id then
+                ( model, Cmd.none )
+
+            else if thinking.depth == 0 then
+                deepen { thinking | startedAt = now, tickedAt = now } model
+
+            else
+                let
+                    elapsed =
+                        now - thinking.startedAt
+
+                    -- Each depth costs roughly this many times the previous
+                    -- one, in a middlegame with good move ordering.
+                    expected =
+                        5 * (now - thinking.tickedAt)
+                in
+                if
+                    Engine.isMateScore thinking.score
+                        || thinking.depth
+                        >= maxDepth
+                        || elapsed
+                        + expected
+                        > timeBudget
+                then
+                    finishThinking thinking model
+
+                else
+                    deepen { thinking | tickedAt = now } model
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+deepen : Thinking -> Model -> ( Model, Cmd Msg )
+deepen thinking model =
+    let
+        depth =
+            thinking.depth + 1
+
+        result =
+            Engine.search depth thinking.best thinking.position
+    in
+    ( { model
+        | thinking =
+            Just { thinking | depth = depth, best = result.move, score = result.score }
+      }
+    , scheduleIteration thinking.id
+    )
+
+
+finishThinking : Thinking -> Model -> ( Model, Cmd Msg )
+finishThinking thinking model =
+    let
+        -- The engine scores from its own point of view; the report is from
+        -- White's.
+        score =
+            if Position.sideToMove thinking.position == PieceColor.white then
+                thinking.score
+
+            else
+                -thinking.score
+
+        finished =
+            { model
+                | thinking = Nothing
+                , report = Just { depth = thinking.depth, score = score }
+            }
+    in
+    case thinking.best of
+        Just move ->
+            -- The engine has moved, so it is the user's turn; still, if the
+            -- engine has been switched to the other side meanwhile, this is
+            -- where it starts thinking again.
+            considerEngine (applyMove move finished)
+
+        Nothing ->
+            ( finished, Cmd.none )
 
 
 
@@ -539,7 +807,16 @@ viewGame model =
             currentPosition model
     in
     [ H.div []
-        [ heading (statusText position)
+        [ heading
+            (statusText position
+                ++ (case model.thinking of
+                        Just thinking ->
+                            " -- thinking (depth " ++ String.fromInt (thinking.depth + 1) ++ ")"
+
+                        Nothing ->
+                            ""
+                   )
+            )
         , boardFrame (List.map (viewSquare model position) Square.all ++ viewPromotion model position)
         ]
     , viewHistory model
@@ -1064,15 +1341,24 @@ viewHistory model =
             lastPly model
     in
     H.div
-        [ HA.style "width" "220px" ]
-        [ H.div [ HA.style "display" "flex", HA.style "gap" "4px", HA.style "margin-bottom" "8px" ]
+        [ HA.style "width" "220px"
+
+        -- As tall as the board including its border, with the move list
+        -- taking whatever the controls above and below it leave.
+        , HA.style "height" (px (boardSize + 4))
+        , HA.style "display" "flex"
+        , HA.style "flex-direction" "column"
+        , HA.style "gap" "8px"
+        ]
+        [ H.div [ HA.style "display" "flex", HA.style "gap" "4px" ]
             [ pagerButton ToStart "Start" (GoTo 0) (model.ply > 0)
             , pagerButton Previous "Previous move" (GoTo (model.ply - 1)) (model.ply > 0)
             , pagerButton Next "Next move" (GoTo (model.ply + 1)) (model.ply < end)
             , pagerButton ToEnd "End" (GoTo end) (model.ply < end)
             ]
         , H.div
-            [ HA.style "height" (px (boardSize - 64))
+            [ HA.style "flex" "1"
+            , HA.style "min-height" "0"
             , HA.style "overflow-y" "auto"
             , HA.style "border" "1px solid #cbd5e1"
             , HA.style "padding" "6px"
@@ -1085,15 +1371,90 @@ viewHistory model =
              else
                 List.indexedMap (viewHistoryRow model.ply) (pairUp (numberedMoves model))
             )
+        , viewEngineControls model
         , H.button
             [ HE.onClick OpenEditor
             , HA.style "width" "100%"
-            , HA.style "margin-top" "8px"
             , HA.style "padding" "5px 0"
             , HA.style "cursor" "pointer"
             ]
             [ H.text "Set up position" ]
         ]
+
+
+
+-- VIEW: ENGINE
+
+
+viewEngineControls : Model -> Html Msg
+viewEngineControls model =
+    H.div
+        [ HA.style "font-size" "14px"
+        , HA.style "display" "flex"
+        , HA.style "flex-direction" "column"
+        , HA.style "gap" "4px"
+        ]
+        [ H.div [ HA.style "color" "#334155" ] [ H.text "Engine plays" ]
+        , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
+            [ engineSideButton model Nothing "Nobody"
+            , engineSideButton model (Just PieceColor.white) "White"
+            , engineSideButton model (Just PieceColor.black) "Black"
+            ]
+        , H.div
+            [ HA.style "color" "#64748b"
+            , HA.style "font-size" "12px"
+            , HA.style "min-height" "15px"
+            ]
+            [ H.text (engineReport model) ]
+        ]
+
+
+engineSideButton : Model -> Maybe PieceColor -> String -> Html Msg
+engineSideButton model side label =
+    let
+        selected =
+            model.engine == side
+    in
+    H.button
+        [ HE.onClick (EngineSide side)
+        , HA.style "flex" "1"
+        , HA.style "padding" "5px 0"
+        , HA.style "cursor" "pointer"
+        , HA.style "border" ("1px solid " ++ pick selected "#2563eb" "#cbd5e1")
+        , HA.style "background-color" (pick selected "#bfdbfe" "#f8fafc")
+        ]
+        [ H.text label ]
+
+
+{-| What the engine's last search found, as "depth 5, +0.35" or "depth 6,
+White mates in 3". The score is from White's point of view, as evaluations
+conventionally are.
+-}
+engineReport : Model -> String
+engineReport model =
+    case model.report of
+        Nothing ->
+            ""
+
+        Just report ->
+            let
+                verdict =
+                    if Engine.isMateScore report.score then
+                        let
+                            moves =
+                                Engine.mateIn report.score
+                        in
+                        pick (moves > 0) "White" "Black"
+                            ++ " mates in "
+                            ++ String.fromInt (abs moves)
+
+                    else
+                        pick (report.score >= 0) "+" "-"
+                            ++ String.fromInt (abs report.score // 100)
+                            ++ "."
+                            ++ String.padLeft 2 '0' (String.fromInt (modBy 100 (abs report.score)))
+            in
+            "Last search: depth " ++ String.fromInt report.depth ++ ", " ++ verdict
 
 
 {-| The moves paired with the ply they lead to, with a hole in front of the
