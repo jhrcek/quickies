@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road to Yoneda</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.js"></script>
+    <style>
+        :root {
+            --accent: #1293D8;
+            --accent-dark: #0b6ea6;
+            --bg: #fafafa;
+            --card: #ffffff;
+            --border: #e0e0e0;
+            --text: #222;
+            --muted: #666;
+            --ok: #2e8b57;
+            --bad: #c0392b;
+            --warn: #b7791f;
+            --highlight: #fff3b0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.5;
+        }
+
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: 240px;
+            flex-shrink: 0;
+            background: #fff;
+            border-right: 1px solid var(--border);
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+
+        .sidebar h1 { font-size: 1.1rem; margin: 0 16px 12px; color: var(--accent); }
+        .sidebar a { display: block; padding: 6px 16px; color: var(--text); text-decoration: none; font-size: 0.92rem; }
+        .sidebar a:hover { background: #f0f7fc; }
+        .sidebar a.active { background: #e3f1fa; border-left: 3px solid var(--accent); padding-left: 13px; font-weight: 600; }
+        .sidebar .num { color: var(--muted); display: inline-block; width: 1.4em; }
+        .sidebar .todo { color: var(--muted); font-style: italic; }
+
+        .main { flex: 1; min-width: 0; }
+
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 24px; border-bottom: 1px solid var(--border); background: #fff;
+            font-size: 0.9rem; gap: 12px; flex-wrap: wrap;
+        }
+
+        .content { max-width: 900px; margin: 0 auto; padding: 24px; }
+        .content h2 { margin-top: 0; }
+        .content h3 { margin-top: 2em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+
+        .card {
+            background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+            padding: 16px; margin: 16px 0;
+        }
+
+        .callout { border-left: 4px solid var(--accent); background: #f0f7fc; padding: 10px 14px; margin: 16px 0; border-radius: 0 6px 6px 0; }
+        .callout.remember { border-left-color: var(--warn); background: #fff8e6; }
+
+        .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+        .col { flex: 1; min-width: 220px; }
+        .col.fit { flex: 0 0 auto; max-width: 100%; overflow-x: auto; }
+
+        .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+        .controls label { color: var(--muted); font-size: 0.9rem; }
+
+        button {
+            font: inherit; font-size: 0.9rem; padding: 4px 10px; border-radius: 4px;
+            border: 1px solid var(--border); background: #fff; cursor: pointer;
+        }
+        button:hover { border-color: var(--accent); }
+        button.active, button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        button:disabled { opacity: 0.5; cursor: default; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.82rem; margin-right: 6px; border: 1px solid; }
+        .badge.ok { color: var(--ok); border-color: var(--ok); background: #eaf6ee; }
+        .badge.bad { color: var(--bad); border-color: var(--bad); background: #fbeaea; }
+
+        table.cayley { border-collapse: collapse; font-family: "KaTeX_Main", serif; }
+        table.cayley th, table.cayley td {
+            border: 1px solid var(--border); padding: 4px 10px; text-align: center; min-width: 2.2em; cursor: pointer;
+        }
+        table.cayley th { background: #f3f3f3; cursor: default; }
+        table.cayley td.hl { background: var(--highlight); }
+        table.cayley td.hl-strong { background: #ffd54f; font-weight: bold; }
+        table.cayley th.hl { background: #e3f1fa; }
+        table.cayley td.identity-cell { color: var(--accent-dark); }
+        table.cayley td.empty { color: #bbb; cursor: default; }
+        ul.compact { margin: 4px 0; padding-left: 20px; }
+        ul.compact li { margin: 2px 0; }
+
+        .thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+        .thumb { border: 1px solid var(--border); border-radius: 4px; padding: 2px; background: #fff; cursor: pointer; }
+        .thumb.selected { border-color: var(--accent); box-shadow: 0 0 0 2px #cfe6f5; }
+
+        .prevnext { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .prevnext a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+        svg text { user-select: none; }
+        .content svg { max-width: 100%; height: auto; }
+
+        dl.glossary dt { font-weight: 600; margin-top: 12px; }
+        dl.glossary dd { margin: 2px 0 0 0; color: #333; }
+        dl.glossary dt:target { background: var(--highlight); }
+        .sidebar a.glossary { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+
+        @media (max-width: 800px) {
+            .app { flex-direction: column; }
+            .sidebar {
+                width: auto; height: auto; position: static;
+                border-right: none; border-bottom: 1px solid var(--border);
+                padding: 8px 8px 4px;
+                display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center;
+            }
+            .sidebar h1 { flex: 1 0 100%; margin: 0 8px 6px; }
+            .sidebar a { padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; }
+            .sidebar a.active { border-left: none; padding-left: 8px; }
+            .sidebar a.glossary { margin-top: 0; border-top: none; padding-top: 4px; }
+            .sidebar .num { width: auto; margin-right: 4px; }
+            .topbar { padding: 8px 16px; }
+            .content { padding: 16px; }
+            .col { min-width: 160px; }
+            .card { padding: 12px; overflow-x: auto; }
+        }
+        .muted { color: var(--muted); }
+        code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script>
+        class MathTex extends HTMLElement {
+            static get observedAttributes() { return ['formula', 'display-mode']; }
+            connectedCallback() { this._render(); }
+            attributeChangedCallback() { this._render(); }
+            _render() {
+                const tex = this.getAttribute('formula') || '';
+                const displayMode = this.getAttribute('display-mode') !== 'false';
+                try { katex.render(tex, this, { displayMode, throwOnError: false }); }
+                catch (e) { this.textContent = tex; }
+            }
+        }
+        customElements.define('math-tex', MathTex);
+    </script>
+
+    <script src="elm.min.js"></script>
+    <script>Elm.Main.init({ node: document.getElementById('app') });</script>
+</body>
+
+</html>
