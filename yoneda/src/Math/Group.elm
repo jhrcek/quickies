@@ -1,0 +1,335 @@
+module Math.Group exposing
+    ( Group
+    , allGroups
+    , associativityHolds
+    , carrier
+    , cyclic
+    , dihedral4
+    , elementOrder
+    , identityIndex
+    , inverse
+    , isAbelian
+    , klein
+    , label
+    , leftMul
+    , mul
+    , order
+    , rightMul
+    , symmetric3
+    , toCategoryName
+    )
+
+{-| Finite groups given by their Cayley table. Elements are indices 0..n-1;
+`mul g h` is "g times h", and `leftMul g` is the function `x ↦ g·x`.
+-}
+
+import Array exposing (Array)
+import Dict exposing (Dict)
+import Math.FinFunction as FinFunction exposing (FinFunction)
+import Math.FinSet as FinSet exposing (FinSet)
+
+
+type alias Group =
+    { name : String
+    , texName : String
+    , description : String
+    , labels : List String -- KaTeX labels
+    , table : Array (Array Int)
+    }
+
+
+order : Group -> Int
+order g =
+    List.length g.labels
+
+
+label : Group -> Int -> String
+label g i =
+    List.drop i g.labels |> List.head |> Maybe.withDefault "?"
+
+
+mul : Group -> Int -> Int -> Int
+mul g i j =
+    Array.get i g.table
+        |> Maybe.andThen (Array.get j)
+        |> Maybe.withDefault 0
+
+
+identityIndex : Group -> Int
+identityIndex g =
+    let
+        n =
+            order g
+
+        isId e =
+            List.all (\x -> mul g e x == x && mul g x e == x) (List.range 0 (n - 1))
+    in
+    List.range 0 (n - 1)
+        |> List.filter isId
+        |> List.head
+        |> Maybe.withDefault 0
+
+
+inverse : Group -> Int -> Int
+inverse g i =
+    let
+        e =
+            identityIndex g
+    in
+    List.range 0 (order g - 1)
+        |> List.filter (\j -> mul g i j == e)
+        |> List.head
+        |> Maybe.withDefault 0
+
+
+isAbelian : Group -> Bool
+isAbelian g =
+    let
+        idx =
+            List.range 0 (order g - 1)
+    in
+    List.all (\i -> List.all (\j -> mul g i j == mul g j i) idx) idx
+
+
+associativityHolds : Group -> Bool
+associativityHolds g =
+    let
+        idx =
+            List.range 0 (order g - 1)
+    in
+    List.all
+        (\a -> List.all (\b -> List.all (\c -> mul g (mul g a b) c == mul g a (mul g b c)) idx) idx)
+        idx
+
+
+elementOrder : Group -> Int -> Int
+elementOrder g i =
+    let
+        e =
+            identityIndex g
+
+        go k cur =
+            if cur == e || k > order g then
+                k
+
+            else
+                go (k + 1) (mul g cur i)
+    in
+    go 1 i
+
+
+{-| The underlying set of the group, named after the group.
+-}
+carrier : Group -> FinSet
+carrier g =
+    FinSet.fromLabels g.texName g.labels
+
+
+{-| `x ↦ g·x`
+-}
+leftMul : Group -> Int -> FinFunction
+leftMul g i =
+    FinFunction.fromList (carrier g) (carrier g) (List.map (mul g i) (List.range 0 (order g - 1)))
+
+
+{-| `x ↦ x·g`
+-}
+rightMul : Group -> Int -> FinFunction
+rightMul g i =
+    FinFunction.fromList (carrier g) (carrier g) (List.map (\x -> mul g x i) (List.range 0 (order g - 1)))
+
+
+toCategoryName : Group -> String
+toCategoryName g =
+    "\\mathbf{B}" ++ g.texName
+
+
+
+-- CURATED GROUPS
+
+
+allGroups : List Group
+allGroups =
+    [ cyclic 2, cyclic 3, cyclic 4, klein, symmetric3, dihedral4 ]
+
+
+cyclic : Int -> Group
+cyclic n =
+    { name = "Z" ++ String.fromInt n
+    , texName = "\\mathbb{Z}_" ++ String.fromInt n
+    , description = "Integers modulo " ++ String.fromInt n ++ " under addition."
+    , labels = List.range 0 (n - 1) |> List.map String.fromInt
+    , table =
+        Array.initialize n (\i -> Array.initialize n (\j -> modBy n (i + j)))
+    }
+
+
+klein : Group
+klein =
+    let
+        pairs =
+            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
+
+        idxOf p =
+            List.indexedMap Tuple.pair pairs
+                |> List.filter (\( _, q ) -> q == p)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault 0
+
+        add ( a, b ) ( c, d ) =
+            ( modBy 2 (a + c), modBy 2 (b + d) )
+    in
+    { name = "V4"
+    , texName = "V_4"
+    , description = "Klein four-group ℤ₂ × ℤ₂: every non-identity element is its own inverse."
+    , labels = [ "e", "a", "b", "c" ]
+    , table =
+        Array.fromList
+            (List.map (\p -> Array.fromList (List.map (\q -> idxOf (add p q)) pairs)) pairs)
+    }
+
+
+{-| Symmetric group on {0,1,2}, elements labelled in cycle notation.
+-}
+symmetric3 : Group
+symmetric3 =
+    let
+        gens =
+            [ ( "(0\\,1)", [ 1, 0, 2 ] ), ( "(0\\,1\\,2)", [ 1, 2, 0 ] ) ]
+    in
+    fromGenerators "S3" "S_3" "All 6 permutations of three things. The smallest non-abelian group." cycleLabel gens
+
+
+{-| Dihedral group of the square as permutations of its 4 vertices,
+labelled as words in r (rotation) and s (reflection).
+-}
+dihedral4 : Group
+dihedral4 =
+    fromGenerators "D4" "D_4" "Symmetries of a square: 4 rotations and 4 reflections." wordLabel [ ( "r", [ 1, 2, 3, 0 ] ), ( "s", [ 0, 3, 2, 1 ] ) ]
+
+
+{-| Build a permutation group generated by the given permutations (as arrays of images).
+Elements are discovered by breadth-first search over words in the generators; the label
+of an element is derived from the shortest word reaching it.
+Multiplication `g·h` means "apply h first, then g" (functions compose right to left),
+which is the standard convention for permutation groups.
+-}
+fromGenerators : String -> String -> String -> (List String -> List Int -> String) -> List ( String, List Int ) -> Group
+fromGenerators name texName description mkLabel gens =
+    let
+        n =
+            gens |> List.head |> Maybe.map (Tuple.second >> List.length) |> Maybe.withDefault 0
+
+        idPerm =
+            List.range 0 (n - 1)
+
+        -- (g·h)(x) = g(h(x))
+        times g h =
+            List.map (\x -> List.drop x g |> List.head |> Maybe.withDefault 0) h
+
+        bfs : List ( List Int, List String ) -> Dict (List Int) (List String) -> List (List Int) -> ( Dict (List Int) (List String), List (List Int) )
+        bfs frontier seen ordered =
+            case frontier of
+                [] ->
+                    ( seen, List.reverse ordered )
+
+                _ ->
+                    let
+                        step ( p, word ) ( fr, sn, ord ) =
+                            List.foldl
+                                (\( gname, gperm ) ( fr2, sn2, ord2 ) ->
+                                    let
+                                        q =
+                                            times p gperm
+                                    in
+                                    if Dict.member q sn2 then
+                                        ( fr2, sn2, ord2 )
+
+                                    else
+                                        ( ( q, word ++ [ gname ] ) :: fr2, Dict.insert q (word ++ [ gname ]) sn2, q :: ord2 )
+                                )
+                                ( fr, sn, ord )
+                                gens
+
+                        ( newFrontier, newSeen, newOrdered ) =
+                            List.foldl step ( [], seen, ordered ) frontier
+                    in
+                    bfs (List.reverse newFrontier) newSeen newOrdered
+
+        ( words, elements ) =
+            bfs [ ( idPerm, [] ) ] (Dict.singleton idPerm []) [ idPerm ]
+
+        indexOf p =
+            List.indexedMap Tuple.pair elements
+                |> List.filter (\( _, q ) -> q == p)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault 0
+    in
+    { name = name
+    , texName = texName
+    , description = description
+    , labels = List.map (\p -> mkLabel (Dict.get p words |> Maybe.withDefault []) p) elements
+    , table =
+        Array.fromList
+            (List.map (\p -> Array.fromList (List.map (\q -> indexOf (times p q)) elements)) elements)
+    }
+
+
+cycleLabel : List String -> List Int -> String
+cycleLabel _ perm =
+    let
+        f =
+            FinFunction.fromList (FinSet.indexed "X" (List.length perm)) (FinSet.indexed "X" (List.length perm)) perm
+
+        nontrivial =
+            FinFunction.cycles f |> List.filter (\c -> List.length c > 1)
+    in
+    if List.isEmpty nontrivial then
+        "e"
+
+    else
+        nontrivial
+            |> List.map (\c -> "(" ++ String.join "\\," (List.map String.fromInt c) ++ ")")
+            |> String.concat
+
+
+wordLabel : List String -> List Int -> String
+wordLabel word _ =
+    case word of
+        [] ->
+            "e"
+
+        _ ->
+            -- collapse repeated letters into powers: r r r -> r^3
+            let
+                -- run-length encode with an accumulator: [r, r, r, s] -> [(r, 3), (s, 1)]
+                collapse xs =
+                    List.foldl
+                        (\x acc ->
+                            case acc of
+                                ( y, k ) :: rest ->
+                                    if y == x then
+                                        ( y, k + 1 ) :: rest
+
+                                    else
+                                        ( x, 1 ) :: acc
+
+                                [] ->
+                                    [ ( x, 1 ) ]
+                        )
+                        []
+                        xs
+                        |> List.reverse
+            in
+            collapse word
+                |> List.map
+                    (\( x, k ) ->
+                        if k == 1 then
+                            x
+
+                        else
+                            x ++ "^" ++ String.fromInt k
+                    )
+                |> String.concat

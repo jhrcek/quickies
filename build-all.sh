@@ -34,6 +34,7 @@ projects=(
   ["sonnenfinsternis"]="Interactive explainer of solar eclipse types (in German)"
   ["trigonometric-hyperbolic"]="Mini reference of goniometric and trigonometric functions"
   ["water-pouring"]="Water pouring puzzle solver"
+  ["yoneda"]="Interactive road from sets and functions through Cayley's theorem to the Yoneda lemma"
 )
 
 # Initialize root index.html with header
