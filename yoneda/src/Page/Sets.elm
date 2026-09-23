@@ -16,6 +16,8 @@ type alias Model =
     , g : FinFunction -- B -> C
     , selectedF : Maybe Int
     , selectedG : Maybe Int
+    , allPage : Int -- pager over Hom(A,B) thumbnails
+    , mapPage : Int -- pager over the Hom(A,g) table
     }
 
 
@@ -30,11 +32,17 @@ type WhichSet
     | C
 
 
+type Pager
+    = AllPager
+    | MapPager
+
+
 type Msg
     = SetSize WhichSet Int
     | ClickSource Which Int
     | ClickTarget Which Int
     | LoadF FinFunction
+    | SetPage Pager Int
 
 
 init : Model
@@ -53,6 +61,8 @@ init =
     , g = FinFunction.fromList setB setC [ 1, 0 ]
     , selectedF = Nothing
     , selectedG = Nothing
+    , allPage = 0
+    , mapPage = 0
     }
 
 
@@ -80,6 +90,8 @@ update msg model =
                 , g = FinFunction.resize b c model.g
                 , selectedF = Nothing
                 , selectedG = Nothing
+                , allPage = 0
+                , mapPage = 0
             }
 
         ClickSource F i ->
@@ -106,6 +118,12 @@ update msg model =
 
         LoadF f ->
             { model | f = f, selectedF = Nothing }
+
+        SetPage AllPager n ->
+            { model | allPage = n }
+
+        SetPage MapPager n ->
+            { model | mapPage = n }
 
 
 toggle : Int -> Maybe Int -> Maybe Int
@@ -138,6 +156,9 @@ view order model =
 
         fg =
             Notation.compose order "f" "g"
+
+        homAB =
+            FinFunction.enumerateAll setA setB
     in
     div []
         [ h2 [] [ text "1. Sets and functions" ]
@@ -265,24 +286,20 @@ view order model =
                 ++ String.fromInt (FinSet.size setB ^ FinSet.size setA)
             )
         , div [ class "card" ]
-            (if FinSet.size setB ^ FinSet.size setA <= 64 then
-                [ p [ class "muted" ] [ text "All of them, as pictures. Click one to load it into the editor above (the current f is outlined)." ]
-                , div [ class "thumbs" ]
-                    (FinFunction.enumerateAll setA setB
-                        |> List.map
-                            (\h ->
-                                div
-                                    [ classList [ ( "thumb", True ), ( "selected", FinFunction.equal h model.f ) ]
-                                    , onClick (LoadF h)
-                                    ]
-                                    [ FunctionEditor.thumbnail h ]
-                            )
-                    )
-                ]
-
-             else
-                [ p [ class "muted" ] [ text "Too many to draw. Shrink the sets to see them all." ] ]
-            )
+            [ p [ class "muted" ] [ text "All of them, as pictures. Click one to load it into the editor above (the current f is outlined)." ]
+            , pager AllPager allPageSize model.allPage (List.length homAB)
+            , div [ class "thumbs" ]
+                (pageOf allPageSize model.allPage homAB
+                    |> List.map
+                        (\h ->
+                            div
+                                [ classList [ ( "thumb", True ), ( "selected", FinFunction.equal h model.f ) ]
+                                , onClick (LoadF h)
+                                ]
+                                [ FunctionEditor.thumbnail h ]
+                        )
+                )
+            ]
         , h3 [] [ text "Composing with a fixed function is a function between hom sets" ]
         , p []
             [ text "Fix "
@@ -297,30 +314,26 @@ view order model =
             ]
         , KaTeX.display ("\\mathrm{Hom}(A, g) : \\mathrm{Hom}(A,B) \\to \\mathrm{Hom}(A,C), \\qquad f \\mapsto " ++ fg)
         , div [ class "card" ]
-            (if FinSet.size setB ^ FinSet.size setA <= 27 then
-                [ div [ class "thumbs" ]
-                    (FinFunction.enumerateAll setA setB
-                        |> List.map
-                            (\h ->
-                                div [ class "thumb", Html.Attributes.style "display" "flex", Html.Attributes.style "align-items" "center" ]
-                                    [ FunctionEditor.thumbnail h
-                                    , span [ Html.Attributes.style "padding" "0 4px" ] [ text "↦" ]
-                                    , FunctionEditor.thumbnail (FinFunction.compose h model.g)
-                                    ]
-                            )
-                    )
-                , p [ class "muted" ]
-                    [ text "Is this function injective? Surjective? Change "
-                    , KaTeX.inline "g"
-                    , text " and see how the answer depends on "
-                    , KaTeX.inline "g"
-                    , text " being injective or surjective."
-                    ]
+            [ pager MapPager mapPageSize model.mapPage (List.length homAB)
+            , div [ class "thumbs" ]
+                (pageOf mapPageSize model.mapPage homAB
+                    |> List.map
+                        (\h ->
+                            div [ class "thumb", Html.Attributes.style "display" "flex", Html.Attributes.style "align-items" "center" ]
+                                [ FunctionEditor.thumbnail h
+                                , span [ Html.Attributes.style "padding" "0 4px" ] [ text "↦" ]
+                                , FunctionEditor.thumbnail (FinFunction.compose h model.g)
+                                ]
+                        )
+                )
+            , p [ class "muted" ]
+                [ text "Is this function injective? Surjective? Change "
+                , KaTeX.inline "g"
+                , text " and see how the answer depends on "
+                , KaTeX.inline "g"
+                , text " being injective or surjective."
                 ]
-
-             else
-                [ p [ class "muted" ] [ text "Shrink A and B to see the hom sets side by side." ] ]
-            )
+            ]
         , div [ class "callout remember" ]
             [ strong [] [ text "Remember this. " ]
             , text "Turning an arrow "
@@ -332,6 +345,49 @@ view order model =
             , text " in chapter 6."
             ]
         ]
+
+
+allPageSize : Int
+allPageSize =
+    64
+
+
+mapPageSize : Int
+mapPageSize =
+    32
+
+
+pageOf : Int -> Int -> List a -> List a
+pageOf size page xs =
+    xs |> List.drop (page * size) |> List.take size
+
+
+{-| "Showing mappings 1–64 of 256" with prev/next buttons; nothing when everything fits on one page.
+-}
+pager : Pager -> Int -> Int -> Int -> Html Msg
+pager which size page total =
+    if total <= size then
+        text ""
+
+    else
+        let
+            lastPage =
+                (total - 1) // size
+        in
+        div [ class "controls" ]
+            [ button [ Html.Attributes.disabled (page <= 0), onClick (SetPage which (page - 1)) ] [ text "‹" ]
+            , button [ Html.Attributes.disabled (page >= lastPage), onClick (SetPage which (page + 1)) ] [ text "›" ]
+            , span [ class "muted" ]
+                [ text
+                    ("Showing mappings "
+                        ++ String.fromInt (page * size + 1)
+                        ++ "–"
+                        ++ String.fromInt (min total ((page + 1) * size))
+                        ++ " of "
+                        ++ String.fromInt total
+                    )
+                ]
+            ]
 
 
 editorOptions : String -> FunctionEditor.Options
