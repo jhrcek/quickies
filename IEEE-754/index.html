@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEEE 754 explorer</title>
+    <style>
+        :root {
+            --accent: #1293D8;
+            --bg: #fafafa;
+            --card: #ffffff;
+            --border: #e0e0e0;
+            --text: #222;
+            --muted: #666;
+            --bad: #c0392b;
+            --sign: #c9443f;
+            --sign-light: #f8dcdb;
+            --exp: #2872d4;
+            --exp-light: #d9e7fa;
+            --frac: #2a9257;
+            --frac-light: #d6f0e0;
+            --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.5;
+        }
+
+        .content { max-width: 1040px; margin: 0 auto; padding: 16px; }
+        h1 { color: var(--accent); margin: 8px 0; font-size: 1.6rem; }
+        h2 { margin: 0 0 8px; font-size: 1.15rem; }
+        .lead { margin-top: 0; }
+        .muted { color: var(--muted); }
+
+        .card {
+            background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+            padding: 16px; margin: 16px 0;
+        }
+
+        .t-sign { color: var(--sign); font-weight: 600; }
+        .t-exp { color: var(--exp); font-weight: 600; }
+        .t-frac { color: var(--frac); font-weight: 600; }
+        .mono { font-family: var(--mono); }
+
+        button {
+            font: inherit; font-size: 0.9rem; padding: 3px 10px; cursor: pointer;
+            border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text);
+        }
+        button:hover { border-color: var(--accent); }
+
+        .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .presets button { font-family: var(--mono); font-size: 0.8rem; padding: 2px 8px; }
+
+        .segmented { display: inline-flex; }
+        .segmented button { border-radius: 0; }
+        .segmented button:first-child { border-radius: 4px 0 0 4px; }
+        .segmented button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+        .segmented button.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+        .value-input { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+        .value-input input {
+            font-family: var(--mono); font-size: 1rem; padding: 4px 8px; width: 22ch; max-width: 60vw;
+            border: 1px solid var(--border); border-radius: 4px;
+        }
+        .value-input input.invalid { border-color: var(--bad); outline-color: var(--bad); }
+        .error { color: var(--bad); font-size: 0.9rem; }
+
+        .bits { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .field-label { font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; white-space: nowrap; }
+        .cells { display: flex; flex-wrap: wrap; }
+        .bit {
+            width: 26px; height: 30px; padding: 0; border-radius: 0;
+            font-family: var(--mono); font-size: 0.9rem; border: 1px solid #fff;
+        }
+        .bits.double .bit { width: 15px; height: 26px; font-size: 0.75rem; }
+        .field.sign .field-label { color: var(--sign); }
+        .field.exp .field-label { color: var(--exp); }
+        .field.frac .field-label { color: var(--frac); }
+        .field.sign .bit { background: var(--sign-light); color: var(--sign); }
+        .field.exp .bit { background: var(--exp-light); color: var(--exp); }
+        .field.frac .bit { background: var(--frac-light); color: var(--frac); }
+        .field.sign .bit.on { background: var(--sign); color: #fff; }
+        .field.exp .bit.on { background: var(--exp); color: #fff; }
+        .field.frac .bit.on { background: var(--frac); color: #fff; }
+        .bit:hover { outline: 2px solid var(--text); outline-offset: -2px; }
+        .hex { font-family: var(--mono); color: var(--muted); margin: 10px 0 0; }
+
+        table { border-collapse: collapse; }
+        th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+        .decoding { width: 100%; table-layout: fixed; }
+        .decoding th { width: 6.5em; }
+        .decoding td { word-break: break-all; }
+        .implicit { color: var(--muted); text-decoration: underline dotted; }
+        .result th { padding-top: 10px; }
+        .result td { padding-top: 10px; word-break: break-all; }
+        .exact { font-weight: 600; margin-top: 4px; }
+        .note { font-family: system-ui, sans-serif; color: var(--muted); font-size: 0.9rem; margin-top: 6px; word-break: normal; }
+
+        .neighbours tr.current { background: #f0f7fc; font-weight: 600; }
+        .neighbours button { white-space: nowrap; }
+
+        .classes { padding-left: 20px; margin: 0; }
+        .classes li { padding: 2px 6px; border-radius: 4px; }
+        .classes li.current { background: #fff3b0; }
+
+        @media (max-width: 600px) {
+            .decoding th { width: 5.5em; }
+            .neighbours td.mono { word-break: break-all; }
+            th, td { padding: 4px 6px; }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script src="elm.min.js"></script>
+    <script>Elm.Main.init({ node: document.getElementById('app') });</script>
+</body>
+
+</html>
