@@ -47,7 +47,9 @@ suite =
                     f =
                         SetFunctor.homFunctor c 0
 
-                    -- α_A = id on {id_A, e}, α_B swaps f and g: the square of e fails (e;g = g but e;f = g)
+                    -- α_A = id on {id_A, e}, α_B swaps f and g. The square of e commutes (α_A is the
+                    -- identity), but those of f and g fail: id_A ↦ f ↦ g around the top, id_A ↦ id_A ↦ f
+                    -- around the bottom (and symmetrically for g).
                     nt =
                         NatTrans.make f
                             f
@@ -57,7 +59,7 @@ suite =
                 in
                 NatTrans.naturalityViolations nt
                     |> List.map (Category.morphismLabel c)
-                    |> Expect.equal [ "e", "f", "g" ]
+                    |> Expect.equal [ "f", "g" ]
         , describe "Yoneda count: |Nat(Hom(A, −), Hom(B, −))| = |Hom(B, A)| for every curated category"
             (Categories.all
                 |> List.filter (\ex -> Category.morphismCount ex.category <= 5)

@@ -40,6 +40,7 @@
             elm
             elm-live
             elm-format
+            elm-test
             pkgs.gnumake
             pkgs.uglify-js
             buildScript

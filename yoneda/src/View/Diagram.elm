@@ -6,10 +6,12 @@ as loops around their object. Arrows can be highlighted and clicked.
 -}
 
 import Html exposing (Html)
+import ListUtil
 import Math.Category as Category exposing (Category, Morphism)
 import Svg exposing (Svg)
 import Svg.Attributes as SA
 import Svg.Events
+import View.ArrowHead as ArrowHead
 import View.Notation as Notation
 
 
@@ -37,6 +39,8 @@ objectRadius =
 
 type alias Geometry =
     { path : String
+    , tip : ( Float, Float ) -- end point of the path
+    , tipFrom : ( Float, Float ) -- last control point, giving the direction at the end
     , label : String
     , labelAt : ( Float, Float )
     }
@@ -80,8 +84,7 @@ view cfg cat =
         , SA.height (str cfg.height)
         , SA.style "max-width: 100%; height: auto; display: block;"
         ]
-        (defs
-            :: List.map (\( f, _, g ) -> arrowView cfg f g) geometries
+        (List.map (\( f, _, g ) -> arrowView cfg f g) geometries
             ++ objects
             ++ List.map (\( f, _, g ) -> hitArea cfg f g) geometries
         )
@@ -133,7 +136,7 @@ straightGeometry cfg cat visible f m =
             List.length siblings
 
         index =
-            siblings |> List.indexedMap Tuple.pair |> List.filter (\( _, i ) -> i == f) |> List.head |> Maybe.map Tuple.first |> Maybe.withDefault 0
+            ListUtil.indexOf f siblings |> Maybe.withDefault 0
 
         d =
             (toFloat index - toFloat (k - 1) / 2) * 30
@@ -179,6 +182,8 @@ straightGeometry cfg cat visible f m =
                 1
     in
     { path = "M " ++ pt start ++ " Q " ++ pt ( cx, cy ) ++ " " ++ pt end
+    , tip = end
+    , tipFrom = ( cx, cy )
     , label = m.label
     , labelAt = ( mx + nx * (d + labelSide * 13), my + ny * (d + labelSide * 13) )
     }
@@ -196,7 +201,7 @@ loopGeometry cfg cat visible f m =
             List.length loops
 
         index =
-            loops |> List.indexedMap Tuple.pair |> List.filter (\( _, i ) -> i == f) |> List.head |> Maybe.map Tuple.first |> Maybe.withDefault 0
+            ListUtil.indexOf f loops |> Maybe.withDefault 0
 
         theta =
             -pi / 2 + toFloat index * 2 * pi / toFloat k
@@ -226,6 +231,8 @@ loopGeometry cfg cat visible f m =
             polar reach (theta + spread * 1.3)
     in
     { path = "M " ++ pt start ++ " C " ++ pt c1 ++ " " ++ pt c2 ++ " " ++ pt end
+    , tip = end
+    , tipFrom = c2
     , label = m.label
     , labelAt = polar (reach * 0.78 + 12) theta
     }
@@ -260,35 +267,6 @@ colorOf h =
             "#2e8b57"
 
 
-markerId : Highlight -> String
-markerId h =
-    case h of
-        Plain ->
-            "cat-arrow-plain"
-
-        First ->
-            "cat-arrow-first"
-
-        Second ->
-            "cat-arrow-second"
-
-        Composite ->
-            "cat-arrow-composite"
-
-
-defs : Svg msg
-defs =
-    Svg.defs []
-        (List.map
-            (\h ->
-                Svg.marker
-                    [ SA.id (markerId h), SA.viewBox "0 0 10 10", SA.refX "9", SA.refY "5", SA.markerWidth "7", SA.markerHeight "7", SA.orient "auto-start-reverse" ]
-                    [ Svg.path [ SA.d "M 0 0 L 10 5 L 0 10 z", SA.fill (colorOf h) ] [] ]
-            )
-            [ Plain, First, Second, Composite ]
-        )
-
-
 arrowView : Config msg -> Int -> Geometry -> Svg msg
 arrowView cfg f g =
     let
@@ -297,22 +275,23 @@ arrowView cfg f g =
 
         ( lx, ly ) =
             g.labelAt
+
+        width =
+            if h == Plain then
+                1.6
+
+            else
+                3
     in
     Svg.g []
         [ Svg.path
             [ SA.d g.path
             , SA.fill "none"
             , SA.stroke (colorOf h)
-            , SA.strokeWidth
-                (if h == Plain then
-                    "1.6"
-
-                 else
-                    "3"
-                )
-            , SA.markerEnd ("url(#" ++ markerId h ++ ")")
+            , SA.strokeWidth (str width)
             ]
             []
+        , ArrowHead.view { tip = g.tip, from = g.tipFrom, size = 7 * width, color = colorOf h }
         , Svg.text_
             [ SA.x (str lx)
             , SA.y (str (ly + 4))

@@ -9,15 +9,16 @@ import Html exposing (Html, button, div, h2, h3, li, ol, p, span, strong, table,
 import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
+import ListUtil
 import Math.Categories as Categories exposing (Example)
 import Math.Category as Category exposing (Category)
 import Math.FinFunction as FinFunction exposing (FinFunction)
 import Math.Group as Group exposing (Group)
-import Math.NatTrans as NatTrans
+import Math.NatTrans as NatTrans exposing (NatTrans)
 import Math.SetFunctor as SetFunctor
 import Math.Yoneda as Yoneda
 import Query exposing (Query)
-import Set
+import View.Common exposing (countBadge, cycleNotation, elementPicker)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
@@ -27,12 +28,28 @@ type alias Model =
     { example : Example
     , a : Int -- A: the object whose hom functor is the source
     , b : Int -- B: the object whose hom functor is the target
-    , arrow : Int -- selected h : B → A (morphism index), or -1 if Hom(B, A) is empty
-    , second : Int -- selected k : C → B for the composition check, or -1
+    , arrow : Maybe Int -- selected h : B → A (morphism index); Nothing if Hom(B, A) is empty
+    , second : Maybe Int -- selected k : C → B for the composition check
+    , nats : Nats
     , group : Group
     , g : Int
     , h : Int
     }
+
+
+{-| The left column of the bijection, computed when A or B change rather than on every
+render: for a group the brute-force search checks tens of thousands of candidates.
+-}
+type alias Nats =
+    { list : List NatTrans
+    , searchSize : Int
+    , bruteForce : Bool -- False: too big to search, built from the arrows with the lemma's recipe
+    }
+
+
+searchCap : Int
+searchCap =
+    200000
 
 
 type Msg
@@ -58,21 +75,37 @@ load ex a b grp =
             ex.category
 
         -- prefer a non-identity arrow, so that the pictures are not all trivial
-        firstArrow arrows =
-            arrows
-                |> List.filter (not << Category.isIdentity cat)
-                |> List.head
-                |> Maybe.withDefault (List.head arrows |> Maybe.withDefault -1)
+        firstArrow candidates =
+            case ListUtil.find (not << Category.isIdentity cat) candidates of
+                Just h ->
+                    Just h
 
-        into obj =
-            Category.morphismIndices cat
-                |> List.filter (\m -> (Category.morphism cat m |> Maybe.map .tgt) == Just obj)
+                Nothing ->
+                    List.head candidates
+
+        arrows =
+            Category.hom cat b a
+
+        homA =
+            SetFunctor.homFunctor cat a
+
+        homB =
+            SetFunctor.homFunctor cat b
+
+        size =
+            NatTrans.searchSize homA homB
     in
     { example = ex
     , a = a
     , b = b
-    , arrow = firstArrow (Category.hom cat b a)
-    , second = firstArrow (into b)
+    , arrow = firstArrow arrows
+    , second = firstArrow (Category.arrowsInto cat b)
+    , nats =
+        if size <= searchCap then
+            { list = NatTrans.enumerateAll homA homB, searchSize = size, bruteForce = True }
+
+        else
+            { list = List.map (Yoneda.embedArrow cat) arrows, searchSize = size, bruteForce = False }
     , group = grp.group
     , g = grp.g
     , h = grp.h
@@ -99,17 +132,17 @@ update msg model =
             case Category.morphism model.example.category h of
                 Just m ->
                     if m.src == model.b && m.tgt == model.a then
-                        { model | arrow = h }
+                        { model | arrow = Just h }
 
                     else
                         -- clicked elsewhere in the diagram: move A, B to the arrow's ends
-                        load model.example m.tgt m.src grp |> (\md -> { md | arrow = h })
+                        load model.example m.tgt m.src grp |> (\md -> { md | arrow = Just h })
 
                 Nothing ->
                     model
 
         SelectSecond k ->
-            { model | second = k }
+            { model | second = Just k }
 
         SelectGroup g ->
             { model | group = g, g = min model.g (Group.order g - 1), h = min model.h (Group.order g - 1) }
@@ -184,7 +217,7 @@ view order model =
                     , onClickMorphism = Just SelectArrow
                     , highlight =
                         \m ->
-                            if m == model.arrow then
+                            if Just m == model.arrow then
                                 First
 
                             else
@@ -243,18 +276,8 @@ bijectionCard order model =
         arrows =
             Category.hom cat b a
 
-        cap =
-            200000
-
-        searchable =
-            NatTrans.searchSize homA homB <= cap
-
         nats =
-            if searchable then
-                NatTrans.enumerateAll homA homB
-
-            else
-                List.map (Yoneda.embedArrow cat) arrows
+            model.nats.list
 
         natTex =
             "\\mathrm{Nat}(" ++ homA.texName ++ ", " ++ homB.texName ++ ")"
@@ -265,16 +288,19 @@ bijectionCard order model =
         thumb nt =
             let
                 h =
-                    Yoneda.embeddedArrow cat a b nt |> Maybe.withDefault -1
+                    Yoneda.embeddedArrow cat a b nt
             in
-            div [ classList [ ( "thumb", True ), ( "selected", h == model.arrow ) ], onClick (SelectArrow h) ]
+            div
+                (classList [ ( "thumb", True ), ( "selected", h /= Nothing && h == model.arrow ) ]
+                    :: (h |> Maybe.map (SelectArrow >> onClick) |> Maybe.map List.singleton |> Maybe.withDefault [])
+                )
                 (div [ class "muted", Html.Attributes.style "font-size" "0.8rem", Html.Attributes.style "text-align" "center" ]
-                    [ KaTeX.inline ("\\alpha_{" ++ aLbl ++ "}(\\mathrm{id}_{" ++ aLbl ++ "}) = " ++ Category.morphismLabel cat h) ]
+                    [ KaTeX.inline ("\\alpha_{" ++ aLbl ++ "}(\\mathrm{id}_{" ++ aLbl ++ "}) = " ++ (h |> Maybe.map (Category.morphismLabel cat) |> Maybe.withDefault "?")) ]
                     :: (Category.objectIndices cat |> List.map (\obj -> FunctionEditor.thumbnail (NatTrans.component nt obj)))
                 )
 
         arrowButton h =
-            button [ classList [ ( "active", h == model.arrow ) ], onClick (SelectArrow h) ] [ KaTeX.inline (Category.morphismLabel cat h) ]
+            button [ classList [ ( "active", Just h == model.arrow ) ], onClick (SelectArrow h) ] [ KaTeX.inline (Category.morphismLabel cat h) ]
     in
     div [ class "card" ]
         [ p []
@@ -284,11 +310,11 @@ bijectionCard order model =
             ]
         , p [ class "muted" ]
             [ text
-                (if searchable then
-                    "The left column was found by checking all " ++ String.fromInt (NatTrans.searchSize homA homB) ++ " families of functions."
+                (if model.nats.bruteForce then
+                    "The left column was found by checking all " ++ String.fromInt model.nats.searchSize ++ " families of functions."
 
                  else
-                    "There are " ++ String.fromInt (NatTrans.searchSize homA homB) ++ " families of functions to check, too many for brute force; the left column was built from the arrows with the lemma's recipe instead."
+                    "There are " ++ String.fromInt model.nats.searchSize ++ " families of functions to check, too many for brute force; the left column was built from the arrows with the lemma's recipe instead."
                 )
             ]
         , div [ class "row" ]
@@ -309,19 +335,20 @@ bijectionCard order model =
                     div [ class "controls" ] (List.map arrowButton arrows)
                 ]
             ]
-        , if model.arrow < 0 then
-            text ""
+        , case model.arrow of
+            Just h ->
+                selectedArrow order model h
 
-          else
-            selectedArrow order model
+            Nothing ->
+                text ""
         ]
 
 
 {-| The component table of the transformation attached to the selected arrow `h : B → A`:
 `α_X(f) = h ; f`.
 -}
-selectedArrow : CompositionOrder -> Model -> Html Msg
-selectedArrow order model =
+selectedArrow : CompositionOrder -> Model -> Int -> Html Msg
+selectedArrow order model h =
     let
         cat =
             model.example.category
@@ -334,9 +361,6 @@ selectedArrow order model =
 
         aLbl =
             Category.objectLabel cat a
-
-        h =
-            model.arrow
 
         hLbl =
             Category.morphismLabel cat h
@@ -415,9 +439,6 @@ compositionCard order model =
         bLbl =
             Category.objectLabel cat b
 
-        h =
-            model.arrow
-
         y g =
             "y(" ++ g ++ ")"
 
@@ -457,22 +478,17 @@ compositionCard order model =
             , KaTeX.inline "h"
             , text " is the arrow selected above):"
             ]
-        , if h < 0 then
-            p [ class "muted" ] [ text "Select an arrow ", KaTeX.inline (bLbl ++ " \\to " ++ aLbl), text " above first." ]
+        , case ( model.arrow, model.second ) of
+            ( Nothing, _ ) ->
+                p [ class "muted" ] [ text "Select an arrow ", KaTeX.inline (bLbl ++ " \\to " ++ aLbl), text " above first." ]
 
-          else
-            let
-                k =
-                    model.second
-            in
-            if k < 0 then
+            ( Just _, Nothing ) ->
                 p [ class "muted" ] [ text "No arrow ends at ", KaTeX.inline bLbl, text "." ]
 
-            else
+            ( Just h, Just k ) ->
                 let
                     arrowsIntoB =
-                        Category.morphismIndices cat
-                            |> List.filter (\m -> (Category.morphism cat m |> Maybe.map .tgt) == Just b)
+                        Category.arrowsInto cat b
 
                     hLbl =
                         Category.morphismLabel cat h
@@ -689,7 +705,7 @@ cayleyCard order model =
         allDistinct =
             List.range 0 (n - 1)
                 |> List.map (component >> FinFunction.toList)
-                |> distinct
+                |> ListUtil.allDistinct
 
         matchesRight =
             List.range 0 (n - 1) |> List.all (\g -> FinFunction.equal (component g) (Group.rightMul grp g))
@@ -817,7 +833,7 @@ cayleyCard order model =
             , text " that turns multiplication into composition. That is Cayley's theorem: chapter 3 was chapter 8 with one object. Every ingredient matches: "
             , KaTeX.inline "L_g(e) = g"
             , text " there and evaluating at the identity here; "
-            , KaTeX.inline "L_{g \\cdot h} = L_g \\circ L_h"
+            , KaTeX.inline (Notation.compose order "L_h" "L_g" ++ " = L_{g \\cdot h}")
             , text " there and functoriality here."
             ]
         , h3 [] [ text "Left or right?" ]
@@ -874,44 +890,6 @@ okMark ok =
         )
 
 
-countBadge : Int -> Int -> Html msg
-countBadge left right =
-    if left == right then
-        span [ class "badge ok" ] [ text (String.fromInt left ++ " = " ++ String.fromInt right) ]
-
-    else
-        span [ class "badge bad" ] [ text (String.fromInt left ++ " ≠ " ++ String.fromInt right) ]
-
-
-elementPicker : (Int -> Msg) -> Group -> Int -> Html Msg
-elementPicker toMsg grp current =
-    div [ class "controls" ]
-        (List.range 0 (Group.order grp - 1)
-            |> List.map
-                (\i -> button [ classList [ ( "active", i == current ) ], onClick (toMsg i) ] [ KaTeX.inline (Group.label grp i) ])
-        )
-
-
-cycleNotation : Group -> FinFunction -> String
-cycleNotation grp f =
-    let
-        nontrivial =
-            FinFunction.cycles f |> List.filter (\c -> List.length c > 1)
-    in
-    if List.isEmpty nontrivial then
-        "\\mathrm{id}"
-
-    else
-        nontrivial
-            |> List.map (\c -> "(" ++ String.join "\\;" (List.map (Group.label grp) c) ++ ")")
-            |> String.concat
-
-
-distinct : List (List Int) -> Bool
-distinct xs =
-    Set.size (Set.fromList xs) == List.length xs
-
-
 
 -- DEEP LINKS
 
@@ -924,19 +902,21 @@ toQuery model =
     [ Query.param "c" model.example.category.name
     , Query.param "a" (String.fromInt model.a)
     , Query.param "b" (String.fromInt model.b)
-    , Query.param "h" (String.fromInt model.arrow)
-    , Query.param "k" (String.fromInt model.second)
     , Query.param "group" model.group.name
     , Query.param "g" (String.fromInt model.g)
     , Query.param "hh" (String.fromInt model.h)
     ]
+        ++ List.filterMap identity
+            [ Maybe.map (String.fromInt >> Query.param "h") model.arrow
+            , Maybe.map (String.fromInt >> Query.param "k") model.second
+            ]
 
 
 fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen (\name -> List.filter (\ex -> ex.category.name == name) Categories.all |> List.head) of
+            case Query.string "c" q |> Maybe.andThen Categories.byName of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md
@@ -968,7 +948,7 @@ fromQuery q model =
             case Query.int "h" q |> Maybe.andThen (\h -> Category.morphism md.example.category h |> Maybe.map (Tuple.pair h)) of
                 Just ( h, m ) ->
                     if m.src == md.b && m.tgt == md.a then
-                        { md | arrow = h }
+                        { md | arrow = Just h }
 
                     else
                         md
@@ -980,7 +960,7 @@ fromQuery q model =
             case Query.int "k" q |> Maybe.andThen (\k -> Category.morphism md.example.category k |> Maybe.map (Tuple.pair k)) of
                 Just ( k, m ) ->
                     if m.tgt == md.b then
-                        { md | second = k }
+                        { md | second = Just k }
 
                     else
                         md
@@ -989,7 +969,7 @@ fromQuery q model =
                     md
 
         withGroup md =
-            case Query.string "group" q |> Maybe.andThen (\name -> List.filter (\grp -> grp.name == name) Group.allGroups |> List.head) of
+            case Query.string "group" q |> Maybe.andThen Group.byName of
                 Just grp ->
                     update (SelectGroup grp) md
 

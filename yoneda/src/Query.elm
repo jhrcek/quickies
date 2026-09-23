@@ -3,7 +3,9 @@ module Query exposing
     , fromString
     , int
     , intList
+    , intListParam
     , intLists
+    , intListsParam
     , param
     , string
     , toString
@@ -31,6 +33,25 @@ type alias Query =
 param : String -> String -> ( String, String )
 param key value =
     ( key, value )
+
+
+{-| A parameter holding comma-separated integers, read back by `intList`.
+-}
+intListParam : String -> List Int -> ( String, String )
+intListParam key xs =
+    ( key, encodeIntList xs )
+
+
+{-| A parameter holding semicolon-separated integer lists, read back by `intLists`.
+-}
+intListsParam : String -> List (List Int) -> ( String, String )
+intListsParam key xss =
+    ( key, String.join ";" (List.map encodeIntList xss) )
+
+
+encodeIntList : List Int -> String
+encodeIntList =
+    List.map String.fromInt >> String.join ","
 
 
 string : String -> Query -> Maybe String

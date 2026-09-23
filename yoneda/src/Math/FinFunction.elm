@@ -12,6 +12,7 @@ module Math.FinFunction exposing
     , isBijective
     , isInjective
     , isSurjective
+    , isWellTyped
     , mapping
     , resize
     , setMapping
@@ -78,6 +79,27 @@ compose f g =
     , target = g.target
     , mapping = Array.map (apply g) f.mapping
     }
+
+
+{-| `f` is a total function between sets of the given sizes: its declared source and
+target match them, and it sends every source index to a valid target index.
+-}
+isWellTyped : FinSet -> FinSet -> FinFunction -> Bool
+isWellTyped source target f =
+    let
+        n =
+            FinSet.size source
+
+        m =
+            FinSet.size target
+    in
+    FinSet.size f.source
+        == n
+        && FinSet.size f.target
+        == m
+        && Array.length f.mapping
+        == n
+        && List.all (\j -> 0 <= j && j < m) (toList f)
 
 
 equal : FinFunction -> FinFunction -> Bool

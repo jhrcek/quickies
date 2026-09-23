@@ -7,6 +7,7 @@ import KaTeX
 import Math.Categories as Categories exposing (Example)
 import Math.Category as Category exposing (Category)
 import Query exposing (Query)
+import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.Notation as Notation exposing (CompositionOrder)
 
@@ -16,6 +17,7 @@ type alias Model =
     , first : Maybe Int
     , second : Maybe Int
     , showIdentities : Bool
+    , hover : Maybe ( Int, Int ) -- composition-table cell under the mouse (transient)
     }
 
 
@@ -23,20 +25,21 @@ type Msg
     = SelectExample Example
     | ClickMorphism Int
     | SelectPair Int Int
+    | HoverPair (Maybe ( Int, Int ))
     | ToggleIdentities
     | Clear
 
 
 init : Model
 init =
-    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False }
+    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False, hover = Nothing }
 
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         SelectExample ex ->
-            { model | example = ex, first = Nothing, second = Nothing }
+            { model | example = ex, first = Nothing, second = Nothing, hover = Nothing }
 
         ClickMorphism f ->
             case ( model.first, model.second ) of
@@ -57,11 +60,26 @@ update msg model =
         SelectPair f g ->
             { model | first = Just f, second = Just g }
 
+        HoverPair pair ->
+            { model | hover = pair }
+
         ToggleIdentities ->
             { model | showIdentities = not model.showIdentities }
 
         Clear ->
             { model | first = Nothing, second = Nothing }
+
+
+{-| The pair of arrows on display: the hovered table cell if any, else the selection.
+-}
+shown : Model -> ( Maybe Int, Maybe Int )
+shown model =
+    case model.hover of
+        Just ( f, g ) ->
+            ( Just f, Just g )
+
+        Nothing ->
+            ( model.first, model.second )
 
 
 view : CompositionOrder -> Model -> Html Msg
@@ -70,17 +88,20 @@ view order model =
         cat =
             model.example.category
 
+        ( first, second ) =
+            shown model
+
         composite =
-            Maybe.map2 (Category.compose cat) model.first model.second |> Maybe.withDefault Nothing
+            Maybe.map2 (Category.compose cat) first second |> Maybe.withDefault Nothing
 
         highlight f =
-            if composite == Just f && model.first /= Just f && model.second /= Just f then
+            if composite == Just f && first /= Just f && second /= Just f then
                 Composite
 
-            else if model.first == Just f then
+            else if first == Just f then
                 First
 
-            else if model.second == Just f then
+            else if second == Just f then
                 Second
 
             else
@@ -217,7 +238,7 @@ view order model =
                     Notation.Classical ->
                         " — the column is applied first, as in g ∘ f = “g after f”."
                 )
-            , text " Hover or click a cell to see it in the picture."
+            , text " Hover over a cell to see it in the picture, click to select it."
             ]
         , div [ class "card" ]
             [ div [ class "col fit" ] [ compositionTable order model ] ]
@@ -322,14 +343,14 @@ compositionStatus order model =
                 Nothing ->
                     ""
     in
-    case ( model.first, model.second ) of
+    case shown model of
         ( Nothing, _ ) ->
             p [ class "muted" ] [ text "Click an arrow to start composing." ]
 
         ( Just f, Nothing ) ->
             let
                 targets =
-                    Category.morphism cat f |> Maybe.map (\m -> Category.morphismIndices cat |> List.filter (\g -> Category.morphism cat g |> Maybe.map (.src >> (==) m.tgt) |> Maybe.withDefault False)) |> Maybe.withDefault []
+                    Category.morphism cat f |> Maybe.map (.tgt >> Category.arrowsFrom cat) |> Maybe.withDefault []
             in
             div []
                 [ p [] [ text "Selected ", KaTeX.inline (arrowTex f), text "." ]
@@ -423,18 +444,13 @@ compositionTable order model =
 
         -- which (row, col) is currently selected, in table coordinates
         selected =
-            Maybe.map2
-                (\f g ->
-                    -- (f, g) is (first, second); undo tableEntryOrder
-                    case order of
-                        Notation.Diagrammatic ->
-                            ( f, g )
+            case shown model of
+                ( Just f, Just g ) ->
+                    -- (f, g) is (first, second); tableEntryOrder is its own inverse
+                    Just (Notation.tableEntryOrder order f g)
 
-                        Notation.Classical ->
-                            ( g, f )
-                )
-                model.first
-                model.second
+                _ ->
+                    Nothing
 
         header =
             tr []
@@ -459,7 +475,7 @@ compositionTable order model =
                                             , ( "hl-strong", selected == Just ( r, c ) )
                                             ]
                                         , onClick (SelectPair f g)
-                                        , Html.Events.onMouseEnter (SelectPair f g)
+                                        , Html.Events.onMouseEnter (HoverPair (Just ( f, g )))
                                         ]
                                         [ KaTeX.inline (lbl h) ]
 
@@ -469,7 +485,7 @@ compositionTable order model =
                         idx
                 )
     in
-    table [ class "cayley" ]
+    table [ class "cayley", Html.Events.onMouseLeave (HoverPair Nothing) ]
         [ thead [] [ header ]
         , tbody [] (List.map row idx)
         ]
@@ -492,24 +508,17 @@ lawsCard order cat =
 
         assocViolations =
             Category.associativityViolations cat
-
-        ok b =
-            if b then
-                span [ class "badge ok" ] [ text "holds" ]
-
-            else
-                span [ class "badge bad" ] [ text "FAILS" ]
     in
     div [ class "card" ]
         [ ul []
             [ li []
                 [ strong [] [ text "Closure: " ]
-                , ok (Category.isClosed cat)
+                , lawBadge (Category.isClosed cat)
                 , text (" every one of the " ++ String.fromInt pairs ++ " composable pairs has a composite with the right source and target.")
                 ]
             , li []
                 [ strong [] [ text "Identity law: " ]
-                , ok (List.isEmpty idViolations)
+                , lawBadge (List.isEmpty idViolations)
                 , text " checked for all arrows"
                 , text
                     (case idViolations of
@@ -522,7 +531,7 @@ lawsCard order cat =
                 ]
             , li []
                 [ strong [] [ text "Associativity: " ]
-                , ok (List.isEmpty assocViolations)
+                , lawBadge (List.isEmpty assocViolations)
                 , text (" verified by brute force for all " ++ String.fromInt triples ++ " composable triples")
                 , case assocViolations of
                     [] ->
@@ -592,7 +601,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen (\name -> List.filter (\ex -> ex.category.name == name) Categories.all |> List.head) of
+            case Query.string "c" q |> Maybe.andThen Categories.byName of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md

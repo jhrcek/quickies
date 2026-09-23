@@ -4,10 +4,11 @@ import Html exposing (Html, button, div, h2, h3, label, li, ol, p, strong, text)
 import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
-import Math.FinFunction as FinFunction exposing (FinFunction)
+import ListUtil
+import Math.FinFunction as FinFunction
 import Math.Group as Group exposing (Group)
 import Query exposing (Query)
-import Set
+import View.Common exposing (cycleNotation, elementPicker)
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
 
@@ -212,7 +213,7 @@ view order model =
                 )
             , p []
                 [ text
-                    (if allDistinct (List.map (\i -> FinFunction.toList (Group.leftMul grp i)) (List.range 0 (n - 1))) then
+                    (if ListUtil.allDistinct (List.map (\i -> FinFunction.toList (Group.leftMul grp i)) (List.range 0 (n - 1))) then
                         "✓ all " ++ String.fromInt n ++ " permutations are different."
 
                      else
@@ -265,35 +266,6 @@ opts title =
     { width = 220, rowHeight = 30, radius = 8, showLabels = True, title = Just title, highlightSource = Nothing }
 
 
-elementPicker : (Int -> Msg) -> Group -> Int -> Html Msg
-elementPicker toMsg grp current =
-    div [ class "controls" ]
-        (List.range 0 (Group.order grp - 1)
-            |> List.map
-                (\i -> button [ classList [ ( "active", i == current ) ], onClick (toMsg i) ] [ KaTeX.inline (Group.label grp i) ])
-        )
-
-
-cycleNotation : Group -> FinFunction -> String
-cycleNotation grp f =
-    let
-        nontrivial =
-            FinFunction.cycles f |> List.filter (\c -> List.length c > 1)
-    in
-    if List.isEmpty nontrivial then
-        "\\mathrm{id}"
-
-    else
-        nontrivial
-            |> List.map (\c -> "(" ++ String.join "\\;" (List.map (Group.label grp) c) ++ ")")
-            |> String.concat
-
-
-allDistinct : List (List Int) -> Bool
-allDistinct xs =
-    Set.size (Set.fromList xs) == List.length xs
-
-
 factorial : Int -> Int
 factorial n =
     List.product (List.range 1 n)
@@ -317,7 +289,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withGroup md =
-            case Query.string "group" q |> Maybe.andThen (\name -> List.filter (\grp -> grp.name == name) Group.allGroups |> List.head) of
+            case Query.string "group" q |> Maybe.andThen Group.byName of
                 Just grp ->
                     update (SelectGroup grp) md
 

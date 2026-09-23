@@ -4,6 +4,7 @@ module Math.Functor exposing
     , constant
     , enumerateAll
     , identityFunctor
+    , identityViolations
     , isFunctor
     , make
     , morphismImage

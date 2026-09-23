@@ -2,7 +2,9 @@ module Math.Categories exposing
     ( Example
     , all
     , arrow
+    , byName
     , chain3
+    , composeWithIdentities
     , diamond
     , idempotentMonoid
     , layoutFor
@@ -13,6 +15,7 @@ module Math.Categories exposing
 {-| Curated tiny categories, each with hand-placed object coordinates for the SVG diagram.
 -}
 
+import ListUtil
 import Math.Category as Category exposing (Category)
 import Math.Group as Group exposing (Group)
 
@@ -179,6 +182,13 @@ ofGroup g =
     oneObject (Category.fromGroup g)
 
 
+{-| The curated example with the given category name.
+-}
+byName : String -> Maybe Example
+byName name =
+    ListUtil.find (\ex -> ex.category.name == name) all
+
+
 {-| Composition when one of the two arrows is an identity (labelled `\mathrm{id}_…`).
 -}
 composeWithIdentities : String -> String -> String
@@ -195,11 +205,11 @@ on a line, for categories that only appear as the source of a Set-valued functor
 -}
 layoutFor : Category -> Example
 layoutFor cat =
-    case List.filter (\ex -> ex.category.name == cat.name) all of
-        ex :: _ ->
+    case byName cat.name of
+        Just ex ->
             { ex | category = cat }
 
-        [] ->
+        Nothing ->
             let
                 n =
                     Category.objectCount cat

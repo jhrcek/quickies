@@ -22,6 +22,7 @@ The data may be wrong; law checks report the offending items.
 -}
 
 import Array exposing (Array)
+import ListUtil
 import Math.Categories as Categories
 import Math.Category as Category exposing (Category)
 import Math.FinFunction as FinFunction exposing (FinFunction)
@@ -115,23 +116,7 @@ typingViolations fun =
             (\f ->
                 case Category.morphism fun.source f of
                     Just m ->
-                        let
-                            ff =
-                                morphismImage fun f
-
-                            src =
-                                objectImage fun m.src
-
-                            tgt =
-                                objectImage fun m.tgt
-                        in
-                        FinSet.size ff.source
-                            /= FinSet.size src
-                            || FinSet.size ff.target
-                            /= FinSet.size tgt
-                            || List.length (FinFunction.toList ff)
-                            /= FinSet.size src
-                            || List.any (\j -> j < 0 || j >= FinSet.size tgt) (FinFunction.toList ff)
+                        not (FinFunction.isWellTyped (objectImage fun m.src) (objectImage fun m.tgt) (morphismImage fun f))
 
                     Nothing ->
                         True
@@ -182,6 +167,13 @@ homSet c a x =
         (List.map (Category.morphismLabel c) (Category.hom c a x))
 
 
+{-| `Hom(X, A)`, the arrows into `A`, named as such.
+-}
+homSetInto : Category -> Int -> Int -> FinSet
+homSetInto c a x =
+    homSet c x a
+
+
 {-| The covariant hom functor `Hom(A, −) : C → Set`: an object `X` goes to the set of
 arrows `A → X`, and an arrow `f : X → Y` goes to post-composition
 `Hom(A, X) → Hom(A, Y)`, `g ↦ g ; f` ("g then f").
@@ -228,7 +220,7 @@ contraHomFunctor c a =
         , texName = "\\mathrm{Hom}(-, " ++ aLbl ++ ")"
         , description = "Every object X goes to the set of arrows X → " ++ aLbl ++ "; an arrow f : X → Y goes to the function “f then”, sending g : Y → " ++ aLbl ++ " to the composite X → Y → " ++ aLbl ++ ". The direction is reversed, so this is a functor out of the opposite category."
         }
-        (\x -> FinSet.fromLabels ("\\mathrm{Hom}(" ++ Category.objectLabel c x ++ ", " ++ aLbl ++ ")") (List.map (Category.morphismLabel c) (Category.hom c x a)))
+        (homSetInto c a)
         op
         a
 
@@ -240,11 +232,8 @@ representable : { name : String, texName : String, description : String } -> (In
 representable names setOf c a =
     let
         indexIn xs h =
-            xs
-                |> List.indexedMap Tuple.pair
-                |> List.filter (\( _, x ) -> Just x == h)
-                |> List.head
-                |> Maybe.map Tuple.first
+            h
+                |> Maybe.andThen (\x -> ListUtil.indexOf x xs)
                 |> Maybe.withDefault -1
 
         morphismFun f =
@@ -336,13 +325,7 @@ graph =
                     , { label = "t", src = 0, tgt = 1 }
                     ]
                 , identities = [ "\\mathrm{id}_E", "\\mathrm{id}_V" ]
-                , compose =
-                    \f g ->
-                        if String.startsWith "\\mathrm{id}" f then
-                            g
-
-                        else
-                            f
+                , compose = Categories.composeWithIdentities
                 }
     in
     make
@@ -419,8 +402,8 @@ groupAction g =
     in
     { name = g.name ++ " acting on itself"
     , texName = "L : " ++ Group.toCategoryName g ++ " \\to \\mathbf{Set}"
-    , description = "The object goes to the underlying set of the group itself, and each element g goes to the permutation “multiply by g” from chapter 3. Functoriality is the equation L_{g·h} = L_g ∘ L_h proved there."
+    , description = "The object goes to the underlying set of the group itself, and each element g goes to the permutation “multiply by g” from chapter 3. Functoriality says that multiplying by h and then by g is the same as multiplying by g·h, as proved there."
     , source = cat
     , objects = Array.fromList [ Group.carrier g ]
-    , morphisms = Array.initialize ((Group.order g - 1) + 1) (Group.leftMul g)
+    , morphisms = Array.initialize (Group.order g) (Group.leftMul g)
     }

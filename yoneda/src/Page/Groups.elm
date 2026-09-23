@@ -250,26 +250,25 @@ cayleyTable model =
 -- DEEP LINKS
 
 
-{-| `g` is the group name; `cell` the selected table cell; `inv` shows inverses.
+{-| `g` is the group name; `inv` highlights the identity cells. The selected cell follows
+the mouse, so it is transient and not part of the link.
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
     Query.param "g" model.group.name
-        :: List.filterMap identity
-            [ Maybe.map (\( i, j ) -> Query.param "cell" (String.fromInt i ++ "," ++ String.fromInt j)) model.selectedCell
-            , if model.showInverses then
-                Just (Query.param "inv" "1")
+        :: (if model.showInverses then
+                [ Query.param "inv" "1" ]
 
-              else
-                Nothing
-            ]
+            else
+                []
+           )
 
 
 fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withGroup md =
-            case Query.string "g" q |> Maybe.andThen (\name -> List.filter (\grp -> grp.name == name) Group.allGroups |> List.head) of
+            case Query.string "g" q |> Maybe.andThen Group.byName of
                 Just grp ->
                     if grp.name == md.group.name then
                         md
@@ -280,18 +279,6 @@ fromQuery q model =
                 Nothing ->
                     md
 
-        withCell md =
-            case Query.intList "cell" q of
-                Just [ i, j ] ->
-                    if 0 <= i && i < Group.order md.group && 0 <= j && j < Group.order md.group then
-                        { md | selectedCell = Just ( i, j ) }
-
-                    else
-                        md
-
-                _ ->
-                    md
-
         withInverses md =
             case Query.string "inv" q of
                 Just v ->
@@ -300,4 +287,4 @@ fromQuery q model =
                 Nothing ->
                     md
     in
-    model |> withGroup |> withCell |> withInverses
+    model |> withGroup |> withInverses

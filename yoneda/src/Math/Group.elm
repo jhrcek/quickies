@@ -2,6 +2,7 @@ module Math.Group exposing
     ( Group
     , allGroups
     , associativityHolds
+    , byName
     , carrier
     , cyclic
     , dihedral4
@@ -25,6 +26,7 @@ module Math.Group exposing
 
 import Array exposing (Array)
 import Dict exposing (Dict)
+import ListUtil
 import Math.FinFunction as FinFunction exposing (FinFunction)
 import Math.FinSet as FinSet exposing (FinSet)
 
@@ -153,6 +155,13 @@ allGroups =
     [ cyclic 2, cyclic 3, cyclic 4, klein, symmetric3, dihedral4 ]
 
 
+{-| The curated group with the given name.
+-}
+byName : String -> Maybe Group
+byName name =
+    ListUtil.find (\g -> g.name == name) allGroups
+
+
 cyclic : Int -> Group
 cyclic n =
     { name = "Z" ++ String.fromInt n
@@ -171,11 +180,7 @@ klein =
             [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
 
         idxOf p =
-            List.indexedMap Tuple.pair pairs
-                |> List.filter (\( _, q ) -> q == p)
-                |> List.head
-                |> Maybe.map Tuple.first
-                |> Maybe.withDefault 0
+            ListUtil.indexOf p pairs |> Maybe.withDefault 0
 
         add ( a, b ) ( c, d ) =
             ( modBy 2 (a + c), modBy 2 (b + d) )
@@ -261,11 +266,7 @@ fromGenerators name texName description mkLabel gens =
             bfs [ ( idPerm, [] ) ] (Dict.singleton idPerm []) [ idPerm ]
 
         indexOf p =
-            List.indexedMap Tuple.pair elements
-                |> List.filter (\( _, q ) -> q == p)
-                |> List.head
-                |> Maybe.map Tuple.first
-                |> Maybe.withDefault 0
+            ListUtil.indexOf p elements |> Maybe.withDefault 0
     in
     { name = name
     , texName = texName

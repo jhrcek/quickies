@@ -5,13 +5,15 @@ import Html exposing (Html, button, div, h2, h3, li, p, span, strong, text, ul)
 import Html.Attributes exposing (class, classList, disabled)
 import Html.Events exposing (onClick)
 import KaTeX
+import ListUtil
 import Math.Categories as Categories exposing (Example)
-import Math.Category as Category exposing (Category)
+import Math.Category as Category
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
 import Math.Functor as Functor exposing (Functor)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Query exposing (Query)
+import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
@@ -63,17 +65,9 @@ init =
     , enumerated = Nothing
     , setExample = SetFunctor.twoFunctions
     , setFunctor = SetFunctor.twoFunctions
-    , setArrow = firstNonIdentity SetFunctor.twoFunctions.source
+    , setArrow = Category.firstNonIdentity SetFunctor.twoFunctions.source
     , setSelected = Nothing
     }
-
-
-firstNonIdentity : Category -> Int
-firstNonIdentity cat =
-    Category.morphismIndices cat
-        |> List.filter (not << Category.isIdentity cat)
-        |> List.head
-        |> Maybe.withDefault 0
 
 
 update : Msg -> Model -> Model
@@ -123,7 +117,7 @@ update msg model =
             { model | functor = fun }
 
         SelectSetExample ex ->
-            { model | setExample = ex, setFunctor = ex, setArrow = firstNonIdentity ex.source, setSelected = Nothing }
+            { model | setExample = ex, setFunctor = ex, setArrow = Category.firstNonIdentity ex.source, setSelected = Nothing }
 
         SelectSetArrow f ->
             { model | setArrow = f, setSelected = Nothing }
@@ -514,18 +508,14 @@ lawsCard order fun =
         typing =
             Functor.typingViolations fun
 
+        identities =
+            Functor.identityViolations fun
+
         comp =
             Functor.compositionViolations fun
 
         pairs =
             List.length (Category.composablePairs src)
-
-        ok b =
-            if b then
-                span [ class "badge ok" ] [ text "holds" ]
-
-            else
-                span [ class "badge bad" ] [ text "FAILS" ]
 
         equation ( f, g ) =
             let
@@ -551,7 +541,7 @@ lawsCard order fun =
         [ ul []
             [ li []
                 [ strong [] [ text "Typing: " ]
-                , ok (List.isEmpty typing)
+                , lawBadge (List.isEmpty typing)
                 , text
                     (if List.isEmpty typing then
                         " every arrow is sent to an arrow between the images of its endpoints."
@@ -562,12 +552,20 @@ lawsCard order fun =
                 ]
             , li []
                 [ strong [] [ text "Identities: " ]
-                , ok True
-                , text " sent to identities by construction."
+                , lawBadge (List.isEmpty identities)
+                , text
+                    (if List.isEmpty identities then
+                        " every identity arrow is sent to an identity."
+
+                     else
+                        " "
+                            ++ String.join ", " (List.map (\o -> "F(id " ++ Notation.plain (Category.objectLabel src o) ++ ")") identities)
+                            ++ " is not an identity arrow."
+                    )
                 ]
             , li []
                 [ strong [] [ text "Composition: " ]
-                , ok (List.isEmpty comp)
+                , lawBadge (List.isEmpty comp)
                 , text
                     (if List.isEmpty comp then
                         " checked for all " ++ String.fromInt pairs ++ " composable pairs."
@@ -852,13 +850,6 @@ setLaws order fun =
         pairs =
             List.length (Category.composablePairs cat)
 
-        ok b =
-            if b then
-                span [ class "badge ok" ] [ text "holds" ]
-
-            else
-                span [ class "badge bad" ] [ text "FAILS" ]
-
         witness ( f, g ) =
             let
                 h =
@@ -900,11 +891,11 @@ setLaws order fun =
     div []
         [ p [] [ strong [] [ text "Functor laws" ] ]
         , ul []
-            [ li [] [ strong [] [ text "Typing: " ], ok (List.isEmpty (SetFunctor.typingViolations fun)), text " each function goes from F(source) to F(target)." ]
-            , li [] [ strong [] [ text "Identities: " ], ok (List.isEmpty (SetFunctor.identityViolations fun)), text " identity arrows are identity functions." ]
+            [ li [] [ strong [] [ text "Typing: " ], lawBadge (List.isEmpty (SetFunctor.typingViolations fun)), text " each function goes from F(source) to F(target)." ]
+            , li [] [ strong [] [ text "Identities: " ], lawBadge (List.isEmpty (SetFunctor.identityViolations fun)), text " identity arrows are identity functions." ]
             , li []
                 [ strong [] [ text "Composition: " ]
-                , ok (List.isEmpty comp)
+                , lawBadge (List.isEmpty comp)
                 , text
                     (if List.isEmpty comp then
                         " all " ++ String.fromInt pairs ++ " composable pairs agree."
@@ -942,8 +933,8 @@ toQuery : Model -> List ( String, String )
 toQuery model =
     [ Query.param "src" model.source.category.name
     , Query.param "tgt" model.target.category.name
-    , Query.param "obj" (intList (Array.toList model.functor.onObjects))
-    , Query.param "mor" (intList (Array.toList model.functor.onMorphisms))
+    , Query.intListParam "obj" (Array.toList model.functor.onObjects)
+    , Query.intListParam "mor" (Array.toList model.functor.onMorphisms)
     , Query.param "set" model.setExample.name
     , Query.param "arrow" (String.fromInt model.setArrow)
     ]
@@ -953,7 +944,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         category key current msg md =
-            case Query.string key q |> Maybe.andThen (\name -> List.filter (\ex -> ex.category.name == name) Categories.all |> List.head) of
+            case Query.string key q |> Maybe.andThen Categories.byName of
                 Just ex ->
                     if ex.category.name == (current md).category.name then
                         md
@@ -988,7 +979,7 @@ fromQuery q model =
                     md
 
         withSetExample md =
-            case Query.string "set" q |> Maybe.andThen (\name -> findByName name SetFunctor.all) of
+            case Query.string "set" q |> Maybe.andThen (\name -> ListUtil.find (\f -> f.name == name) SetFunctor.all) of
                 Just ex ->
                     if ex.name == md.setExample.name then
                         md
@@ -1013,13 +1004,3 @@ fromQuery q model =
         |> withFunctor
         |> withSetExample
         |> withSetArrow
-
-
-intList : List Int -> String
-intList =
-    List.map String.fromInt >> String.join ","
-
-
-findByName : String -> List { a | name : String } -> Maybe { a | name : String }
-findByName name xs =
-    List.filter (\x -> x.name == name) xs |> List.head

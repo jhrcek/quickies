@@ -1,148 +1,273 @@
 module Page.YonedaLemma exposing (Model, Msg, fromQuery, init, toQuery, update, view)
 
 import Html exposing (Html, button, div, h2, h3, li, ol, p, span, strong, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (class, classList)
+import Html.Attributes exposing (class, classList, disabled)
 import Html.Events exposing (onClick)
 import KaTeX
-import Math.Categories as Categories exposing (Example)
+import ListUtil
 import Math.Category as Category
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
 import Math.NatTrans as NatTrans exposing (NatTrans)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
+import Math.Setting as Setting exposing (Setting)
 import Math.Yoneda as Yoneda
 import Query exposing (Query)
+import View.Common exposing (countBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
 import View.Square as Square
 
 
-{-| A category together with the Set-valued functors the reader may pick `F` from.
+{-| Covariant: `Nat(Hom(A, −), F) ≅ F(A)` for `F : C → Set`. Contravariant:
+`Nat(Hom(−, A), F) ≅ F(A)` for `F : C^op → Set`.
 -}
-type alias Setting =
-    { example : Example
-    , functors : List SetFunctor
+type Variance
+    = Covariant
+    | Contravariant
+
+
+{-| The left column of the bijection. It is computed when the selection changes, not on
+every render: the brute-force search can take tens of thousands of candidates.
+-}
+type alias Nats =
+    { list : List NatTrans
+    , searchSize : Int
+    , bruteForce : Bool -- False: too big to search, built with the lemma's recipe instead
     }
 
 
 type alias Model =
     { setting : Setting
+    , variance : Variance
     , object : Int -- A
     , functor : SetFunctor -- F
+    , nats : Nats
     , element : Int -- the selected x ∈ F(A), i.e. the selected pair of the bijection
-    , chaseObject : Int -- X in the naturality chase
-    , chaseArrow : Int -- f : A → X in the chase (morphism index)
+    , chaseArrow : Int -- the arrow whose square is chased: f : A → X (covariant), f : X → A (contravariant)
+    , chaseStep : Int -- how many legs of the chase are shown, 0 to 3
     }
 
 
 type Msg
     = SelectSetting Setting
+    | SelectVariance Variance
     | SelectObject Int
     | SelectFunctor SetFunctor
     | SelectElement Int
     | SelectChaseArrow Int
-
-
-settings : List Setting
-settings =
-    let
-        forExample ex =
-            { example = ex
-            , functors =
-                List.filter (\f -> f.source.name == ex.category.name) SetFunctor.all
-                    ++ List.map (SetFunctor.homFunctor ex.category) (Category.objectIndices ex.category)
-            }
-
-        curatedOnly =
-            SetFunctor.all
-                |> List.filter (\f -> List.all (\ex -> ex.category.name /= f.source.name) Categories.all)
-                |> List.map (.source >> Categories.layoutFor >> forExample)
-    in
-    List.map forExample Categories.all ++ curatedOnly
+    | SetChaseStep Int
 
 
 init : Model
 init =
-    let
-        setting =
-            settings
-                |> List.filter (\s -> s.example.category.name == Categories.mixed.category.name)
-                |> List.head
-                |> Maybe.withDefault { example = Categories.mixed, functors = [] }
-    in
-    load setting 0 (SetFunctor.homFunctor Categories.mixed.category 1)
+    load Setting.default Covariant 0 (SetFunctor.homFunctor Setting.default.example.category 1)
 
 
-load : Setting -> Int -> SetFunctor -> Model
-load setting a f =
+searchCap : Int
+searchCap =
+    200000
+
+
+functorsFor : Variance -> Setting -> List SetFunctor
+functorsFor variance setting =
+    case variance of
+        Covariant ->
+            setting.functors
+
+        Contravariant ->
+            setting.contraFunctors
+
+
+load : Setting -> Variance -> Int -> SetFunctor -> Model
+load setting variance a f =
     let
         cat =
             setting.example.category
+
+        partial =
+            { setting = setting
+            , variance = variance
+            , object = a
+            , functor = f
+            , nats = { list = [], searchSize = 0, bruteForce = True }
+            , element = 0
+            , chaseArrow = Category.identity cat a
+            , chaseStep = 0
+            }
+
+        hom =
+            representable partial
+
+        size =
+            NatTrans.searchSize hom f
     in
-    { setting = setting
-    , object = a
-    , functor = f
-    , element = 0
-    , chaseObject = a
-    , chaseArrow = Category.identity cat a
+    { partial
+        | nats =
+            if size <= searchCap then
+                { list = NatTrans.enumerateAll hom f, searchSize = size, bruteForce = True }
+
+            else
+                { list = List.map (recipe partial) (List.range 0 (FinSet.size (SetFunctor.objectImage f a) - 1))
+                , searchSize = size
+                , bruteForce = False
+                }
+        , chaseArrow =
+            -- prefer a non-identity arrow, since the identity square is the trivial one
+            chaseArrows partial
+                |> ListUtil.find (not << Category.isIdentity cat)
+                |> Maybe.withDefault partial.chaseArrow
     }
-        |> chaseDefault
 
 
-{-| Prefer a non-identity arrow out of `A` for the chase, since the identity square is
-the trivial one.
+{-| `Hom(A, −)` or `Hom(−, A)`, as a functor on `C` or `C^op`.
 -}
-chaseDefault : Model -> Model
-chaseDefault model =
-    let
-        cat =
-            model.setting.example.category
-    in
-    case
-        Category.morphismIndices cat
-            |> List.filter (\f -> not (Category.isIdentity cat f) && (Category.morphism cat f |> Maybe.map .src) == Just model.object)
-            |> List.head
-    of
-        Just f ->
-            setChase f model
+representable : Model -> SetFunctor
+representable model =
+    case model.variance of
+        Covariant ->
+            SetFunctor.homFunctor model.setting.example.category model.object
 
-        Nothing ->
-            model
+        Contravariant ->
+            SetFunctor.contraHomFunctor model.setting.example.category model.object
 
 
-setChase : Int -> Model -> Model
-setChase f model =
-    case Category.morphism model.setting.example.category f of
-        Just m ->
-            { model | chaseArrow = f, chaseObject = m.tgt }
+{-| The lemma's recipe `x ↦ (f ↦ F(f)(x))`.
+-}
+recipe : Model -> Int -> NatTrans
+recipe model x =
+    case model.variance of
+        Covariant ->
+            Yoneda.fromElement model.setting.example.category model.object model.functor x
 
-        Nothing ->
-            model
+        Contravariant ->
+            Yoneda.contraFromElement model.setting.example.category model.object model.functor x
+
+
+{-| The arrows of `C` whose naturality square starts at `Hom(A, A)`: out of `A` in the
+covariant case, into `A` in the contravariant one.
+-}
+chaseArrows : Model -> List Int
+chaseArrows model =
+    case model.variance of
+        Covariant ->
+            Category.arrowsFrom model.setting.example.category model.object
+
+        Contravariant ->
+            Category.arrowsInto model.setting.example.category model.object
+
+
+{-| The other end `X` of the chased arrow.
+-}
+chaseObject : Model -> Int
+chaseObject model =
+    case ( Category.morphism model.setting.example.category model.chaseArrow, model.variance ) of
+        ( Just m, Covariant ) ->
+            m.tgt
+
+        ( Just m, Contravariant ) ->
+            m.src
+
+        ( Nothing, _ ) ->
+            model.object
 
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         SelectSetting s ->
-            case s.functors of
+            case functorsFor model.variance s of
                 f :: _ ->
-                    load s 0 f
+                    load s model.variance 0 f
+
+                [] ->
+                    model
+
+        SelectVariance v ->
+            case functorsFor v model.setting of
+                f :: _ ->
+                    load model.setting v model.object f
 
                 [] ->
                     model
 
         SelectObject a ->
-            load model.setting a model.functor
+            load model.setting model.variance a model.functor
 
         SelectFunctor f ->
-            load model.setting model.object f
+            load model.setting model.variance model.object f
 
         SelectElement x ->
             { model | element = x }
 
         SelectChaseArrow f ->
-            setChase f model
+            if List.member f (chaseArrows model) then
+                { model | chaseArrow = f, chaseStep = 0 }
+
+            else
+                model
+
+        SetChaseStep n ->
+            { model | chaseStep = clamp 0 3 n }
+
+
+
+-- NOTATION
+
+
+{-| TeX snippets that differ between the covariant and the contravariant lemma.
+-}
+type alias Words =
+    { hom :
+        String
+        -> String -- Hom(A, −) / Hom(−, A)
+    , homSet :
+        String
+        -> String
+        -> String -- Hom(A, X) / Hom(X, A), given A and X
+    , homOf :
+        String
+        -> String
+        -> String -- Hom(A, f) / Hom(f, A), given A and f
+    , arrow :
+        String
+        -> String
+        -> String -- f : A → X / f : X → A, given f and A (with X generic)
+    , functorType : String -- F : C → Set / F : C^op → Set
+    }
+
+
+wordsFor : Variance -> Words
+wordsFor variance =
+    case variance of
+        Covariant ->
+            { hom = \a -> "\\mathrm{Hom}(" ++ a ++ ", -)"
+            , homSet = \a x -> "\\mathrm{Hom}(" ++ a ++ ", " ++ x ++ ")"
+            , homOf = \a f -> "\\mathrm{Hom}(" ++ a ++ ", " ++ f ++ ")"
+            , arrow = \f a -> f ++ " : " ++ a ++ " \\to X"
+            , functorType = "F : \\mathcal{C} \\to \\mathbf{Set}"
+            }
+
+        Contravariant ->
+            { hom = \a -> "\\mathrm{Hom}(-, " ++ a ++ ")"
+            , homSet = \a x -> "\\mathrm{Hom}(" ++ x ++ ", " ++ a ++ ")"
+            , homOf = \a f -> "\\mathrm{Hom}(" ++ f ++ ", " ++ a ++ ")"
+            , arrow = \f a -> f ++ " : X \\to " ++ a
+            , functorType = "F : \\mathcal{C}^{\\mathrm{op}} \\to \\mathbf{Set}"
+            }
+
+
+{-| What `Hom(A, g)` (or `Hom(g, A)`) does to `id_A`: `id_A ; g` (or `g ; id_A`).
+-}
+onIdentity : CompositionOrder -> Variance -> String -> String -> String
+onIdentity order variance idA g =
+    case variance of
+        Covariant ->
+            Notation.compose order idA g
+
+        Contravariant ->
+            Notation.compose order g idA
 
 
 
@@ -154,6 +279,9 @@ view order model =
     let
         cat =
             model.setting.example.category
+
+        w =
+            wordsFor model.variance
     in
     div []
         [ h2 [] [ text "8. The Yoneda lemma" ]
@@ -196,14 +324,35 @@ view order model =
             , KaTeX.inline "\\alpha_A(\\mathrm{id}_A)"
             , text " is enough to reconstruct every component."
             ]
+        , p []
+            [ text "There is a mirror image for the contravariant hom functors of chapter 6: for a functor "
+            , KaTeX.inline "F : \\mathcal{C}^{\\mathrm{op}} \\to \\mathbf{Set}"
+            , text ","
+            ]
+        , KaTeX.display "\\mathrm{Nat}\\big(\\mathrm{Hom}(-, A),\\, F\\big) \\;\\cong\\; F(A),"
+        , p []
+            [ text "by the very same recipes, now with arrows "
+            , KaTeX.inline "f : X \\to A"
+            , text " into "
+            , KaTeX.inline "A"
+            , text ". It is the lemma above applied to the opposite category. The variance toggle below switches everything on this page to that version."
+            ]
         , h3 [] [ text "See the bijection" ]
         , p []
             [ text "Pick a category, an object "
             , KaTeX.inline "A"
             , text " and a functor "
-            , KaTeX.inline "F"
-            , text " (the Set-valued examples from chapter 5 and the hom functors from chapter 6). The left column lists every natural transformation "
-            , KaTeX.inline "\\mathrm{Hom}(A, -) \\Rightarrow F"
+            , KaTeX.inline w.functorType
+            , text
+                (case model.variance of
+                    Covariant ->
+                        " (the Set-valued examples from chapter 5 and the hom functors from chapter 6). "
+
+                    Contravariant ->
+                        " (the contravariant hom functors from chapter 6). "
+                )
+            , text "The left column lists every natural transformation "
+            , KaTeX.inline (w.hom "A" ++ " \\Rightarrow F")
             , text ", found by the brute-force search of chapter 7; the right column lists the elements of "
             , KaTeX.inline "F(A)"
             , text ". Click on either side to highlight its partner."
@@ -214,8 +363,13 @@ view order model =
                     (\s ->
                         button [ classList [ ( "active", s.example.category.name == cat.name ) ], onClick (SelectSetting s) ] [ KaTeX.inline s.example.category.texName ]
                     )
-                    settings
+                    Setting.all
             )
+        , div [ class "controls" ]
+            [ span [ class "muted" ] [ text "Variance:" ]
+            , button [ classList [ ( "active", model.variance == Covariant ) ], onClick (SelectVariance Covariant) ] [ text "covariant ", KaTeX.inline "\\mathrm{Hom}(A, -)" ]
+            , button [ classList [ ( "active", model.variance == Contravariant ) ], onClick (SelectVariance Contravariant) ] [ text "contravariant ", KaTeX.inline "\\mathrm{Hom}(-, A)" ]
+            ]
         , div [ class "controls" ]
             (span [ class "muted" ] [ text "Object A:" ]
                 :: List.map
@@ -230,13 +384,13 @@ view order model =
                     (\f ->
                         button [ classList [ ( "active", f.name == model.functor.name ) ], onClick (SelectFunctor f) ] [ KaTeX.inline f.texName ]
                     )
-                    model.setting.functors
+                    (functorsFor model.variance model.setting)
             )
         , bijectionCard model
         , h3 [] [ text "Why one element determines everything" ]
         , chaseCard order model
         , h3 [] [ text "Proof" ]
-        , proof order
+        , proof order model.variance
         , div [ class "callout remember" ]
             [ strong [] [ text "Remember this. " ]
             , text "Take "
@@ -258,11 +412,8 @@ with the selected pair highlighted and the formulas connecting them.
 bijectionCard : Model -> Html Msg
 bijectionCard model =
     let
-        ex =
-            model.setting.example
-
         cat =
-            ex.category
+            model.setting.example.category
 
         a =
             model.object
@@ -274,24 +425,13 @@ bijectionCard model =
             model.functor
 
         hom =
-            SetFunctor.homFunctor cat a
+            representable model
 
         fa =
             SetFunctor.objectImage f a
 
-        cap =
-            200000
-
-        searchable =
-            NatTrans.searchSize hom f <= cap
-
-        -- natural transformations, in the order the brute-force search finds them
         nats =
-            if searchable then
-                NatTrans.enumerateAll hom f
-
-            else
-                List.map (Yoneda.fromElement cat a f) (List.range 0 (FinSet.size fa - 1))
+            model.nats.list
 
         natTex =
             "\\mathrm{Nat}(" ++ hom.texName ++ ", " ++ f.texName ++ ")"
@@ -314,25 +454,17 @@ bijectionCard model =
         [ p []
             [ KaTeX.inline (natTex ++ " \\;\\cong\\; " ++ fa.name)
             , text "  "
-            , if List.length nats == FinSet.size fa then
-                span [ class "badge ok" ] [ text (String.fromInt (List.length nats) ++ " = " ++ String.fromInt (FinSet.size fa)) ]
-
-              else
-                span [ class "badge bad" ] [ text (String.fromInt (List.length nats) ++ " ≠ " ++ String.fromInt (FinSet.size fa)) ]
+            , countBadge (List.length nats) (FinSet.size fa)
             ]
-        , if searchable then
-            p [ class "muted" ]
-                [ text "The left column was found by checking all "
-                , text (String.fromInt (NatTrans.searchSize hom f))
-                , text " families of functions, without using the lemma."
-                ]
+        , p [ class "muted" ]
+            [ text
+                (if model.nats.bruteForce then
+                    "The left column was found by checking all " ++ String.fromInt model.nats.searchSize ++ " families of functions, without using the lemma."
 
-          else
-            p [ class "muted" ]
-                [ text "There are "
-                , text (String.fromInt (NatTrans.searchSize hom f))
-                , text " families of functions to check, too many for the brute-force search; the left column was built with the lemma's recipe instead."
-                ]
+                 else
+                    "There are " ++ String.fromInt model.nats.searchSize ++ " families of functions to check, too many for the brute-force search; the left column was built with the lemma's recipe instead."
+                )
+            ]
         , div [ class "row" ]
             [ div [ class "col" ]
                 [ p [] [ strong [] [ KaTeX.inline natTex ] ]
@@ -355,11 +487,7 @@ bijectionCard model =
             text ""
 
           else
-            let
-                selectedNat =
-                    Yoneda.fromElement cat a f model.element
-            in
-            selectedPair model selectedNat
+            selectedPair model (recipe model model.element)
         ]
 
 
@@ -371,6 +499,14 @@ selectedPair model nt =
     let
         cat =
             model.setting.example.category
+
+        -- the category the transformation lives on: C or C^op; hom sets out of A there
+        -- are the hom sets out of / into A in C, in the same order
+        onCat =
+            nt.source.source
+
+        w =
+            wordsFor model.variance
 
         a =
             model.object
@@ -398,7 +534,7 @@ selectedPair model nt =
                 cell g =
                     let
                         i =
-                            Yoneda.homPosition cat a obj g
+                            Yoneda.homPosition onCat a obj g
                     in
                     td [ classList [ ( "hl-strong", g == Category.identity cat a ) ] ]
                         [ KaTeX.inline
@@ -407,9 +543,9 @@ selectedPair model nt =
             in
             tr []
                 (th [] [ KaTeX.inline ("X = " ++ Category.objectLabel cat obj) ]
-                    :: (case Category.hom cat a obj of
+                    :: (case Category.hom onCat a obj of
                             [] ->
-                                [ td [ class "empty" ] [ KaTeX.inline ("\\mathrm{Hom}(" ++ aLbl ++ ", " ++ Category.objectLabel cat obj ++ ") = \\varnothing") ] ]
+                                [ td [ class "empty" ] [ KaTeX.inline (w.homSet aLbl (Category.objectLabel cat obj) ++ " = \\varnothing") ] ]
 
                             gs ->
                                 List.map cell gs
@@ -425,7 +561,7 @@ selectedPair model nt =
             , text " with components "
             , KaTeX.inline ("\\alpha_X(f) = F(f)(" ++ xLbl ++ ")")
             , text " for every arrow "
-            , KaTeX.inline ("f : " ++ aLbl ++ " \\to X")
+            , KaTeX.inline (w.arrow "f" aLbl)
             , text ":"
             ]
         , table [ class "cayley" ]
@@ -440,8 +576,8 @@ selectedPair model nt =
         ]
 
 
-{-| The naturality chase: the square of a chosen arrow `f : A → X`, with the element
-`id_A` pushed around it both ways.
+{-| The naturality chase: the square of a chosen arrow `f` between `A` and `X`, with the
+element `id_A` pushed around it both ways, one leg per step.
 -}
 chaseCard : CompositionOrder -> Model -> Html Msg
 chaseCard order model =
@@ -451,6 +587,9 @@ chaseCard order model =
 
         cat =
             ex.category
+
+        w =
+            wordsFor model.variance
 
         a =
             model.object
@@ -465,14 +604,7 @@ chaseCard order model =
             SetFunctor.objectImage f a
 
         hom =
-            SetFunctor.homFunctor cat a
-
-        nt =
-            Yoneda.fromElement cat a f model.element
-
-        arrowsOutOfA =
-            Category.morphismIndices cat
-                |> List.filter (\m -> (Category.morphism cat m |> Maybe.map .src) == Just a)
+            representable model
 
         g =
             model.chaseArrow
@@ -481,7 +613,7 @@ chaseCard order model =
             Category.morphismLabel cat g
 
         x =
-            model.chaseObject
+            chaseObject model
 
         xLbl =
             Category.objectLabel cat x
@@ -492,30 +624,41 @@ chaseCard order model =
         idA =
             "\\mathrm{id}_{" ++ aLbl ++ "}"
 
-        elt =
-            FinSet.labelAt model.element fa
-
-        result =
-            FinSet.labelAt (FinFunction.apply (SetFunctor.morphismImage f g) model.element) fx
-
         homOfG =
-            "\\mathrm{Hom}(" ++ aLbl ++ ", " ++ gLbl ++ ")"
+            w.homOf aLbl gLbl
+
+        step =
+            model.chaseStep
+
+        emphasised =
+            case step of
+                1 ->
+                    [ Square.Top, Square.Right ]
+
+                2 ->
+                    [ Square.Left ]
+
+                3 ->
+                    [ Square.Left, Square.Bottom ]
+
+                _ ->
+                    []
     in
     div [ class "card" ]
         [ p []
             [ text "Let "
-            , KaTeX.inline ("\\alpha : \\mathrm{Hom}(" ++ aLbl ++ ", -) \\Rightarrow " ++ f.texName)
+            , KaTeX.inline ("\\alpha : " ++ w.hom aLbl ++ " \\Rightarrow " ++ f.texName)
             , text " be any natural transformation and write "
             , KaTeX.inline ("x = \\alpha_{" ++ aLbl ++ "}(" ++ idA ++ ")")
             , text ". Take any arrow "
-            , KaTeX.inline ("f : " ++ aLbl ++ " \\to X")
+            , KaTeX.inline (w.arrow "f" aLbl)
             , text " and look at its naturality square. It has "
-            , KaTeX.inline ("\\mathrm{Hom}(" ++ aLbl ++ ", " ++ aLbl ++ ")")
+            , KaTeX.inline (w.homSet aLbl aLbl)
             , text " in the top-left corner, and that set contains a very special element: "
             , KaTeX.inline idA
-            , text ". Chase it around the square. Click an arrow out of "
-            , KaTeX.inline aLbl
-            , text " in the diagram, and pick "
+            , text ". Chase it around the square, one step at a time. Pick "
+            , KaTeX.inline "f"
+            , text " in the diagram or with the buttons, and "
             , KaTeX.inline "x"
             , text " above."
             ]
@@ -537,12 +680,12 @@ chaseCard order model =
                     }
                     cat
                 , div [ class "controls" ]
-                    (span [ class "muted" ] [ KaTeX.inline ("f : " ++ aLbl ++ " \\to X") ]
+                    (span [ class "muted" ] [ KaTeX.inline (w.arrow "f" aLbl) ]
                         :: List.map
                             (\m ->
                                 button [ classList [ ( "active", m == g ) ], onClick (SelectChaseArrow m) ] [ KaTeX.inline (Category.morphismLabel cat m) ]
                             )
-                            arrowsOutOfA
+                            (chaseArrows model)
                     )
                 ]
             , div [ class "col" ]
@@ -556,59 +699,122 @@ chaseCard order model =
                     , left = "α_" ++ aLbl
                     , right = "α_" ++ xLbl
                     , ok = True
+                    , emphasised = emphasised
                     }
-                , ol []
-                    [ li []
-                        [ text "Along the top: "
-                        , KaTeX.inline (homOfG ++ "(" ++ idA ++ ") = " ++ Notation.compose order idA gLbl ++ " = " ++ gLbl)
-                        , text ". Post-composing the identity with "
-                        , KaTeX.inline gLbl
-                        , text " just gives "
-                        , KaTeX.inline gLbl
-                        , text ". Then down the right: "
-                        , KaTeX.inline ("\\alpha_{" ++ xLbl ++ "}(" ++ gLbl ++ ")")
-                        , text ", the unknown we want."
-                        ]
-                    , li []
-                        [ text "Down the left: "
-                        , KaTeX.inline ("\\alpha_{" ++ aLbl ++ "}(" ++ idA ++ ") = " ++ elt)
-                        , text ". Then along the bottom: "
-                        , KaTeX.inline ("F(" ++ gLbl ++ ")(" ++ elt ++ ") = " ++ result)
-                        , text ", computed by the functor alone."
-                        ]
-                    , li []
-                        [ text "The square commutes, so the two agree:"
-                        , KaTeX.display ("\\alpha_{" ++ xLbl ++ "}(" ++ gLbl ++ ") \\;=\\; F(" ++ gLbl ++ ")\\big(\\alpha_{" ++ aLbl ++ "}(" ++ idA ++ ")\\big) \\;=\\; F(" ++ gLbl ++ ")(" ++ elt ++ ") \\;=\\; " ++ result)
-                        ]
+                , div [ class "controls" ]
+                    [ button [ onClick (SetChaseStep (step - 1)), disabled (step == 0) ] [ text "← Back" ]
+                    , button [ class "primary", onClick (SetChaseStep (step + 1)), disabled (step == 3) ] [ text "Next step →" ]
+                    , button [ onClick (SetChaseStep 0), disabled (step == 0) ] [ text "Start over" ]
+                    , span [ class "muted" ] [ text ("step " ++ String.fromInt step ++ " of 3") ]
                     ]
-                , p []
-                    [ text "Every arrow "
-                    , KaTeX.inline ("f : " ++ aLbl ++ " \\to X")
-                    , text " is some element of some "
-                    , KaTeX.inline ("\\mathrm{Hom}(" ++ aLbl ++ ", X)")
-                    , text ", so this computes "
-                    , KaTeX.inline "\\alpha_X"
-                    , text " on every input of every component: "
-                    , KaTeX.inline "\\alpha"
-                    , text " is completely determined by "
-                    , KaTeX.inline "x"
-                    , text ". Below, the component "
-                    , KaTeX.inline ("\\alpha_{" ++ xLbl ++ "}")
-                    , text " reconstructed this way, with "
-                    , KaTeX.inline gLbl
-                    , text " highlighted."
-                    ]
-                , FunctionEditor.viewWith
-                    { width = 300, rowHeight = 32, radius = 8, showLabels = True, title = Nothing, highlightSource = Just (Yoneda.homPosition cat a x g) }
-                    ReadOnly
-                    (NatTrans.component nt x)
+                , if step == 0 then
+                    p [ class "muted" ]
+                        [ text "Start: the element "
+                        , KaTeX.inline (idA ++ " \\in " ++ w.homSet aLbl aLbl)
+                        , text " sits in the top-left corner. There are two ways to get it to the bottom-right corner "
+                        , KaTeX.inline fx.name
+                        , text "."
+                        ]
+
+                  else
+                    let
+                        elt =
+                            FinSet.labelAt model.element fa
+
+                        result =
+                            FinSet.labelAt (FinFunction.apply (SetFunctor.morphismImage f g) model.element) fx
+
+                        legs =
+                            [ li []
+                                [ text "Along the top: "
+                                , KaTeX.inline (homOfG ++ "(" ++ idA ++ ") = " ++ onIdentity order model.variance idA gLbl ++ " = " ++ gLbl)
+                                , text
+                                    (case model.variance of
+                                        Covariant ->
+                                            ". Post-composing the identity with "
+
+                                        Contravariant ->
+                                            ". Pre-composing the identity with "
+                                    )
+                                , KaTeX.inline gLbl
+                                , text " just gives "
+                                , KaTeX.inline gLbl
+                                , text ". Then down the right: "
+                                , KaTeX.inline ("\\alpha_{" ++ xLbl ++ "}(" ++ gLbl ++ ")")
+                                , text ", the unknown we want."
+                                ]
+                            , li []
+                                [ text "Down the left: "
+                                , KaTeX.inline ("\\alpha_{" ++ aLbl ++ "}(" ++ idA ++ ") = " ++ elt)
+                                , text ", which is "
+                                , KaTeX.inline "x"
+                                , text " by definition."
+                                ]
+                            , li []
+                                [ text "Along the bottom: "
+                                , KaTeX.inline ("F(" ++ gLbl ++ ")(" ++ elt ++ ") = " ++ result)
+                                , text ", computed by the functor alone. The square commutes, so the two routes agree:"
+                                , KaTeX.display ("\\alpha_{" ++ xLbl ++ "}(" ++ gLbl ++ ") \\;=\\; F(" ++ gLbl ++ ")\\big(\\alpha_{" ++ aLbl ++ "}(" ++ idA ++ ")\\big) \\;=\\; F(" ++ gLbl ++ ")(" ++ elt ++ ") \\;=\\; " ++ result)
+                                ]
+                            ]
+                    in
+                    ol [] (List.take step legs)
+                , if step < 3 then
+                    text ""
+
+                  else
+                    let
+                        nt =
+                            recipe model model.element
+                    in
+                    div []
+                        [ p []
+                            [ text "Every arrow "
+                            , KaTeX.inline (w.arrow "f" aLbl)
+                            , text " is some element of some "
+                            , KaTeX.inline (w.homSet aLbl "X")
+                            , text ", so this computes "
+                            , KaTeX.inline "\\alpha_X"
+                            , text " on every input of every component: "
+                            , KaTeX.inline "\\alpha"
+                            , text " is completely determined by "
+                            , KaTeX.inline "x"
+                            , text ". Below, the component "
+                            , KaTeX.inline ("\\alpha_{" ++ xLbl ++ "}")
+                            , text " reconstructed this way, with "
+                            , KaTeX.inline gLbl
+                            , text " highlighted."
+                            ]
+                        , FunctionEditor.viewWith
+                            { width = 300, rowHeight = 32, radius = 8, showLabels = True, title = Nothing, highlightSource = Just (Yoneda.homPosition hom.source a x g) }
+                            ReadOnly
+                            (NatTrans.component nt x)
+                        ]
                 ]
             ]
         ]
 
 
-proof : CompositionOrder -> Html Msg
-proof order =
+proof : CompositionOrder -> Variance -> Html Msg
+proof order variance =
+    let
+        w =
+            wordsFor variance
+
+        -- the composite that Hom(A, g) (or Hom(g, A)) makes of f
+        moved =
+            case variance of
+                Covariant ->
+                    Notation.compose order "f" "g"
+
+                Contravariant ->
+                    Notation.compose order "g" "f"
+
+        -- how F turns that composite into functions; first F(f), then F(g) in both cases,
+        -- because a contravariant F reverses the order of f and g in the composite
+        preserved =
+            "F(" ++ moved ++ ") = " ++ Notation.compose order "F(f)" "F(g)"
+    in
     div []
         [ p []
             [ text "Write "
@@ -623,17 +829,31 @@ proof order =
             [ li []
                 [ strong [] [ KaTeX.inline "\\Psi(x)", text " is natural. " ]
                 , text "For an arrow "
-                , KaTeX.inline "g : X \\to Y"
+                , KaTeX.inline
+                    (case variance of
+                        Covariant ->
+                            "g : X \\to Y"
+
+                        Contravariant ->
+                            "g : Y \\to X"
+                    )
                 , text " and an element "
-                , KaTeX.inline "f \\in \\mathrm{Hom}(A, X)"
+                , KaTeX.inline ("f \\in " ++ w.homSet "A" "X")
                 , text ", going around the top gives "
-                , KaTeX.inline ("\\Psi(x)_Y(" ++ Notation.compose order "f" "g" ++ ") = F(" ++ Notation.compose order "f" "g" ++ ")(x)")
+                , KaTeX.inline ("\\Psi(x)_Y(" ++ moved ++ ") = F(" ++ moved ++ ")(x)")
                 , text " and around the bottom "
                 , KaTeX.inline "F(g)\\big(\\Psi(x)_X(f)\\big) = F(g)\\big(F(f)(x)\\big)"
                 , text ". These agree precisely because "
                 , KaTeX.inline "F"
-                , text " preserves composition: "
-                , KaTeX.inline ("F(" ++ Notation.compose order "f" "g" ++ ") = " ++ Notation.compose order "F(f)" "F(g)")
+                , text
+                    (case variance of
+                        Covariant ->
+                            " preserves composition: "
+
+                        Contravariant ->
+                            ", a functor on the opposite category, turns composites around: "
+                    )
+                , KaTeX.inline preserved
                 , text "."
                 ]
             , li []
@@ -646,7 +866,7 @@ proof order =
             , li []
                 [ strong [] [ KaTeX.inline "\\Psi(\\Phi(\\alpha)) = \\alpha", text ". " ]
                 , text "This is the chase above: for every "
-                , KaTeX.inline "f : A \\to X"
+                , KaTeX.inline (w.arrow "f" "A")
                 , text ", naturality of "
                 , KaTeX.inline "\\alpha"
                 , text " at "
@@ -672,12 +892,21 @@ proof order =
 -- DEEP LINKS
 
 
-{-| `c` is the category name, `a` the object, `F` the functor name, `x` the selected element
-of `F(A)` and `chase` the arrow used in the naturality chase.
+{-| `c` is the category name, `v` the variance (`co`/`contra`), `a` the object, `F` the
+functor name, `x` the selected element of `F(A)` and `chase` the arrow used in the
+naturality chase. The chase step is transient.
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
     [ Query.param "c" model.setting.example.category.name
+    , Query.param "v"
+        (case model.variance of
+            Covariant ->
+                "co"
+
+            Contravariant ->
+                "contra"
+        )
     , Query.param "a" (String.fromInt model.object)
     , Query.param "F" model.functor.name
     , Query.param "x" (String.fromInt model.element)
@@ -689,7 +918,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withSetting md =
-            case Query.string "c" q |> Maybe.andThen (\name -> List.filter (\s -> s.example.category.name == name) settings |> List.head) of
+            case Query.string "c" q |> Maybe.andThen Setting.byName of
                 Just s ->
                     if s.example.category.name == md.setting.example.category.name then
                         md
@@ -698,6 +927,25 @@ fromQuery q model =
                         update (SelectSetting s) md
 
                 Nothing ->
+                    md
+
+        withVariance md =
+            case Query.string "v" q of
+                Just "co" ->
+                    if md.variance == Covariant then
+                        md
+
+                    else
+                        update (SelectVariance Covariant) md
+
+                Just "contra" ->
+                    if md.variance == Contravariant then
+                        md
+
+                    else
+                        update (SelectVariance Contravariant) md
+
+                _ ->
                     md
 
         withObject md =
@@ -713,7 +961,7 @@ fromQuery q model =
                     md
 
         withFunctor md =
-            case Query.string "F" q |> Maybe.andThen (\name -> List.filter (\fn -> fn.name == name) md.setting.functors |> List.head) of
+            case Query.string "F" q |> Maybe.andThen (\name -> ListUtil.find (\fn -> fn.name == name) (functorsFor md.variance md.setting)) of
                 Just fn ->
                     if fn.name == md.functor.name then
                         md
@@ -737,15 +985,15 @@ fromQuery q model =
                     md
 
         withChase md =
-            case Query.int "chase" q |> Maybe.andThen (Category.morphism md.setting.example.category) of
-                Just m ->
-                    if m.src == md.object then
-                        setChase (Maybe.withDefault 0 (Query.int "chase" q)) md
+            case Query.int "chase" q of
+                Just f ->
+                    if f == md.chaseArrow then
+                        md
 
                     else
-                        md
+                        update (SelectChaseArrow f) md
 
                 Nothing ->
                     md
     in
-    model |> withSetting |> withObject |> withFunctor |> withElement |> withChase
+    model |> withSetting |> withVariance |> withObject |> withFunctor |> withElement |> withChase

@@ -23,9 +23,10 @@ functor laws, enumerating *all* natural transformations, the Yoneda bijection)
 can be computed by brute force in pure Elm and tested with elm-test.
 
 
-## Status (updated 2026-09-17)
+## Status (updated 2026-09-23)
 
-Done (compiles, `make check` passes; tests written but only type-checked):
+Done (compiles, `make check` passes, `make test` passes: 434 tests; `elm-test` 0.19.2 comes
+from the repo's nix devShell):
 - [x] 0. Scaffold, routing, shell, KaTeX, composition-order toggle (model state only, NOT in URL)
 - [x] 1. Sets and functions (`Page/Sets.elm`, `View/FunctionEditor.elm`, `Math/FinSet`, `Math/FinFunction`)
 - [x] 2. Groups (`Page/Groups.elm`, `Math/Group.elm` with Z2, Z3, Z4, V4, S3, D4)
@@ -64,13 +65,22 @@ Done (compiles, `make check` passes; tests written but only type-checked):
       wrapped top bar under 800px, SVGs scale down, cards scroll horizontally); route/query tests
       in `tests/RouteTest.elm`.
 
+- [x] 11. Review pass (2026-09-23): fixed a wrong test expectation; `Main` only calls
+      `replaceUrl` when the page's query changed (hover no longer hits the history API; the
+      Groups cell and Categories hover are transient); chapter 5 really checks the identity
+      law; enumerations in chapters 8/9 are cached in the model instead of recomputed in `view`;
+      shared helpers (`ListUtil`, `View/Common`, `Math/Setting`, `Category.arrowsFrom/arrowsInto/
+      firstNonIdentity`, `Categories.byName`, `Group.byName`, `FinFunction.isWellTyped`,
+      `Query.intListParam`); arrowheads are polygons (`View/ArrowHead`), so no SVG marker ids;
+      chapter 8 got the contravariant toggle (`Yoneda.contraFromElement`) and a step-by-step
+      chase; `tests/PageQueryTest.elm` round-trips every page's deep link.
+
 All milestones done. Possible follow-ups (not planned): per-chapter "copy link" button, encoding
 edits of the Set-valued functor in chapter 5 (only the example name is stored today), a dark theme.
 
 Deviations from the original plan so far:
 - Composition order is model state, not a URL query parameter (user request).
 - `.claude/settings.json` has only the PostToolUse `make check` hook (no elm-test Stop hook).
-- Placeholder chapter texts live in `Page/Placeholder.elm`; replace each as it gets implemented.
 - Group as one-object category (`Category.fromGroup`): "f then g" is the element `g·f`, so the
   classical composition table equals the chapter-2 multiplication table (pinned by a test).
   Covariant `Hom(∗,−)` will therefore act by left multiplication `L_g`, matching chapter 3.
@@ -88,7 +98,12 @@ Deviations from the original plan so far:
   `Categories.all` plus the sources of curated Set-valued functors (the "Graph shape").
 - `View/Square.elm` holds the schematic commutative-square SVG (moved out of chapter 7, shared with 8).
 - Chapter 8 enumerates by brute force when `NatTrans.searchSize ≤ 200 000` and otherwise lists the
-  transformations built by `Yoneda.fromElement`, saying so.
+  transformations built by `Yoneda.fromElement`, saying so. The result is stored in the model when
+  C/A/F change (same in chapter 9).
+- Chapter 8's contravariant toggle offers only the contravariant hom functors `Hom(−, B)` as `F`
+  (there are no curated functors on `C^op`). The "animated" chase is a click-through of the three
+  legs (`View/Square` emphasises the current edges), not a timed animation.
+- The `Setting` (category + offered functors) shared by chapters 7 and 8 lives in `Math/Setting.elm`.
 - Chapter 7 offers only covariant hom functors (contravariant ones live on `C^op`, so they cannot
   be paired with functors on `C`); enumeration is capped at 200 000 candidate families.
 - Chapter 9 keeps the covariant hom functors, so its embedding is contravariant and the group case

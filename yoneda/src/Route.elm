@@ -4,7 +4,6 @@ module Route exposing
     , chapterNumber
     , chapterTitle
     , fromUrl
-    , isImplemented
     , next
     , parse
     , previous
@@ -17,6 +16,7 @@ a `?` inside the hash (`#/sets?a=3&b=2`), see `Query`. The composition order is 
 the URL.
 -}
 
+import ListUtil
 import Query exposing (Query)
 import Url exposing (Url)
 import Url.Parser as Parser exposing (Parser)
@@ -43,50 +43,9 @@ allChapters =
     [ Intro, Sets, Groups, Cayley, Categories, Functors, HomFunctors, NaturalTransformations, YonedaLemma, YonedaEmbedding ]
 
 
-isImplemented : Chapter -> Bool
-isImplemented chapter =
-    case chapter of
-        Intro ->
-            True
-
-        Sets ->
-            True
-
-        Groups ->
-            True
-
-        Cayley ->
-            True
-
-        Categories ->
-            True
-
-        Functors ->
-            True
-
-        HomFunctors ->
-            True
-
-        NaturalTransformations ->
-            True
-
-        YonedaLemma ->
-            True
-
-        YonedaEmbedding ->
-            True
-
-        Glossary ->
-            True
-
-
 chapterNumber : Chapter -> Int
 chapterNumber chapter =
-    allChapters
-        |> List.indexedMap Tuple.pair
-        |> List.filter (\( _, c ) -> c == chapter)
-        |> List.head
-        |> Maybe.map Tuple.first
+    ListUtil.indexOf chapter allChapters
         |> Maybe.withDefault 0
 
 

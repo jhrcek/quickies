@@ -1,5 +1,7 @@
 module Math.Yoneda exposing
     ( contraEmbedArrow
+    , contraFromElement
+    , contraRoundTripHolds
     , embedArrow
     , embeddedArrow
     , fromElement
@@ -28,8 +30,12 @@ covariant hom functors is contravariant. The contravariant hom functors give the
 covariant embedding `h : A → B  ↦  (Hom(−, A) ⇒ Hom(−, B), f ↦ f ; h)`
 (`contraEmbedArrow`).
 
+The contravariant lemma `Nat(Hom(−, A), F) ≅ F(A)` for `F : C^op → Set` is the same
+statement on the opposite category (`contraFromElement`, `contraRoundTripHolds`).
+
 -}
 
+import ListUtil
 import Math.Category as Category exposing (Category)
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
@@ -42,10 +48,7 @@ import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 homPosition : Category -> Int -> Int -> Int -> Int
 homPosition c a x f =
     Category.hom c a x
-        |> List.indexedMap Tuple.pair
-        |> List.filter (\( _, g ) -> g == f)
-        |> List.head
-        |> Maybe.map Tuple.first
+        |> ListUtil.indexOf f
         |> Maybe.withDefault -1
 
 
@@ -75,9 +78,26 @@ at `X` sends an arrow `f : A → X` to `F(f)(x)`.
 -}
 fromElement : Category -> Int -> SetFunctor -> Int -> NatTrans
 fromElement c a f x =
+    fromElementOn (SetFunctor.homFunctor c a) a f x
+
+
+{-| The contravariant recipe, for `F : C^op → Set`: the transformation
+`Hom(−, A) ⇒ F` (on `C^op`) whose component at `X` sends an arrow `f : X → A` of `C` to
+`F(f)(x)`.
+-}
+contraFromElement : Category -> Int -> SetFunctor -> Int -> NatTrans
+contraFromElement c a f x =
+    fromElementOn (SetFunctor.contraHomFunctor c a) a f x
+
+
+{-| `x ↦ (f ↦ F(f)(x))` for a representable `hom = Hom(a, −)` on `hom.source`, which may be
+an opposite category (then `hom` is a contravariant hom functor of the original one).
+-}
+fromElementOn : SetFunctor -> Int -> SetFunctor -> Int -> NatTrans
+fromElementOn hom a f x =
     let
-        hom =
-            SetFunctor.homFunctor c a
+        c =
+            hom.source
 
         componentAt obj =
             FinFunction.fromList
@@ -94,6 +114,18 @@ transformation that evaluates back to it, and every natural transformation
 -}
 roundTripHolds : Category -> Int -> SetFunctor -> Bool
 roundTripHolds c a f =
+    roundTripOn (SetFunctor.homFunctor c a) a f
+
+
+{-| `roundTripHolds` for the contravariant lemma, `F : C^op → Set`.
+-}
+contraRoundTripHolds : Category -> Int -> SetFunctor -> Bool
+contraRoundTripHolds c a f =
+    roundTripOn (SetFunctor.contraHomFunctor c a) a f
+
+
+roundTripOn : SetFunctor -> Int -> SetFunctor -> Bool
+roundTripOn hom a f =
     let
         elements =
             List.range 0 (FinSet.size (SetFunctor.objectImage f a) - 1)
@@ -104,14 +136,14 @@ roundTripHolds c a f =
                     (\x ->
                         let
                             nt =
-                                fromElement c a f x
+                                fromElementOn hom a f x
                         in
                         NatTrans.isNatural nt && toElement a nt == x
                     )
 
         natSide =
-            NatTrans.enumerateAll (SetFunctor.homFunctor c a) f
-                |> List.all (\nt -> (fromElement c a f (toElement a nt)).components == nt.components)
+            NatTrans.enumerateAll hom f
+                |> List.all (\nt -> (fromElementOn hom a f (toElement a nt)).components == nt.components)
     in
     elementSide && natSide
 
@@ -152,7 +184,7 @@ contraEmbedArrow : Category -> Int -> NatTrans
 contraEmbedArrow c h =
     case Category.morphism c h of
         Just m ->
-            fromElement (Category.opposite c) m.src (SetFunctor.contraHomFunctor c m.tgt) (homPosition c m.src m.tgt h)
+            contraFromElement c m.src (SetFunctor.contraHomFunctor c m.tgt) (homPosition c m.src m.tgt h)
 
         Nothing ->
             NatTrans.initial (SetFunctor.homFunctor c 0) (SetFunctor.homFunctor c 0)

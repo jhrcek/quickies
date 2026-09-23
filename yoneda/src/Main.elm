@@ -179,6 +179,19 @@ syncUrl model =
     ( model, Navigation.replaceUrl model.key (linkTo model.chapter model) )
 
 
+{-| After a page message: replace the URL only if the page's deep-link state changed, so
+that hover highlights and other transient UI state do not hit the browser's history API
+(Safari throws after 100 `replaceState` calls in 30 seconds).
+-}
+syncIfChanged : Model -> Model -> ( Model, Cmd Msg )
+syncIfChanged old new =
+    if queryFor new.chapter new == queryFor old.chapter old then
+        ( new, Cmd.none )
+
+    else
+        syncUrl new
+
+
 
 -- UPDATE
 
@@ -226,31 +239,31 @@ update msg model =
             ( { model | order = order }, Cmd.none )
 
         SetsMsg m ->
-            syncUrl { model | sets = Page.Sets.update m model.sets }
+            syncIfChanged model { model | sets = Page.Sets.update m model.sets }
 
         GroupsMsg m ->
-            syncUrl { model | groups = Page.Groups.update m model.groups }
+            syncIfChanged model { model | groups = Page.Groups.update m model.groups }
 
         CayleyMsg m ->
-            syncUrl { model | cayley = Page.Cayley.update m model.cayley }
+            syncIfChanged model { model | cayley = Page.Cayley.update m model.cayley }
 
         CategoriesMsg m ->
-            syncUrl { model | categories = Page.Categories.update m model.categories }
+            syncIfChanged model { model | categories = Page.Categories.update m model.categories }
 
         FunctorsMsg m ->
-            syncUrl { model | functors = Page.Functors.update m model.functors }
+            syncIfChanged model { model | functors = Page.Functors.update m model.functors }
 
         HomFunctorsMsg m ->
-            syncUrl { model | homFunctors = Page.HomFunctors.update m model.homFunctors }
+            syncIfChanged model { model | homFunctors = Page.HomFunctors.update m model.homFunctors }
 
         NaturalTransformationsMsg m ->
-            syncUrl { model | naturalTransformations = Page.NaturalTransformations.update m model.naturalTransformations }
+            syncIfChanged model { model | naturalTransformations = Page.NaturalTransformations.update m model.naturalTransformations }
 
         YonedaLemmaMsg m ->
-            syncUrl { model | yonedaLemma = Page.YonedaLemma.update m model.yonedaLemma }
+            syncIfChanged model { model | yonedaLemma = Page.YonedaLemma.update m model.yonedaLemma }
 
         YonedaEmbeddingMsg m ->
-            syncUrl { model | yonedaEmbedding = Page.YonedaEmbedding.update m model.yonedaEmbedding }
+            syncIfChanged model { model | yonedaEmbedding = Page.YonedaEmbedding.update m model.yonedaEmbedding }
 
 
 
@@ -283,7 +296,7 @@ sidebar model =
                 (\c ->
                     a
                         [ href (linkTo c model)
-                        , classList [ ( "active", c == model.chapter ), ( "todo", not (Route.isImplemented c) ) ]
+                        , classList [ ( "active", c == model.chapter ) ]
                         ]
                         [ span [ class "num" ]
                             [ text

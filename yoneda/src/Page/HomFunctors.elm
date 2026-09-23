@@ -5,11 +5,12 @@ import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
 import Math.Categories as Categories exposing (Example)
-import Math.Category as Category exposing (Category)
+import Math.Category as Category
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Query exposing (Query)
+import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
@@ -25,7 +26,7 @@ type alias Model =
     , object : Int -- the fixed object A
     , variance : Variance
     , arrow : Int -- selected arrow f of the category
-    , element : Maybe Int -- highlighted element of the source hom set
+    , element : Maybe Int -- element of the source hom set being followed (click to toggle)
     }
 
 
@@ -34,7 +35,7 @@ type Msg
     | SelectObject Int
     | SelectVariance Variance
     | SelectArrow Int
-    | HoverElement Int
+    | ToggleElement Int
 
 
 init : Model
@@ -46,24 +47,16 @@ init =
     { example = ex
     , object = 0
     , variance = Covariant
-    , arrow = firstNonIdentity ex.category
+    , arrow = Category.firstNonIdentity ex.category
     , element = Nothing
     }
-
-
-firstNonIdentity : Category -> Int
-firstNonIdentity cat =
-    Category.morphismIndices cat
-        |> List.filter (not << Category.isIdentity cat)
-        |> List.head
-        |> Maybe.withDefault 0
 
 
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         SelectCategory ex ->
-            { model | example = ex, object = 0, arrow = firstNonIdentity ex.category, element = Nothing }
+            { model | example = ex, object = 0, arrow = Category.firstNonIdentity ex.category, element = Nothing }
 
         SelectObject a ->
             { model | object = a, element = Nothing }
@@ -74,7 +67,7 @@ update msg model =
         SelectArrow f ->
             { model | arrow = f, element = Nothing }
 
-        HoverElement i ->
+        ToggleElement i ->
             { model
                 | element =
                     if model.element == Just i then
@@ -302,13 +295,26 @@ homCard order model =
         lbl =
             Category.morphismLabel cat
 
+        aLbl =
+            Category.objectLabel cat model.object
+
         ff =
             SetFunctor.morphismImage fun model.arrow
 
         -- description of Hom(A, f) : F(X) → F(Y), with X, Y taken from the functor's
         -- own source (which is C^op in the contravariant case)
         arrowTex =
-            String.replace "-" (lbl model.arrow) fun.texName ++ " : " ++ ff.source.name ++ " \\to " ++ ff.target.name
+            (case model.variance of
+                Covariant ->
+                    "\\mathrm{Hom}(" ++ aLbl ++ ", " ++ lbl model.arrow ++ ")"
+
+                Contravariant ->
+                    "\\mathrm{Hom}(" ++ lbl model.arrow ++ ", " ++ aLbl ++ ")"
+            )
+                ++ " : "
+                ++ ff.source.name
+                ++ " \\to "
+                ++ ff.target.name
 
         elementRule g =
             case ( model.variance, Category.morphism cat model.arrow ) of
@@ -353,7 +359,7 @@ homCard order model =
                 , p [] [ KaTeX.inline arrowTex ]
                 , FunctionEditor.viewWith
                     { width = 300, rowHeight = 36, radius = 9, showLabels = True, title = Nothing, highlightSource = model.element }
-                    (Editable { selected = Nothing, onClickSource = HoverElement, onClickTarget = HoverElement })
+                    (Editable { selected = Nothing, onClickSource = ToggleElement, onClickTarget = ToggleElement })
                     ff
                 , if FinSet.size ff.source == 0 then
                     p [ class "muted" ] [ text "The source hom set is empty: the function has nothing to do." ]
@@ -437,13 +443,6 @@ laws order model fun =
         cat =
             model.example.category
 
-        ok b =
-            if b then
-                span [ class "badge ok" ] [ text "holds" ]
-
-            else
-                span [ class "badge bad" ] [ text "FAILS" ]
-
         pairs =
             List.length (Category.composablePairs fun.source)
 
@@ -458,11 +457,11 @@ laws order model fun =
     div []
         [ p [] [ strong [] [ text "Functor laws" ] ]
         , ul []
-            [ li [] [ strong [] [ text "Typing: " ], ok (List.isEmpty (SetFunctor.typingViolations fun)), text " each function goes between the right hom sets." ]
-            , li [] [ strong [] [ text "Identities: " ], ok (List.isEmpty (SetFunctor.identityViolations fun)), text " composing with an identity changes nothing." ]
+            [ li [] [ strong [] [ text "Typing: " ], lawBadge (List.isEmpty (SetFunctor.typingViolations fun)), text " each function goes between the right hom sets." ]
+            , li [] [ strong [] [ text "Identities: " ], lawBadge (List.isEmpty (SetFunctor.identityViolations fun)), text " composing with an identity changes nothing." ]
             , li []
                 [ strong [] [ text "Composition: " ]
-                , ok (List.isEmpty (SetFunctor.compositionViolations fun))
+                , lawBadge (List.isEmpty (SetFunctor.compositionViolations fun))
                 , text (" all " ++ String.fromInt pairs ++ " composable pairs agree, by associativity.")
                 ]
             ]
@@ -533,7 +532,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen (\name -> List.filter (\ex -> ex.category.name == name) Categories.all |> List.head) of
+            case Query.string "c" q |> Maybe.andThen Categories.byName of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md
@@ -568,9 +567,9 @@ fromQuery q model =
                     md
 
         withArrow md =
-            case Query.int "f" q |> Maybe.andThen (Category.morphism md.example.category) |> Maybe.map (always ()) of
-                Just () ->
-                    update (SelectArrow (Maybe.withDefault 0 (Query.int "f" q))) md
+            case Query.int "f" q |> Maybe.andThen (\f -> Category.morphism md.example.category f |> Maybe.map (always f)) of
+                Just f ->
+                    update (SelectArrow f) md
 
                 Nothing ->
                     md

@@ -1,10 +1,13 @@
 module Math.Category exposing
     ( Category
     , Morphism
+    , arrowsFrom
+    , arrowsInto
     , associativityViolations
     , composablePairs
     , composableTriples
     , compose
+    , firstNonIdentity
     , fromGroup
     , fromPreorder
     , hom
@@ -36,6 +39,7 @@ the target of `f` is the source of `g`.
 
 import Array exposing (Array)
 import Dict exposing (Dict)
+import ListUtil
 import Math.Group as Group exposing (Group)
 
 
@@ -127,6 +131,30 @@ hom c a b =
                     Nothing ->
                         False
             )
+
+
+{-| All morphisms with source `a`, in index order.
+-}
+arrowsFrom : Category -> Int -> List Int
+arrowsFrom c a =
+    morphismIndices c |> List.filter (\i -> Maybe.map .src (morphism c i) == Just a)
+
+
+{-| All morphisms with target `b`, in index order.
+-}
+arrowsInto : Category -> Int -> List Int
+arrowsInto c b =
+    morphismIndices c |> List.filter (\i -> Maybe.map .tgt (morphism c i) == Just b)
+
+
+{-| The first arrow that is not an identity (or arrow 0 if there is none), a good default
+selection since identity arrows make for trivial pictures.
+-}
+firstNonIdentity : Category -> Int
+firstNonIdentity c =
+    morphismIndices c
+        |> ListUtil.find (not << isIdentity c)
+        |> Maybe.withDefault 0
 
 
 {-| Pairs `(f, g)` with `tgt f == src g`.
@@ -277,11 +305,7 @@ make spec =
             Array.fromList spec.morphisms
 
         indexOfLabel lbl =
-            spec.morphisms
-                |> List.indexedMap Tuple.pair
-                |> List.filter (\( _, m ) -> m.label == lbl)
-                |> List.head
-                |> Maybe.map Tuple.first
+            ListUtil.findIndex (\m -> m.label == lbl) spec.morphisms
 
         partial =
             { name = spec.name
@@ -341,11 +365,7 @@ fromPreorder name texName description objects leq =
             Array.fromList arrows
 
         indexOfPair a b =
-            arrows
-                |> List.indexedMap Tuple.pair
-                |> List.filter (\( _, m ) -> m.src == a && m.tgt == b)
-                |> List.head
-                |> Maybe.map Tuple.first
+            ListUtil.findIndex (\m -> m.src == a && m.tgt == b) arrows
                 |> Maybe.withDefault 0
 
         table =
@@ -365,7 +385,7 @@ fromPreorder name texName description objects leq =
     , description = description
     , objects = objects
     , morphisms = morphisms
-    , identities = Array.initialize ((n - 1) + 1) (\a -> indexOfPair a a)
+    , identities = Array.initialize n (\a -> indexOfPair a a)
     , table = table
     }
 

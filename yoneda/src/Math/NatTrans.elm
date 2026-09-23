@@ -101,23 +101,7 @@ typingViolations nt =
     Category.objectIndices nt.source.source
         |> List.filter
             (\a ->
-                let
-                    ff =
-                        component nt a
-
-                    n =
-                        FinSet.size (SetFunctor.objectImage nt.source a)
-
-                    m =
-                        FinSet.size (SetFunctor.objectImage nt.target a)
-                in
-                FinSet.size ff.source
-                    /= n
-                    || FinSet.size ff.target
-                    /= m
-                    || List.length (FinFunction.toList ff)
-                    /= n
-                    || List.any (\j -> j < 0 || j >= m) (FinFunction.toList ff)
+                not (FinFunction.isWellTyped (SetFunctor.objectImage nt.source a) (SetFunctor.objectImage nt.target a) (component nt a))
             )
 
 

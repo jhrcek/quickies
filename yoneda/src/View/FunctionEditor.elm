@@ -15,8 +15,9 @@ import Html.Attributes
 import Html.Events
 import Math.FinFunction as FinFunction exposing (FinFunction)
 import Math.FinSet as FinSet
-import Svg exposing (Svg)
+import Svg
 import Svg.Attributes as SA
+import View.ArrowHead as ArrowHead
 import View.Notation as Notation
 
 
@@ -199,35 +200,29 @@ viewWith opts interaction f =
 
                 isHl =
                     selected == Just i || opts.highlightSource == Just i
+
+                ( color, width ) =
+                    if isHl then
+                        ( "#e67e22", 2.5 )
+
+                    else
+                        ( "#555", 1.5 )
+
+                ( y1, y2 ) =
+                    ( yOf n i, yOf m j )
             in
-            Svg.line
-                [ SA.x1 (String.fromFloat x1)
-                , SA.y1 (String.fromFloat (yOf n i))
-                , SA.x2 (String.fromFloat x2)
-                , SA.y2 (String.fromFloat (yOf m j))
-                , SA.stroke
-                    (if isHl then
-                        "#e67e22"
-
-                     else
-                        "#555"
-                    )
-                , SA.strokeWidth
-                    (if isHl then
-                        "2.5"
-
-                     else
-                        "1.5"
-                    )
-                , SA.markerEnd
-                    (if isHl then
-                        "url(#arrowhead-hl)"
-
-                     else
-                        "url(#arrowhead)"
-                    )
+            Svg.g []
+                [ Svg.line
+                    [ SA.x1 (String.fromFloat x1)
+                    , SA.y1 (String.fromFloat y1)
+                    , SA.x2 (String.fromFloat x2)
+                    , SA.y2 (String.fromFloat y2)
+                    , SA.stroke color
+                    , SA.strokeWidth (String.fromFloat width)
+                    ]
+                    []
+                , ArrowHead.view { tip = ( x2, y2 ), from = ( x1, y1 ), size = 7 * width, color = color }
                 ]
-                []
 
         ellipse x total lbl =
             Svg.g []
@@ -262,11 +257,7 @@ viewWith opts interaction f =
         , SA.viewBox ("0 0 " ++ String.fromInt opts.width ++ " " ++ String.fromInt (height + 8))
         , Html.Attributes.style "display" "block"
         ]
-        ([ Svg.defs []
-            [ marker "arrowhead" "#555"
-            , marker "arrowhead-hl" "#e67e22"
-            ]
-         , ellipse xLeft n f.source.name
+        ([ ellipse xLeft n f.source.name
          , ellipse xRight m f.target.name
          ]
             ++ (case opts.title of
@@ -289,17 +280,3 @@ viewWith opts interaction f =
             ++ List.map sourceNode (List.range 0 (n - 1))
             ++ List.map targetNode (List.range 0 (m - 1))
         )
-
-
-marker : String -> String -> Svg msg
-marker id color =
-    Svg.marker
-        [ SA.id id
-        , SA.viewBox "0 0 10 10"
-        , SA.refX "9"
-        , SA.refY "5"
-        , SA.markerWidth "7"
-        , SA.markerHeight "7"
-        , SA.orient "auto-start-reverse"
-        ]
-        [ Svg.path [ SA.d "M 0 0 L 10 5 L 0 10 z", SA.fill color ] [] ]

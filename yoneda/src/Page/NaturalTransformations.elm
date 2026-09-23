@@ -5,26 +5,18 @@ import Html exposing (Html, button, div, h2, h3, li, p, span, strong, table, tbo
 import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
-import Math.Categories as Categories exposing (Example)
-import Math.Category as Category exposing (Category)
+import ListUtil
+import Math.Category as Category
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
 import Math.NatTrans as NatTrans exposing (NatTrans)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
+import Math.Setting as Setting exposing (Setting)
 import Query exposing (Query)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
 import View.Square as Square
-
-
-{-| A category together with the Set-valued functors on it that the reader may choose
-from: the curated examples of chapter 5 and the hom functors of chapter 6.
--}
-type alias Setting =
-    { example : Example
-    , functors : List SetFunctor
-    }
 
 
 type alias Model =
@@ -52,37 +44,13 @@ type Msg
     | Load NatTrans
 
 
-settings : List Setting
-settings =
-    let
-        forExample ex =
-            { example = ex
-            , functors =
-                List.filter (\f -> f.source.name == ex.category.name) SetFunctor.all
-                    ++ List.map (SetFunctor.homFunctor ex.category) (Category.objectIndices ex.category)
-            }
-
-        curatedOnly =
-            SetFunctor.all
-                |> List.filter (\f -> List.all (\ex -> ex.category.name /= f.source.name) Categories.all)
-                |> List.map (.source >> Categories.layoutFor >> forExample)
-    in
-    List.map forExample Categories.all ++ curatedOnly
-
-
 init : Model
 init =
     let
-        setting =
-            settings
-                |> List.filter (\s -> s.example.category.name == Categories.mixed.category.name)
-                |> List.head
-                |> Maybe.withDefault { example = Categories.mixed, functors = [] }
-
         hom =
-            SetFunctor.homFunctor Categories.mixed.category 0
+            SetFunctor.homFunctor Setting.default.example.category 0
     in
-    load setting hom hom
+    load Setting.default hom hom
 
 
 load : Setting -> SetFunctor -> SetFunctor -> Model
@@ -93,17 +61,9 @@ load setting f g =
     , nat = NatTrans.initial f g
     , object = 0
     , selected = Nothing
-    , arrow = firstNonIdentity setting.example.category
+    , arrow = Category.firstNonIdentity setting.example.category
     , enumerated = Nothing
     }
-
-
-firstNonIdentity : Category -> Int
-firstNonIdentity cat =
-    Category.morphismIndices cat
-        |> List.filter (not << Category.isIdentity cat)
-        |> List.head
-        |> Maybe.withDefault 0
 
 
 update : Msg -> Model -> Model
@@ -235,7 +195,7 @@ view order model =
                     (\s ->
                         button [ classList [ ( "active", s.example.category.name == cat.name ) ], onClick (SelectSetting s) ] [ KaTeX.inline s.example.category.texName ]
                     )
-                    settings
+                    Setting.all
             )
         , functorPicker "Functor F:" model.source SelectSource model.setting.functors
         , functorPicker "Functor G:" model.target SelectTarget model.setting.functors
@@ -503,6 +463,7 @@ squareView order model =
                     , left = "α_" ++ x
                     , right = "α_" ++ y
                     , ok = commutes
+                    , emphasised = []
                     }
                 , KaTeX.display
                     (Notation.compose order ("F(" ++ flbl ++ ")") ("\\alpha_{" ++ y ++ "}")
@@ -648,11 +609,7 @@ toQuery model =
     [ Query.param "c" model.setting.example.category.name
     , Query.param "F" model.source.name
     , Query.param "G" model.target.name
-    , Query.param "alpha"
-        (Array.toList model.nat.components
-            |> List.map (FinFunction.toList >> intList)
-            |> String.join ";"
-        )
+    , Query.intListsParam "alpha" (Array.toList model.nat.components |> List.map FinFunction.toList)
     , Query.param "x" (String.fromInt model.object)
     , Query.param "f" (String.fromInt model.arrow)
     ]
@@ -662,7 +619,7 @@ fromQuery : Query -> Model -> Model
 fromQuery q model =
     let
         withSetting md =
-            case Query.string "c" q |> Maybe.andThen (\name -> List.filter (\s -> s.example.category.name == name) settings |> List.head) of
+            case Query.string "c" q |> Maybe.andThen Setting.byName of
                 Just s ->
                     if s.example.category.name == md.setting.example.category.name then
                         md
@@ -674,7 +631,7 @@ fromQuery q model =
                     md
 
         functor key current msg md =
-            case Query.string key q |> Maybe.andThen (\name -> findByName name md.setting.functors) of
+            case Query.string key q |> Maybe.andThen (\name -> ListUtil.find (\fn -> fn.name == name) md.setting.functors) of
                 Just fn ->
                     if fn.name == (current md).name then
                         md
@@ -739,13 +696,3 @@ fromQuery q model =
         |> withComponents
         |> withObject
         |> withArrow
-
-
-intList : List Int -> String
-intList =
-    List.map String.fromInt >> String.join ","
-
-
-findByName : String -> List { a | name : String } -> Maybe { a | name : String }
-findByName name xs =
-    List.filter (\x -> x.name == name) xs |> List.head

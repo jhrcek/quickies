@@ -16,7 +16,7 @@ milestone is finished.
 ## Commands
 
 - `make check` - Verify all Elm files compile (runs automatically via PostToolUse hook)
-- `make test` - Run elm-test suite (maintainer runs manually)
+- `make test` - Run elm-test suite (`elm-test` 0.19.2 is in the repo's nix devShell)
 - `make format` - elm-format
 - `make live` - dev server (maintainer runs manually)
 
@@ -32,15 +32,21 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   chapter exposes `toQuery : Model -> List (String, String)` and
   `fromQuery : Query -> Model -> Model` (apply what is recognised, ignore the rest);
   `Main` mirrors the current page's state into the URL with `replaceUrl` after every page
-  message and puts the target page's state into sidebar / prev-next links. Examples are
+  message that changed it (transient state such as hover must stay out of `toQuery`) and
+  puts the target page's state into sidebar / prev-next links. Examples are
   identified by their `name` fields (categories, groups, Set-valued functors).
 - `KaTeX.elm` - `<math-tex>` custom element wrapper (defined in `index.html`).
 - `Math/*` - pure, UI-free math: `FinSet`, `FinFunction` (functions as `Array Int` of
   target indices), `Group` (finite group as Cayley table + curated examples).
 - `View/Notation.elm` - the ONLY place composition-order dependent TeX/prose is produced.
   Chapters must not hand-build composition formulas.
+- `Math/Setting.elm` - a category plus the Set-valued functors chapters 7 and 8 offer on it.
+- `ListUtil.elm` - `find`, `findIndex`, `indexOf`, `allDistinct`.
 - `View/FunctionEditor.elm` - reusable SVG widget: define a function between finite sets
   by clicking a source then a target element; also used read-only.
+- `View/Common.elm` - shared view bits (law/count badges, group element picker, cycle notation).
+- `View/ArrowHead.elm` - arrowheads as plain polygons; don't use SVG `<marker>`s (their ids
+  clash between the many SVGs on one page).
 - `Page/*` - one module per chapter (Model/Msg/init/update/view/toQuery/fromQuery);
   `Page/Glossary.elm` and `Page/Intro.elm` are stateless.
 

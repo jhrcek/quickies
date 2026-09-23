@@ -8,26 +8,38 @@ import Math.FinSet as FinSet
 import Math.Group as Group
 import Math.NatTrans as NatTrans
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
+import Math.Setting as Setting exposing (Setting)
 import Math.Yoneda as Yoneda
 import Test exposing (Test, describe, test)
 
 
-{-| Every (category, object, Set-valued functor) triple the app offers: curated functors
-on their own category and every covariant hom functor of every curated category.
+{-| Every (category, object, Set-valued functor) triple the app offers in chapter 8:
+curated functors on their own category and every covariant hom functor of every curated
+category.
 -}
 cases : List ( Category, Int, SetFunctor )
 cases =
-    let
-        categories =
-            List.map .category Categories.all
-                ++ (SetFunctor.all |> List.map .source |> List.filter (\c -> List.all (\ex -> ex.category.name /= c.name) Categories.all))
+    casesWith .functors
 
-        functorsOn c =
-            List.filter (\f -> f.source.name == c.name) SetFunctor.all
-                ++ List.map (SetFunctor.homFunctor c) (Category.objectIndices c)
-    in
-    categories
-        |> List.concatMap (\c -> List.concatMap (\a -> List.map (\f -> ( c, a, f )) (functorsOn c)) (Category.objectIndices c))
+
+{-| The contravariant counterpart: every hom functor `Hom(−, B)` on `C^op`.
+-}
+contraCases : List ( Category, Int, SetFunctor )
+contraCases =
+    casesWith .contraFunctors
+
+
+casesWith : (Setting -> List SetFunctor) -> List ( Category, Int, SetFunctor )
+casesWith functors =
+    Setting.all
+        |> List.concatMap
+            (\s ->
+                let
+                    c =
+                        s.example.category
+                in
+                List.concatMap (\a -> List.map (\f -> ( c, a, f )) (functors s)) (Category.objectIndices c)
+            )
 
 
 caseName : ( Category, Int, SetFunctor ) -> String
@@ -64,6 +76,17 @@ suite =
                         test (caseName case_) <|
                             \_ ->
                                 Yoneda.roundTripHolds c a f
+                                    |> Expect.equal True
+                    )
+            )
+        , describe "contravariant lemma: Nat(Hom(−, A), F) ≅ F(A) for F : C^op → Set, both round trips"
+            (contraCases
+                |> List.filter (\( c, a, f ) -> NatTrans.searchSize (SetFunctor.contraHomFunctor c a) f <= 200000)
+                |> List.map
+                    (\(( c, a, f ) as case_) ->
+                        test (caseName case_) <|
+                            \_ ->
+                                Yoneda.contraRoundTripHolds c a f
                                     |> Expect.equal True
                     )
             )

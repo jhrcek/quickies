@@ -409,8 +409,8 @@ toQuery model =
     [ Query.param "a" (String.fromInt (FinSet.size model.f.source))
     , Query.param "b" (String.fromInt (FinSet.size model.f.target))
     , Query.param "c" (String.fromInt (FinSet.size model.g.target))
-    , Query.param "f" (intList (FinFunction.toList model.f))
-    , Query.param "g" (intList (FinFunction.toList model.g))
+    , Query.intListParam "f" (FinFunction.toList model.f)
+    , Query.intListParam "g" (FinFunction.toList model.g)
     ]
 
 
@@ -451,8 +451,3 @@ fromQuery q model =
         |> size "c" C
         |> function "f" .f (\fn md -> { md | f = fn })
         |> function "g" .g (\fn md -> { md | g = fn })
-
-
-intList : List Int -> String
-intList =
-    List.map String.fromInt >> String.join ","
