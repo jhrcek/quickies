@@ -1,15 +1,15 @@
 #!/usr/bin/env stack
 {- stack script
---resolver lts-22.44
+--resolver lts-24.60
 --package brick
 --package vty
---package vty-crossplatform
 --package linear
 --package containers
 --optimize
 --ghc-options=-threaded
 -}
 
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wall #-}
 
@@ -18,114 +18,72 @@ module Main where
 import Brick
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Border (borderWithLabel)
-import Brick.Widgets.Center (center, hCenter)
+import Brick.Widgets.Center (hCenter)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, unless, void, when)
+import Control.Monad (forever, unless, void)
 import Data.Map.Strict qualified as M
 import Graphics.Vty qualified as V
-import Graphics.Vty.CrossPlatform as V
 import Linear.Quaternion (Quaternion, axisAngle, rotate)
 import Linear.V3 (V3 (..))
 
 data AppState = AppState
     { rotation :: Quaternion Float
-    , termWidth :: Int
-    , termHeight :: Int
-    , cubeScale :: Float
     , paused :: Bool
     }
 
 -- A tick event to update the animation.
 data Tick = Tick
 
+initialState :: AppState
+initialState =
+    AppState
+        { rotation = axisAngle (V3 0 0 1) 0 -- Identity quaternion
+        , paused = False
+        }
+
 rotationStep :: Float
 rotationStep = 0.1
 
-initialState :: Int -> Int -> AppState
-initialState width height =
-    setDimensions width height $
-        AppState
-            { rotation = axisAngle (V3 0 0 1) 0 -- Identity quaternion
-            , termWidth = 0
-            , termHeight = 0
-            , cubeScale = 0
-            , paused = False
-            }
+-- Rotation applied on every tick while running: small rotations around X and Y axes
+autoRotation :: Quaternion Float
+autoRotation =
+    axisAngle (V3 1 0 0) (rotationStep * 0.3)
+        * axisAngle (V3 0 1 0) (rotationStep * 0.5)
 
--- Calculate the optimal cube scale (95% of smaller dimension)
-calculateCubeScale :: Int -> Int -> Float
-calculateCubeScale width height =
-    let smallerDimension = min width height
-     in -- Use 95% of the smaller dimension, and divide by 1.4 since
-        -- the cube vertices range from -1 to 1 (total size is 1.4 units per dimension)
-        0.95 * fromIntegral smallerDimension / 1.4
+-- Manual rotation controls (only active when paused)
+keyRotation :: Char -> Maybe (Quaternion Float)
+keyRotation k = case k of
+    'q' -> Just $ axisAngle (V3 0 0 1) rotationStep
+    'e' -> Just $ axisAngle (V3 0 0 1) (-rotationStep)
+    'w' -> Just $ axisAngle (V3 1 0 0) rotationStep
+    's' -> Just $ axisAngle (V3 1 0 0) (-rotationStep)
+    'a' -> Just $ axisAngle (V3 0 1 0) rotationStep
+    'd' -> Just $ axisAngle (V3 0 1 0) (-rotationStep)
+    _ -> Nothing
 
 app :: App AppState Tick ()
 app =
     App
-        { appDraw = \s -> [drawUI s]
+        { appDraw = \s -> [drawStatusBar s <=> drawCube s]
         , appChooseCursor = neverShowCursor
         , appHandleEvent = appEvent
         , appStartEvent = pure ()
-        , appAttrMap = const theMap
+        , appAttrMap = const $ attrMap V.defAttr []
         }
-
-theMap :: AttrMap
-theMap = attrMap V.defAttr []
 
 appEvent :: BrickEvent n Tick -> EventM n AppState ()
-appEvent e = case e of
-    -- Control keys
-    VtyEvent (V.EvKey V.KEsc []) -> halt
-    VtyEvent (V.EvKey (V.KChar ' ') []) -> togglePause
-    VtyEvent (V.EvResize width height) -> modify (setDimensions width height)
-    -- Animation tick (only when not paused)
-    AppEvent Tick -> do
-        isPaused <- gets paused
-        unless isPaused $ modify $ \s ->
-            let
-                -- Combine small rotations around X and Y axes
-                rotX = axisAngle (V3 1 0 0) (rotationStep * 0.3)
-                rotY = axisAngle (V3 0 1 0) (rotationStep * 0.5)
-                -- Apply both rotations to current rotation state
-                newRotation = rotation s * rotX * rotY
-             in
-                s{rotation = newRotation}
+appEvent e = do
+    isPaused <- gets paused
+    case e of
+        VtyEvent (V.EvKey V.KEsc []) -> halt
+        VtyEvent (V.EvKey (V.KChar ' ') []) -> modify $ \s -> s{paused = not isPaused}
+        AppEvent Tick -> unless isPaused $ applyRotation autoRotation
+        VtyEvent (V.EvKey (V.KChar k) [])
+            | isPaused, Just r <- keyRotation k -> applyRotation r
+        _ -> pure ()
 
-    -- Manual rotation controls (only when paused)
-    VtyEvent (V.EvKey (V.KChar k) []) -> do
-        isPaused <- gets paused
-        when isPaused $ case k of
-            'q' -> applyRotation (V3 0 0 1) rotationStep -- Z axis clockwise
-            'e' -> applyRotation (V3 0 0 1) (-rotationStep) -- Z axis counter-clockwise
-            'w' -> applyRotation (V3 1 0 0) rotationStep -- X axis clockwise
-            's' -> applyRotation (V3 1 0 0) (-rotationStep) -- X axis counter-clockwise
-            'a' -> applyRotation (V3 0 1 0) rotationStep -- Y axis clockwise
-            'd' -> applyRotation (V3 0 1 0) (-rotationStep) -- Y axis counter-clockwise
-            _ -> pure ()
-    _ -> pure ()
-
-applyRotation :: V3 Float -> Float -> EventM n AppState ()
-applyRotation axis angle = modify $ \s ->
-    let newRot = axisAngle axis angle
-     in s{rotation = rotation s * newRot}
-
-togglePause :: EventM n AppState ()
-togglePause = modify $ \s@AppState{paused} -> s{paused = not paused}
-
-setDimensions :: Int -> Int -> AppState -> AppState
-setDimensions width height s =
-    s
-        { termWidth = width
-        , termHeight = height
-        , cubeScale = calculateCubeScale width height
-        }
-
-drawUI :: AppState -> Widget n
-drawUI s =
-    let statusBar = drawStatusBar s
-        cubeWidget = center $ str (renderCube s)
-     in statusBar <=> cubeWidget
+applyRotation :: Quaternion Float -> EventM n AppState ()
+applyRotation r = modify $ \s@AppState{rotation} -> s{rotation = rotation * r}
 
 drawStatusBar :: AppState -> Widget n
 drawStatusBar AppState{paused} =
@@ -141,6 +99,12 @@ drawStatusBar AppState{paused} =
                     , padLeftRight 1 $ str controls
                     ]
 
+-- Fill all the space left over by the status bar with the cube
+drawCube :: AppState -> Widget n
+drawCube AppState{rotation} = Widget Greedy Greedy $ do
+    ctx <- getContext
+    render $ str $ renderCube (availWidth ctx) (availHeight ctx) rotation
+
 cubeVertices :: [V3 Float]
 cubeVertices = [V3 x y z | x <- [-1, 1], y <- [-1, 1], z <- [-1, 1]]
 
@@ -149,114 +113,77 @@ cubeEdges =
     [ (v1, v2)
     | v1 <- cubeVertices
     , v2 <- cubeVertices
+    , v1 < v2 -- Each edge only once
     , sum (abs (v1 - v2)) == 2 -- Connect vertices that differ in exactly one coordinate
     ]
 
--- Apply rotation to a vertex using quaternion
-rotateVertex :: AppState -> V3 Float -> V3 Float
-rotateVertex AppState{rotation} = Linear.Quaternion.rotate rotation
-
--- Project 3D point to 2D screen coordinates
-project2D :: AppState -> V3 Float -> (Int, Int)
-project2D s (V3 x y z) =
-    let d = 3.0 -- Distance from the viewer
-        scale = cubeScale s -- Use dynamic scale from AppState
-        factor = scale / (z + d)
-        x' = x * factor
-        y' = y * factor
-        -- Center the cube in the terminal
-        centerX = termWidth s `div` 2
-        centerY = termHeight s `div` 2
-     in (centerX + round x', centerY - round y')
-
 -- Simplified Bresenham's Line Algorithm
 bresenhamLine :: (Int, Int) -> (Int, Int) -> [(Int, Int)]
-bresenhamLine (x0, y0) (x1, y1) =
-    let dx = abs (x1 - x0)
-        dy = abs (y1 - y0)
-        sx = signum (x1 - x0)
-        sy = signum (y1 - y0)
-
-        plotLine x y err =
-            (x, y)
-                : if x == x1 && y == y1
-                    then []
-                    else
-                        let (x', y', err') = step x y err
-                         in plotLine x' y' err'
-
-        step x y err =
+bresenhamLine (x0, y0) (x1, y1) = go x0 y0 (dx - dy)
+  where
+    dx = abs (x1 - x0)
+    dy = abs (y1 - y0)
+    sx = signum (x1 - x0)
+    sy = signum (y1 - y0)
+    go x y err
+        | x == x1 && y == y1 = [(x, y)]
+        | otherwise =
             let e2 = 2 * err
-                (nx, ne) = if e2 > (-dy) then (x + sx, err - dy) else (x, err)
-                (ny, ne') = if e2 < dx then (y + sy, ne + dx) else (y, ne)
-             in (nx, ny, ne')
-     in plotLine x0 y0 (dx - dy)
+                (x', errX) = if e2 > -dy then (x + sx, err - dy) else (x, err)
+                (y', errY) = if e2 < dx then (y + sy, errX + dx) else (y, errX)
+             in (x, y) : go x' y' errY
 
--- Choose a character based on depth
+-- Choose a character based on depth (lower z = closer to viewer = bigger dot)
 chooseChar :: Float -> Float -> Float -> Char
-chooseChar z minZ maxZ
+chooseChar minZ maxZ z
     | z <= minZ + range / 3 = '⏺'
     | z >= maxZ - range / 3 = '•'
     | otherwise = '●'
   where
     range = maxZ - minZ
 
-renderCube :: AppState -> String
-renderCube s@AppState{termWidth, termHeight} =
-    let
-        initialGrid = M.empty
-        gridWithEdges = foldl addEdge initialGrid cubeEdges
-        finalGrid = foldl addVertex gridWithEdges rotatedVerts
-        renderGrid =
-            unlines
-                [ [ M.findWithDefault ' ' (x, y) finalGrid
-                  | x <- [0 .. termWidth - 1]
-                  ]
-                | y <- [0 .. termHeight - 1]
-                ]
-     in
-        renderGrid
+renderCube :: Int -> Int -> Quaternion Float -> String
+renderCube width height rot =
+    unlines
+        [ [M.findWithDefault ' ' (x, y) grid | x <- [0 .. width - 1]]
+        | y <- [0 .. height - 1]
+        ]
   where
-    addEdge grid (v1, v2) =
-        let rv1 = rotateVertex s v1
-            rv2 = rotateVertex s v2
-            p1 = project2D s rv1
-            p2 = project2D s rv2
-            V3 _ _ z1 = rv1
-            V3 _ _ z2 = rv2
-            linePoints = bresenhamLine p1 p2
+    -- Vertices come last so they overwrite edge points (M.fromList keeps the last value)
+    grid = M.fromList $ concatMap edgePoints cubeEdges ++ map vertexPoint cubeVertices
 
-            -- For each point on the line, add a character to the grid
-            addLinePoint g ((x, y), t) =
-                let zInterp = z1 + t * (z2 - z1)
-                    ch = chooseChar zInterp globalMinZ globalMaxZ
-                 in M.insert (x, y) ch g
+    edgePoints (v1, v2) =
+        let (p1, z1) = projectVertex v1
+            (p2, z2) = projectVertex v2
+            points = bresenhamLine p1 p2
+            lastIdx = max 1 (length points - 1)
+         in [ (p, depthChar (z1 + t * (z2 - z1)))
+            | (i, p) <- zip [0 :: Int ..] points
+            , let t = fromIntegral i / fromIntegral lastIdx
+            ]
 
-            -- Calculate interpolation factors for each point
-            n = length linePoints
-            interpolated = zip linePoints [if n > 1 then fromIntegral i / fromIntegral (n - 1) else 0 | i <- [0 .. n - 1]]
-         in foldl addLinePoint grid interpolated
+    vertexPoint v =
+        let (p, z) = projectVertex v
+         in (p, depthChar z)
 
-    addVertex grid rv =
-        let p = project2D s rv
-            V3 _ _ z = rv
-            ch = chooseChar z globalMinZ globalMaxZ
-         in M.insert p ch grid
+    -- Rotate vertex and project it to 2D screen coordinates, keeping its depth
+    projectVertex v =
+        let V3 x y z = rotate rot v
+            factor = scale / (z + viewerDistance)
+         in ((width `div` 2 + round (x * factor), height `div` 2 - round (y * factor)), z)
 
-    rotatedVerts = map (rotateVertex s) cubeVertices
-    globalMinZ = minimum $ map (\(V3 _ _ z) -> z) rotatedVerts
-    globalMaxZ = maximum $ map (\(V3 _ _ z) -> z) rotatedVerts
+    viewerDistance = 3
+    -- Empirical factor that makes the cube fill ~95% of the smaller dimension
+    scale = 0.95 * fromIntegral (min width height) / 1.4
+
+    depthChar = chooseChar (minimum zs) (maximum zs)
+    zs = [z | V3 _ _ z <- map (rotate rot) cubeVertices]
 
 main :: IO ()
 main = do
     chan <- newBChan 10
-    -- Fork a thread that sends a Tick event every 50ms when not paused.
-    -- We'll manage pausing in the event handler instead of here.
+    -- Send a Tick every 50ms; pausing is handled in the event handler.
     _ <- forkIO $ forever $ do
         writeBChan chan Tick
-        threadDelay 50_000 -- 50ms
-    let buildVty = V.mkVty V.defaultConfig
-    initialVty <- buildVty
-    (width, height) <- V.displayBounds $ V.outputIface initialVty
-    let initState = initialState width height
-    void $ customMain initialVty buildVty (Just chan) app initState
+        threadDelay 50_000
+    void $ customMainWithDefaultVty (Just chan) app initialState
