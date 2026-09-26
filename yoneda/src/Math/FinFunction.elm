@@ -14,6 +14,7 @@ module Math.FinFunction exposing
     , isSurjective
     , isWellTyped
     , mapping
+    , postComposeFibers
     , resize
     , setMapping
     , toList
@@ -25,6 +26,7 @@ the index of its image in the target. Composition is diagrammatic:
 -}
 
 import Array exposing (Array)
+import Dict
 import Math.FinSet as FinSet exposing (FinSet)
 import Set
 
@@ -195,6 +197,26 @@ enumerateAll source target =
     in
     List.foldl (\_ acc -> extend acc) [ [] ] (List.range 1 (FinSet.size source))
         |> List.map (fromList source target)
+
+
+{-| The function `Hom(a, g) : Hom(a, g.source) -> Hom(a, g.target)`, `f ↦ compose f g`,
+described by its fibers: every `h` in `enumerateAll a g.target` (in that order) paired with
+all `f` in `enumerateAll a g.source` (in that order) that it sends to `h`. Unhit `h` get `[]`.
+-}
+postComposeFibers : FinSet -> FinFunction -> List ( FinFunction, List FinFunction )
+postComposeFibers a g =
+    let
+        fibers =
+            List.foldr
+                (\f ->
+                    Dict.update (toList (compose f g))
+                        (\fs -> Just (f :: Maybe.withDefault [] fs))
+                )
+                Dict.empty
+                (enumerateAll a g.source)
+    in
+    enumerateAll a g.target
+        |> List.map (\h -> ( h, Dict.get (toList h) fibers |> Maybe.withDefault [] ))
 
 
 {-| Keep the mapping meaningful after the sets change size: indices out of range are

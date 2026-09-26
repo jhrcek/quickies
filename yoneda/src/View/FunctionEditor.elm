@@ -2,6 +2,8 @@ module View.FunctionEditor exposing
     ( Interaction(..)
     , Options
     , thumbnail
+    , thumbnailAt
+    , thumbnailSize
     , viewWith
     )
 
@@ -15,7 +17,7 @@ import Html.Attributes
 import Html.Events
 import Math.FinFunction as FinFunction exposing (FinFunction)
 import Math.FinSet as FinSet
-import Svg
+import Svg exposing (Svg)
 import Svg.Attributes as SA
 import View.ArrowHead as ArrowHead
 import View.Notation as Notation
@@ -49,11 +51,50 @@ defaultOptions =
 -}
 thumbnail : FinFunction -> Html msg
 thumbnail f =
-    viewWith { defaultOptions | width = 90, rowHeight = 16, radius = 4, showLabels = False } ReadOnly f
+    viewWith thumbnailOptions ReadOnly f
+
+
+thumbnailOptions : Options
+thumbnailOptions =
+    { defaultOptions | width = 90, rowHeight = 16, radius = 4, showLabels = False }
+
+
+{-| Width and height of a `thumbnail` of `f`.
+-}
+thumbnailSize : FinFunction -> { width : Int, height : Int }
+thumbnailSize f =
+    let
+        d =
+            drawing thumbnailOptions ReadOnly f
+    in
+    { width = d.width, height = d.height }
+
+
+{-| A `thumbnail` drawn inside an enclosing SVG, its top left corner at the given point.
+-}
+thumbnailAt : ( Float, Float ) -> FinFunction -> Svg msg
+thumbnailAt ( x, y ) f =
+    Svg.g [ SA.transform ("translate(" ++ String.fromFloat x ++ "," ++ String.fromFloat y ++ ")") ]
+        (drawing thumbnailOptions ReadOnly f).children
 
 
 viewWith : Options -> Interaction msg -> FinFunction -> Html msg
 viewWith opts interaction f =
+    let
+        d =
+            drawing opts interaction f
+    in
+    Svg.svg
+        [ SA.width (String.fromInt d.width)
+        , SA.height (String.fromInt d.height)
+        , SA.viewBox ("0 0 " ++ String.fromInt d.width ++ " " ++ String.fromInt d.height)
+        , Html.Attributes.style "display" "block"
+        ]
+        d.children
+
+
+drawing : Options -> Interaction msg -> FinFunction -> { width : Int, height : Int, children : List (Svg msg) }
+drawing opts interaction f =
     let
         n =
             FinSet.size f.source
@@ -251,15 +292,12 @@ viewWith opts interaction f =
                     Svg.text ""
                 ]
     in
-    Svg.svg
-        [ SA.width (String.fromInt opts.width)
-        , SA.height (String.fromInt (height + 8))
-        , SA.viewBox ("0 0 " ++ String.fromInt opts.width ++ " " ++ String.fromInt (height + 8))
-        , Html.Attributes.style "display" "block"
+    { width = opts.width
+    , height = height + 8
+    , children =
+        [ ellipse xLeft n f.source.name
+        , ellipse xRight m f.target.name
         ]
-        ([ ellipse xLeft n f.source.name
-         , ellipse xRight m f.target.name
-         ]
             ++ (case opts.title of
                     Just t ->
                         [ Svg.text_
@@ -279,4 +317,4 @@ viewWith opts interaction f =
             ++ List.map arrow (FinFunction.mapping f)
             ++ List.map sourceNode (List.range 0 (n - 1))
             ++ List.map targetNode (List.range 0 (m - 1))
-        )
+    }

@@ -69,6 +69,7 @@ suite =
                 FinFunction.compose p (FinFunction.inverse p)
                     |> FinFunction.equal (FinFunction.identity c)
                     |> Expect.equal True
+        , describe "postComposeFibers" (List.map fibersTest fiberCases)
         ]
 
 
@@ -84,3 +85,53 @@ dedupe xs =
         )
         []
         xs
+
+
+fiberCases : List ( String, FinFunction.FinFunction )
+fiberCases =
+    let
+        b =
+            FinSet.indexed "B" 3
+
+        c =
+            FinSet.indexed "C" 2
+    in
+    [ ( "constant g", FinFunction.fromList b c [ 1, 1, 1 ] )
+    , ( "surjective g", FinFunction.fromList b c [ 0, 1, 0 ] )
+    , ( "injective g", FinFunction.fromList c b [ 2, 0 ] )
+    ]
+
+
+fibersTest : ( String, FinFunction.FinFunction ) -> Test
+fibersTest ( name, g ) =
+    let
+        a =
+            FinSet.indexed "A" 3
+
+        fibers =
+            FinFunction.postComposeFibers a g
+
+        preimageSize j =
+            FinFunction.toList g |> List.filter ((==) j) |> List.length
+    in
+    describe name
+        [ test "outputs are all of Hom(A,C) in enumeration order" <|
+            \_ ->
+                List.map (Tuple.first >> FinFunction.toList) fibers
+                    |> Expect.equal (List.map FinFunction.toList (FinFunction.enumerateAll a g.target))
+        , test "fiber sizes add up to |B|^|A|" <|
+            \_ ->
+                List.map (Tuple.second >> List.length) fibers
+                    |> List.sum
+                    |> Expect.equal (FinSet.size g.source ^ FinSet.size a)
+        , test "every f in the fiber of h composes to h" <|
+            \_ ->
+                fibers
+                    |> List.all (\( h, fs ) -> List.all (\f -> FinFunction.equal (FinFunction.compose f g) h) fs)
+                    |> Expect.equal True
+        , test "fiber of h has size ∏ |g⁻¹(h(a))|" <|
+            \_ ->
+                fibers
+                    |> List.all (\( h, fs ) -> List.length fs == List.product (List.map preimageSize (FinFunction.toList h)))
+                    |> Expect.equal True
+        ]

@@ -4,9 +4,13 @@ import Html exposing (Html, button, div, h2, h3, label, p, span, strong, text)
 import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
+import ListUtil
 import Math.FinFunction as FinFunction exposing (FinFunction)
 import Math.FinSet as FinSet
 import Query exposing (Query)
+import Svg
+import Svg.Attributes as SA
+import View.ArrowHead as ArrowHead
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
 
@@ -17,7 +21,6 @@ type alias Model =
     , selectedF : Maybe Int
     , selectedG : Maybe Int
     , allPage : Int -- pager over Hom(A,B) thumbnails
-    , mapPage : Int -- pager over the Hom(A,g) table
     }
 
 
@@ -32,17 +35,12 @@ type WhichSet
     | C
 
 
-type Pager
-    = AllPager
-    | MapPager
-
-
 type Msg
     = SetSize WhichSet Int
     | ClickSource Which Int
     | ClickTarget Which Int
     | LoadF FinFunction
-    | SetPage Pager Int
+    | SetPage Int
 
 
 init : Model
@@ -62,7 +60,6 @@ init =
     , selectedF = Nothing
     , selectedG = Nothing
     , allPage = 0
-    , mapPage = 0
     }
 
 
@@ -91,7 +88,6 @@ update msg model =
                 , selectedF = Nothing
                 , selectedG = Nothing
                 , allPage = 0
-                , mapPage = 0
             }
 
         ClickSource F i ->
@@ -119,11 +115,8 @@ update msg model =
         LoadF f ->
             { model | f = f, selectedF = Nothing }
 
-        SetPage AllPager n ->
+        SetPage n ->
             { model | allPage = n }
-
-        SetPage MapPager n ->
-            { model | mapPage = n }
 
 
 toggle : Int -> Maybe Int -> Maybe Int
@@ -287,7 +280,7 @@ view order model =
             )
         , div [ class "card" ]
             [ p [ class "muted" ] [ text "All of them, as pictures. Click one to load it into the editor above (the current f is outlined)." ]
-            , pager AllPager allPageSize model.allPage (List.length homAB)
+            , pager allPageSize model.allPage (List.length homAB)
             , div [ class "thumbs" ]
                 (pageOf allPageSize model.allPage homAB
                     |> List.map
@@ -314,24 +307,14 @@ view order model =
             ]
         , KaTeX.display ("\\mathrm{Hom}(A, g) : \\mathrm{Hom}(A,B) \\to \\mathrm{Hom}(A,C), \\qquad f \\mapsto " ++ fg)
         , div [ class "card" ]
-            [ pager MapPager mapPageSize model.mapPage (List.length homAB)
-            , div [ class "thumbs" ]
-                (pageOf mapPageSize model.mapPage homAB
-                    |> List.map
-                        (\h ->
-                            div [ class "thumb", Html.Attributes.style "display" "flex", Html.Attributes.style "align-items" "center" ]
-                                [ FunctionEditor.thumbnail h
-                                , span [ Html.Attributes.style "padding" "0 4px" ] [ text "↦" ]
-                                , FunctionEditor.thumbnail (FinFunction.compose h model.g)
-                                ]
-                        )
-                )
+            [ homMapInfo order model.g
+            , homMapDiagram model.f model.g (FinFunction.postComposeFibers setA model.g)
             , p [ class "muted" ]
-                [ text "Is this function injective? Surjective? Change "
-                , KaTeX.inline "g"
-                , text " and see how the answer depends on "
-                , KaTeX.inline "g"
-                , text " being injective or surjective."
+                [ text "Each function in "
+                , KaTeX.inline "\\mathrm{Hom}(A,C)"
+                , text " on the right sits next to the block of functions that land on it (its fiber); faded ones are not hit by anything. The current "
+                , KaTeX.inline "f"
+                , text " is shown in orange; click a function on the left to load it into the editor above."
                 ]
             ]
         , div [ class "callout remember" ]
@@ -352,9 +335,309 @@ allPageSize =
     64
 
 
-mapPageSize : Int
-mapPageSize =
-    32
+{-| Why Hom(A,g) is (not) injective / surjective: it is exactly when g is (A is never empty
+here). Each case names a witness in g.
+-}
+homMapInfo : CompositionOrder -> FinFunction -> Html msg
+homMapInfo order g =
+    let
+        setB =
+            g.source
+
+        setC =
+            g.target
+
+        bLabel i =
+            KaTeX.inline (FinSet.labelAt i setB)
+
+        cLabel j =
+            KaTeX.inline (FinSet.labelAt j setC)
+
+        homAg =
+            KaTeX.inline "\\mathrm{Hom}(A,g)"
+
+        fg =
+            KaTeX.inline (Notation.compose order "f" "g")
+
+        collision =
+            List.range 0 (FinSet.size setB - 1)
+                |> List.concatMap (\i -> List.range (i + 1) (FinSet.size setB - 1) |> List.map (Tuple.pair i))
+                |> ListUtil.find (\( i, j ) -> FinFunction.apply g i == FinFunction.apply g j)
+
+        missed =
+            List.range 0 (FinSet.size setC - 1)
+                |> ListUtil.find (\j -> not (List.member j (FinFunction.toList g)))
+
+        injectivity =
+            case collision of
+                Nothing ->
+                    [ badge "injective" True
+                    , text " "
+                    , KaTeX.inline "g"
+                    , text " is injective, so "
+                    , homAg
+                    , text " is injective too: "
+                    , KaTeX.inline "g"
+                    , text " never merges two elements of "
+                    , KaTeX.inline "B"
+                    , text ", so "
+                    , fg
+                    , text " still remembers "
+                    , KaTeX.inline "f"
+                    , text ". Every block on the left has at most one function."
+                    ]
+
+                Just ( i, j ) ->
+                    [ badge "injective" False
+                    , text " "
+                    , KaTeX.inline "g"
+                    , text " is not injective ("
+                    , bLabel i
+                    , text " and "
+                    , bLabel j
+                    , text " both go to "
+                    , cLabel (FinFunction.apply g i)
+                    , text "), so neither is "
+                    , homAg
+                    , text ": two functions "
+                    , KaTeX.inline "f"
+                    , text " that differ only by using "
+                    , bLabel i
+                    , text " instead of "
+                    , bLabel j
+                    , text " give the same "
+                    , fg
+                    , text ". Some blocks on the left hold several functions."
+                    ]
+
+        surjectivity =
+            case missed of
+                Nothing ->
+                    [ badge "surjective" True
+                    , text " "
+                    , KaTeX.inline "g"
+                    , text " is surjective, so "
+                    , homAg
+                    , text " is surjective too: any "
+                    , KaTeX.inline "h : A \\to C"
+                    , text " is some "
+                    , fg
+                    , text ", by choosing for each "
+                    , KaTeX.inline "a"
+                    , text " an element of "
+                    , KaTeX.inline "B"
+                    , text " that "
+                    , KaTeX.inline "g"
+                    , text " sends to "
+                    , KaTeX.inline "h(a)"
+                    , text ". No function on the right is faded."
+                    ]
+
+                Just j ->
+                    [ badge "surjective" False
+                    , text " "
+                    , KaTeX.inline "g"
+                    , text " is not surjective (nothing goes to "
+                    , cLabel j
+                    , text "), so neither is "
+                    , homAg
+                    , text ": a function "
+                    , KaTeX.inline "A \\to C"
+                    , text " that uses "
+                    , cLabel j
+                    , text " can never be of the form "
+                    , fg
+                    , text ". Those are the faded functions on the right."
+                    ]
+    in
+    div [ class "callout" ]
+        [ p [ Html.Attributes.style "margin-top" "0" ] injectivity
+        , p [] surjectivity
+        , p [ class "muted", Html.Attributes.style "margin-bottom" "0" ]
+            [ text "Edit "
+            , KaTeX.inline "g"
+            , text " above to see the other cases."
+            ]
+        ]
+
+
+{-| Hom(A,g) drawn like a function between finite sets: Hom(A,B) on the left grouped into
+fibers, Hom(A,C) on the right in enumeration order, each output centred on its fiber.
+-}
+homMapDiagram : FinFunction -> FinFunction -> List ( FinFunction, List FinFunction ) -> Html Msg
+homMapDiagram current g blocks =
+    let
+        pad =
+            4
+
+        gap =
+            6
+
+        frameSize fn =
+            let
+                t =
+                    FunctionEditor.thumbnailSize fn
+            in
+            ( toFloat (t.width + 2 * pad), toFloat (t.height + 2 * pad) )
+
+        ( inW, inH ) =
+            frameSize current
+
+        ( outW, outH ) =
+            frameSize (FinFunction.compose current g)
+
+        ( inRowH, outRowH ) =
+            ( inH + gap, outH + gap )
+
+        header =
+            24
+
+        xIn =
+            8
+
+        xOut =
+            xIn + inW + 130
+
+        width =
+            xOut + outW + xIn
+
+        currentImage =
+            FinFunction.compose current g
+
+        accent =
+            "#e67e22"
+
+        frame ( x, y ) ( w, h ) highlighted fn =
+            [ Svg.rect
+                [ SA.x (String.fromFloat x)
+                , SA.y (String.fromFloat y)
+                , SA.width (String.fromFloat w)
+                , SA.height (String.fromFloat h)
+                , SA.rx "4"
+                , SA.fill "#fff"
+                , SA.stroke
+                    (if highlighted then
+                        accent
+
+                     else
+                        "#ccc"
+                    )
+                , SA.strokeWidth
+                    (if highlighted then
+                        "2.5"
+
+                     else
+                        "1"
+                    )
+                ]
+                []
+            , FunctionEditor.thumbnailAt ( x + pad, y + pad ) fn
+            ]
+
+        blockHeight ( _, fs ) =
+            max (toFloat (List.length fs) * inRowH) outRowH
+
+        drawBlock index ( y0, ( h, fs ) ) =
+            let
+                bh =
+                    blockHeight ( h, fs )
+
+                yOut =
+                    y0 + (bh - outRowH) / 2 + gap / 2
+
+                yInTop =
+                    y0 + (bh - toFloat (List.length fs) * inRowH) / 2 + gap / 2
+
+                input i f =
+                    let
+                        y =
+                            yInTop + toFloat i * inRowH
+
+                        isCurrent =
+                            FinFunction.equal f current
+
+                        ( x1, y1 ) =
+                            ( xIn + inW, y + inH / 2 )
+
+                        ( x2, y2 ) =
+                            ( xOut - 3, yOut + outH / 2 )
+
+                        ( color, lineWidth ) =
+                            if isCurrent then
+                                ( accent, 2.5 )
+
+                            else
+                                ( "#555", 1.2 )
+                    in
+                    Svg.g [ Html.Events.onClick (LoadF f), SA.style "cursor:pointer" ]
+                        (frame ( xIn, y ) ( inW, inH ) isCurrent f
+                            ++ [ Svg.line
+                                    [ SA.x1 (String.fromFloat x1)
+                                    , SA.y1 (String.fromFloat y1)
+                                    , SA.x2 (String.fromFloat x2)
+                                    , SA.y2 (String.fromFloat y2)
+                                    , SA.stroke color
+                                    , SA.strokeWidth (String.fromFloat lineWidth)
+                                    ]
+                                    []
+                               , ArrowHead.view { tip = ( x2, y2 ), from = ( x1, y1 ), size = 5 * lineWidth + 3, color = color }
+                               ]
+                        )
+            in
+            Svg.g []
+                ([ if modBy 2 index == 0 then
+                    Svg.rect
+                        [ SA.x "0"
+                        , SA.y (String.fromFloat y0)
+                        , SA.width (String.fromFloat width)
+                        , SA.height (String.fromFloat bh)
+                        , SA.fill "#f3f6f9"
+                        ]
+                        []
+
+                   else
+                    Svg.text ""
+                 , Svg.g
+                    (if List.isEmpty fs then
+                        [ SA.opacity "0.35" ]
+
+                     else
+                        []
+                    )
+                    (frame ( xOut, yOut ) ( outW, outH ) (FinFunction.equal h currentImage) h)
+                 ]
+                    ++ List.indexedMap input fs
+                )
+
+        offsets =
+            List.foldl (\b ( y, acc ) -> ( y + blockHeight b, ( y, b ) :: acc )) ( header, [] ) blocks
+                |> Tuple.second
+                |> List.reverse
+
+        totalHeight =
+            header + List.sum (List.map blockHeight blocks)
+
+        columnLabel x lbl =
+            Svg.text_
+                [ SA.x (String.fromFloat x)
+                , SA.y "16"
+                , SA.textAnchor "middle"
+                , SA.fontSize "14"
+                , SA.fontStyle "italic"
+                , SA.fontFamily "KaTeX_Math, serif"
+                ]
+                [ Svg.text lbl ]
+    in
+    Svg.svg
+        [ SA.width (String.fromFloat width)
+        , SA.height (String.fromFloat totalHeight)
+        , SA.viewBox ("0 0 " ++ String.fromFloat width ++ " " ++ String.fromFloat totalHeight)
+        , Html.Attributes.style "display" "block"
+        ]
+        (columnLabel (xIn + inW / 2) "Hom(A,B)"
+            :: columnLabel (xOut + outW / 2) "Hom(A,C)"
+            :: List.indexedMap drawBlock offsets
+        )
 
 
 pageOf : Int -> Int -> List a -> List a
@@ -362,10 +645,10 @@ pageOf size page xs =
     xs |> List.drop (page * size) |> List.take size
 
 
-{-| "Showing mappings 1–64 of 256" with prev/next buttons; nothing when everything fits on one page.
+{-| "Showing functions 1–64 of 256" with prev/next buttons; nothing when everything fits on one page.
 -}
-pager : Pager -> Int -> Int -> Int -> Html Msg
-pager which size page total =
+pager : Int -> Int -> Int -> Html Msg
+pager size page total =
     if total <= size then
         text ""
 
@@ -375,11 +658,11 @@ pager which size page total =
                 (total - 1) // size
         in
         div [ class "controls" ]
-            [ button [ Html.Attributes.disabled (page <= 0), onClick (SetPage which (page - 1)) ] [ text "‹" ]
-            , button [ Html.Attributes.disabled (page >= lastPage), onClick (SetPage which (page + 1)) ] [ text "›" ]
+            [ button [ Html.Attributes.disabled (page <= 0), onClick (SetPage (page - 1)) ] [ text "‹" ]
+            , button [ Html.Attributes.disabled (page >= lastPage), onClick (SetPage (page + 1)) ] [ text "›" ]
             , span [ class "muted" ]
                 [ text
-                    ("Showing mappings "
+                    ("Showing functions "
                         ++ String.fromInt (page * size + 1)
                         ++ "–"
                         ++ String.fromInt (min total ((page + 1) * size))
