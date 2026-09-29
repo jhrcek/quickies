@@ -24,8 +24,19 @@
             uglify-js
             coreutils
             bash
+            git
           ];
           text = builtins.readFile ./build-all.sh;
+        };
+
+        deployScript = pkgs.writeShellApplication {
+          name = "deploy-gh-pages";
+          runtimeInputs = with pkgs; [
+            buildScript
+            coreutils
+            git
+          ];
+          text = builtins.readFile ./deploy-gh-pages.sh;
         };
       in
       {
@@ -46,6 +57,7 @@
             pkgs.gnumake
             pkgs.uglify-js
             buildScript
+            deployScript
           ];
         };
       }

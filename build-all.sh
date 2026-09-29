@@ -1,7 +1,9 @@
 # This script is wrapped by flake.nix to use nix-provided dependencies.
 set -euo pipefail
 
-ROOT_DIR=$(pwd)
+# Run from the repo root regardless of where the script is invoked from.
+ROOT_DIR=$(git rev-parse --show-toplevel)
+cd "$ROOT_DIR"
 BUILD_DIR="$ROOT_DIR/build"
 mkdir -p "$BUILD_DIR"
 
