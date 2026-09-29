@@ -40,6 +40,8 @@
             elm
             elm-live
             elm-format
+            elm-json
+            elm-review
             elm-test
             pkgs.gnumake
             pkgs.uglify-js
