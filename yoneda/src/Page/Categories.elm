@@ -202,7 +202,9 @@ view order model =
                         ]
                     ]
                 , div [ class "col" ]
-                    [ compositionStatus order model
+                    [ -- fixed-height box: hovering the composition table below changes this
+                      -- text, which must not shift the table under the pointer
+                      div [ class "composition-status" ] [ compositionStatus order model ]
                     , p [ class "muted" ]
                         [ text
                             (String.fromInt (Category.objectCount cat)
