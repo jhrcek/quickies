@@ -118,6 +118,8 @@ plain s =
         |> String.replace "^{-1}" "⁻¹"
         |> String.replace "\\mathrm{id}_" "id "
         |> String.replace "\\mathrm" ""
+        |> String.replace "\\mathbb{Z}" "ℤ"
+        |> String.replace "\\mathbf" ""
         |> String.replace "\\ast" "∗"
         |> String.replace "\\bullet" "•"
         |> String.replace "\\le" "≤"
