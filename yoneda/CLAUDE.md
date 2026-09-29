@@ -18,6 +18,7 @@ milestone is finished.
 - `make check` - Verify all Elm files compile (runs automatically via PostToolUse hook)
 - `make test` - Run elm-test suite (`elm-test` 0.19.2 is in the repo's nix devShell)
 - `make format` - elm-format
+- `make review` - elm-review linter (config in `review/`)
 - `make live` - dev server (maintainer runs manually)
 
 Requires elm 0.19.2 (available via `nix develop` in the repo root).

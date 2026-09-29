@@ -13,3 +13,7 @@ test:
 .PHONY: format
 format:
 	elm-format src/ tests/ --yes
+
+.PHONY: review
+review:
+	elm-review
