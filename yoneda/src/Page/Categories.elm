@@ -436,8 +436,23 @@ compositionTable order model =
         cat =
             model.example.category
 
-        idx =
-            Category.morphismIndices cat
+        -- Group arrows by the middle object B of a composable pair A -> B -> C: first
+        -- arrows by target (then source), second arrows by source (then target), so
+        -- the defined cells form contiguous blocks.
+        sortedBy key =
+            List.sortBy
+                (\i ->
+                    Category.morphism cat i
+                        |> Maybe.map (\m -> ( key m, i ))
+                        |> Maybe.withDefault ( ( 0, 0 ), i )
+                )
+                (Category.morphismIndices cat)
+
+        -- first arrows are rows in diagrammatic order, columns in classical order
+        ( rowIdx, colIdx ) =
+            Notation.tableEntryOrder order
+                (sortedBy (\m -> ( m.tgt, m.src )))
+                (sortedBy (\m -> ( m.src, m.tgt )))
 
         lbl =
             Category.morphismLabel cat
@@ -455,7 +470,7 @@ compositionTable order model =
         header =
             tr []
                 (th [] [ text (Notation.tableCorner order) ]
-                    :: List.map (\c -> th [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ) ] ] [ KaTeX.inline (lbl c) ]) idx
+                    :: List.map (\c -> th [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ) ] ] [ KaTeX.inline (lbl c) ]) colIdx
                 )
 
         row r =
@@ -482,12 +497,12 @@ compositionTable order model =
                                 Nothing ->
                                     td [ class "empty" ] [ text "·" ]
                         )
-                        idx
+                        colIdx
                 )
     in
     table [ class "cayley", Html.Events.onMouseLeave (HoverPair Nothing) ]
         [ thead [] [ header ]
-        , tbody [] (List.map row idx)
+        , tbody [] (List.map row rowIdx)
         ]
 
 
