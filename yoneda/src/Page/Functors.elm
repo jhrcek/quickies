@@ -23,7 +23,6 @@ type alias Model =
     { source : Example
     , target : Example
     , functor : Functor
-    , selected : Maybe Int -- selected arrow of the source category
     , enumerated : Maybe (List Functor)
     , setExample : SetFunctor
     , setFunctor : SetFunctor -- possibly edited copy of setExample
@@ -37,9 +36,6 @@ type Msg
     | SelectTarget Example
     | CycleObject Int
     | SetMorphism Int Int
-    | SelectArrow Int
-    | ClickTargetArrow Int
-    | ClearSelection
     | Enumerate
     | Load Functor
     | SelectSetExample SetFunctor
@@ -61,7 +57,6 @@ init =
     { source = source
     , target = target
     , functor = Functor.constant source.category target.category 0
-    , selected = Nothing
     , enumerated = Nothing
     , setExample = SetFunctor.twoFunctions
     , setFunctor = SetFunctor.twoFunctions
@@ -74,10 +69,10 @@ update : Msg -> Model -> Model
 update msg model =
     case msg of
         SelectSource ex ->
-            { model | source = ex, functor = Functor.constant ex.category model.target.category 0, selected = Nothing, enumerated = Nothing }
+            { model | source = ex, functor = Functor.constant ex.category model.target.category 0, enumerated = Nothing }
 
         SelectTarget ex ->
-            { model | target = ex, functor = Functor.constant model.source.category ex.category 0, selected = Nothing, enumerated = Nothing }
+            { model | target = ex, functor = Functor.constant model.source.category ex.category 0, enumerated = Nothing }
 
         CycleObject a ->
             let
@@ -92,29 +87,11 @@ update msg model =
         SetMorphism f ff ->
             { model | functor = Functor.setMorphismImage f ff model.functor }
 
-        SelectArrow f ->
-            { model | selected = Just f }
-
-        ClickTargetArrow ff ->
-            case model.selected of
-                Just f ->
-                    if List.member ff (allowedImages model.functor f) then
-                        { model | functor = Functor.setMorphismImage f ff model.functor, selected = Nothing }
-
-                    else
-                        model
-
-                Nothing ->
-                    model
-
-        ClearSelection ->
-            { model | selected = Nothing }
-
         Enumerate ->
             { model | enumerated = Just (Functor.enumerateAll model.source.category model.target.category) }
 
         Load fun ->
-            { model | functor = fun, selected = Nothing }
+            { model | functor = fun }
 
         SelectSetExample ex ->
             { model | setExample = ex, setFunctor = ex, setArrow = Category.firstNonIdentity ex.source, setSelected = Nothing }
@@ -253,7 +230,7 @@ view order model =
             , KaTeX.inline "\\mathcal{D}"
             , text ". Assign objects with the buttons (each click moves "
             , KaTeX.inline "F(A)"
-            , text " to the next object). Then choose where each arrow goes, either with the buttons or by clicking an arrow on the left and then its intended image on the right: only well-typed choices are offered. Identities are sent to identities automatically. The composition law is checked live below the pictures."
+            , text " to the next object). Then choose where each arrow goes with the buttons: only well-typed choices are offered. Identities are sent to identities automatically. The composition law is checked live below the pictures."
             ]
         , div [ class "controls" ]
             (span [ class "muted" ] [ text "Source 𝒞:" ]
@@ -352,88 +329,56 @@ functorCard order model =
         tgt =
             model.target.category
 
-        imageOfSelected =
-            Maybe.map (Functor.morphismImage fun) model.selected
-
-        srcHighlight f =
-            if model.selected == Just f then
-                First
-
-            else
-                Plain
-
-        tgtHighlight ff =
-            if imageOfSelected == Just ff then
-                Composite
-
-            else if Maybe.map (\f -> List.member ff (allowedImages fun f)) model.selected == Just True then
-                Second
-
-            else
-                Plain
-
         showIds ex =
             -- the diagram hides identities by default; show them if that is all there is
             Category.morphismCount ex.category == Category.objectCount ex.category
 
         coloring =
-            if Functor.isFunctor fun && model.selected == Nothing then
+            if Functor.isFunctor fun then
                 Just (functorColoring (showIds model.source) fun)
 
             else
                 Nothing
 
-        diagram ex cfg paint =
+        diagram ex paint =
+            let
+                cfg =
+                    { positions = ex.positions
+                    , width = ex.width
+                    , height = ex.height
+                    , showIdentities = showIds ex
+                    , onClickMorphism = Nothing
+                    , highlight = always Plain
+                    }
+            in
             case coloring of
                 Just c ->
                     Diagram.viewPainted cfg (paint c) ex.category
 
                 Nothing ->
                     Diagram.view cfg ex.category
-
-        swatch color =
-            case coloring of
-                Just c ->
-                    span [ class "swatch", style "background" (color c) ] []
-
-                Nothing ->
-                    text ""
     in
     div [ class "card" ]
         [ div [ class "row" ]
             [ div [ class "col fit" ]
                 [ p [] [ KaTeX.inline ("\\mathcal{C} = " ++ src.texName) ]
-                , diagram model.source
-                    { positions = model.source.positions
-                    , width = model.source.width
-                    , height = model.source.height
-                    , showIdentities = showIds model.source
-                    , onClickMorphism = Just SelectArrow
-                    , highlight = srcHighlight
-                    }
-                    .sourcePaint
+                , diagram model.source .sourcePaint
                 ]
             , div [ class "col fit" ]
                 [ p [] [ KaTeX.inline ("\\mathcal{D} = " ++ tgt.texName) ]
-                , diagram model.target
-                    { positions = model.target.positions
-                    , width = model.target.width
-                    , height = model.target.height
-                    , showIdentities = showIds model.target || Maybe.map (Category.isIdentity tgt) imageOfSelected == Just True
-                    , onClickMorphism = Just ClickTargetArrow
-                    , highlight = tgtHighlight
-                    }
-                    .targetPaint
+                , diagram model.target .targetPaint
                 ]
             , div [ class "col" ]
                 [ p [] [ strong [] [ text "On objects" ] ]
                 , div [ class "controls" ]
                     (List.map
                         (\a ->
+                            let
+                                tint =
+                                    textColor (Maybe.map (\c -> c.objectColor a) coloring)
+                            in
                             button [ onClick (CycleObject a), disabled (Category.objectCount tgt == 1) ]
-                                [ swatch (\c -> c.objectColor a)
-                                , KaTeX.inline ("F(" ++ Category.objectLabel src a ++ ") = " ++ Category.objectLabel tgt (Functor.objectImage fun a))
-                                ]
+                                [ KaTeX.inline ("F(" ++ tint (Category.objectLabel src a) ++ ") = " ++ tint (Category.objectLabel tgt (Functor.objectImage fun a))) ]
                         )
                         (Category.objectIndices src)
                     )
@@ -441,28 +386,17 @@ functorCard order model =
                 , ul [ class "compact" ]
                     (Category.morphismIndices src
                         |> List.filter (not << Category.isIdentity src)
-                        |> List.map (\f -> arrowRow model (swatch (\c -> c.morphismColor f)) f)
+                        |> List.map (\f -> arrowRow fun (Maybe.map (\c -> c.morphismColor f) coloring) f)
                     )
                 , if List.all (Category.isIdentity src) (Category.morphismIndices src) then
                     p [ class "muted" ] [ text "Only identity arrows here; they are sent to identities." ]
 
                   else
                     text ""
-                , case model.selected of
-                    Just f ->
-                        p [ class "muted" ]
-                            [ text "Selected "
-                            , KaTeX.inline (Category.morphismLabel src f)
-                            , text "; click an arrow of 𝒟 highlighted in orange to make it the image. "
-                            , button [ onClick ClearSelection ] [ text "Clear" ]
-                            ]
-
-                    Nothing ->
-                        text ""
                 , case coloring of
                     Just _ ->
                         p [ class "muted" ]
-                            [ text "Every object and arrow of 𝒞 has its own colour, and its picture in 𝒟 wears the same colour. Where several things land in the same place, the colours share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; greyed-out parts of 𝒟 are not in the picture at all."
+                            [ text "Every object and arrow of 𝒞 has its own colour, used in the equations above too, and its picture in 𝒟 wears the same colour. Where several things land in the same place, the colours share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; greyed-out parts of 𝒟 are not in the picture at all."
                             ]
 
                     Nothing ->
@@ -473,12 +407,24 @@ functorCard order model =
         ]
 
 
-arrowRow : Model -> Html Msg -> Int -> Html Msg
-arrowRow model swatch f =
-    let
-        fun =
-            model.functor
+{-| Wrap a TeX snippet in `\textcolor` when there is a colour.
+-}
+textColor : Maybe String -> String -> String
+textColor color tex =
+    case color of
+        Just c ->
+            "\\textcolor{" ++ c ++ "}{" ++ tex ++ "}"
 
+        Nothing ->
+            tex
+
+
+{-| The image choices for one arrow; with a colour, the arrow's label and its chosen image
+wear it.
+-}
+arrowRow : Functor -> Maybe String -> Int -> Html Msg
+arrowRow fun color f =
+    let
         src =
             fun.source
 
@@ -488,8 +434,8 @@ arrowRow model swatch f =
         allowed =
             allowedImages fun f
     in
-    li [ classList [ ( "hl", model.selected == Just f ) ] ]
-        [ span [ onClick (SelectArrow f) ] [ swatch, KaTeX.inline ("F(" ++ Category.morphismLabel src f ++ ") = ") ]
+    li []
+        [ KaTeX.inline ("F(" ++ textColor color (Category.morphismLabel src f) ++ ") = ")
         , if List.isEmpty allowed then
             let
                 ( a, b ) =
@@ -509,11 +455,20 @@ arrowRow model swatch f =
             let
                 current =
                     Functor.morphismImage fun f
+
+                activeColor ff =
+                    case ( color, ff == current ) of
+                        ( Just c, True ) ->
+                            [ style "background" c, style "border-color" c ]
+
+                        _ ->
+                            []
             in
             span [ class "controls" ]
                 (List.map
                     (\ff ->
-                        button [ classList [ ( "active", ff == current ) ], onClick (SetMorphism f ff) ] [ KaTeX.inline (Category.morphismLabel tgt ff) ]
+                        button (classList [ ( "active", ff == current ) ] :: onClick (SetMorphism f ff) :: activeColor ff)
+                            [ KaTeX.inline (Category.morphismLabel tgt ff) ]
                     )
                     allowed
                 )
