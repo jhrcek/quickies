@@ -1,9 +1,10 @@
 module Page.Categories exposing (Model, Msg, fromQuery, init, toQuery, update, view)
 
 import Html exposing (Html, button, div, h2, h3, li, p, span, strong, table, tbody, td, text, th, thead, tr, ul)
-import Html.Attributes exposing (class, classList)
+import Html.Attributes exposing (class, classList, style)
 import Html.Events exposing (onClick)
 import KaTeX
+import ListUtil
 import Math.Categories as Categories exposing (Example)
 import Math.Category as Category exposing (Category)
 import Query exposing (Query)
@@ -17,6 +18,7 @@ type alias Model =
     , first : Maybe Int
     , second : Maybe Int
     , showIdentities : Bool
+    , colorByObject : Bool
     , hover : Maybe ( Int, Int ) -- composition-table cell under the mouse (transient)
     }
 
@@ -27,12 +29,13 @@ type Msg
     | SelectPair Int Int
     | HoverPair (Maybe ( Int, Int ))
     | ToggleIdentities
+    | ToggleColorByObject
     | Clear
 
 
 init : Model
 init =
-    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False, hover = Nothing }
+    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False, colorByObject = False, hover = Nothing }
 
 
 update : Msg -> Model -> Model
@@ -65,6 +68,9 @@ update msg model =
 
         ToggleIdentities ->
             { model | showIdentities = not model.showIdentities }
+
+        ToggleColorByObject ->
+            { model | colorByObject = not model.colorByObject }
 
         Clear ->
             { model | first = Nothing, second = Nothing }
@@ -187,7 +193,12 @@ view order model =
             [ p [] [ KaTeX.inline cat.texName, text (" — " ++ cat.description) ]
             , div [ class "row" ]
                 [ div [ class "col fit" ]
-                    [ Diagram.view
+                    [ (if model.colorByObject then
+                        Diagram.viewByObject
+
+                       else
+                        Diagram.view
+                      )
                         { positions = model.example.positions
                         , width = model.example.width
                         , height = model.example.height
@@ -197,9 +208,7 @@ view order model =
                         }
                         cat
                     , div [ class "controls" ]
-                        [ button [ onClick ToggleIdentities, classList [ ( "active", model.showIdentities ) ] ] [ text "Show identity arrows" ]
-                        , button [ onClick Clear ] [ text "Clear selection" ]
-                        ]
+                        (displayToggles model ++ [ button [ onClick Clear ] [ text "Clear selection" ] ])
                     ]
                 , div [ class "col" ]
                     [ -- fixed-height box: hovering the composition table below changes this
@@ -249,7 +258,23 @@ view order model =
             , text " Hover over a cell to see it in the picture, click to select it."
             ]
         , div [ class "card" ]
-            [ div [ class "col fit" ] [ compositionTable order model ] ]
+            [ div [ class "controls" ] (displayToggles model)
+            , div [ class "col fit" ] [ compositionTable order model ]
+            , if model.colorByObject then
+                p [ class "muted" ]
+                    [ text
+                        (case order of
+                            Notation.Diagrammatic ->
+                                "Coloured by object: a cell in row f : A → B, column g : B → C holds an arrow A → C. The strip on the left shows A, the source of the row arrow; the strip on top shows C, the target of the column arrow; the tint of each block is B, the object in the middle."
+
+                            Notation.Classical ->
+                                "Coloured by object: a cell in row g : B → C, column f : A → B holds an arrow A → C. The strip on the left shows C, the target of the row arrow; the strip on top shows A, the source of the column arrow; the tint of each block is B, the object in the middle."
+                        )
+                    ]
+
+              else
+                text ""
+            ]
         , h3 [] [ text "Checking the laws" ]
         , lawsCard order cat
         , h3 [] [ text "Familiar things as categories" ]
@@ -438,6 +463,16 @@ homSets cat =
         ]
 
 
+{-| Display options shared by the diagram and the composition table; both copies of the
+buttons toggle the same model fields.
+-}
+displayToggles : Model -> List (Html Msg)
+displayToggles model =
+    [ button [ onClick ToggleIdentities, classList [ ( "active", model.showIdentities ) ] ] [ text "Show identity arrows" ]
+    , button [ onClick ToggleColorByObject, classList [ ( "active", model.colorByObject ) ] ] [ text "Colour by object" ]
+    ]
+
+
 compositionTable : CompositionOrder -> Model -> Html Msg
 compositionTable order model =
     let
@@ -454,7 +489,9 @@ compositionTable order model =
                         |> Maybe.map (\m -> ( key m, i ))
                         |> Maybe.withDefault ( ( 0, 0 ), i )
                 )
-                (Category.morphismIndices cat)
+                (Category.morphismIndices cat
+                    |> List.filter (\f -> model.showIdentities || not (Category.isIdentity cat f))
+                )
 
         -- first arrows are rows in diagrammatic order, columns in classical order
         ( rowIdx, colIdx ) =
@@ -462,8 +499,46 @@ compositionTable order model =
                 (sortedBy (\m -> ( m.tgt, m.src )))
                 (sortedBy (\m -> ( m.src, m.tgt )))
 
+        objectOf key f =
+            Category.morphism cat f |> Maybe.map key |> Maybe.withDefault 0
+
+        -- the middle object B of a row / column arrow, and its other ("far") end: the
+        -- source A of the first arrow or the target C of the second
+        ( rowMiddle, colMiddle ) =
+            Notation.tableEntryOrder order (objectOf .tgt) (objectOf .src)
+
+        ( rowFar, colFar ) =
+            Notation.tableEntryOrder order (objectOf .src) (objectOf .tgt)
+
+        bandKey middle far f =
+            ( middle f, far f )
+
+        startsBlock middle idx f =
+            case ListUtil.findIndex ((==) f) idx of
+                Just i ->
+                    i > 0 && (List.drop (i - 1) idx |> List.head |> Maybe.map middle) /= Just (middle f)
+
+                Nothing ->
+                    False
+
+        -- thicker borders between the blocks
+        blockTop r =
+            ( "block-top", model.colorByObject && startsBlock rowMiddle rowIdx r )
+
+        blockLeft c =
+            ( "block-left", model.colorByObject && startsBlock colMiddle colIdx c )
+
         lbl =
             Category.morphismLabel cat
+
+        -- a margin strip in the colour of the far object, spanning `n` rows or columns
+        objectBand span far ( f, n ) =
+            th
+                [ class "band"
+                , style "background" (Diagram.palette (far f))
+                , Html.Attributes.attribute span (String.fromInt n)
+                ]
+                [ KaTeX.inline (Category.objectLabel cat (far f)) ]
 
         -- which (row, col) is currently selected, in table coordinates
         selected =
@@ -475,15 +550,51 @@ compositionTable order model =
                 _ ->
                     Nothing
 
+        gutter =
+            th [ class "gutter" ] []
+
+        bandRow =
+            tr []
+                (gutter
+                    :: gutter
+                    :: List.map (objectBand "colspan" colFar) (runs (bandKey colMiddle colFar) colIdx)
+                )
+
         header =
             tr []
-                (th [] [ text (Notation.tableCorner order) ]
-                    :: List.map (\c -> th [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ) ] ] [ KaTeX.inline (lbl c) ]) colIdx
+                ((if model.colorByObject then
+                    [ gutter ]
+
+                  else
+                    []
+                 )
+                    ++ th [] [ text (Notation.tableCorner order) ]
+                    :: List.map
+                        (\c ->
+                            th
+                                [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ), blockLeft c ] ]
+                                [ KaTeX.inline (lbl c) ]
+                        )
+                        colIdx
                 )
+
+        rowBands =
+            runs (bandKey rowMiddle rowFar) rowIdx
 
         row r =
             tr []
-                (th [ classList [ ( "hl", Maybe.map Tuple.first selected == Just r ) ] ] [ KaTeX.inline (lbl r) ]
+                ((if model.colorByObject then
+                    case ListUtil.find (\( f, _ ) -> f == r) rowBands of
+                        Just band ->
+                            [ objectBand "rowspan" rowFar band ]
+
+                        Nothing ->
+                            []
+
+                  else
+                    []
+                 )
+                    ++ th [ classList [ ( "hl", Maybe.map Tuple.first selected == Just r ), blockTop r ] ] [ KaTeX.inline (lbl r) ]
                     :: List.map
                         (\c ->
                             let
@@ -492,26 +603,71 @@ compositionTable order model =
                             in
                             case Category.compose cat f g of
                                 Just h ->
+                                    let
+                                        hl =
+                                            Maybe.map Tuple.first selected == Just r || Maybe.map Tuple.second selected == Just c
+                                    in
                                     td
-                                        [ classList
-                                            [ ( "hl", Maybe.map Tuple.first selected == Just r || Maybe.map Tuple.second selected == Just c )
+                                        ([ classList
+                                            [ ( "hl", hl )
                                             , ( "hl-strong", selected == Just ( r, c ) )
+                                            , blockTop r
+                                            , blockLeft c
                                             ]
-                                        , onClick (SelectPair f g)
-                                        , Html.Events.onMouseEnter (HoverPair (Just ( f, g )))
-                                        ]
+                                         , onClick (SelectPair f g)
+                                         , Html.Events.onMouseEnter (HoverPair (Just ( f, g )))
+                                         ]
+                                            ++ (if model.colorByObject && not hl then
+                                                    -- the faint tint of the block's middle object
+                                                    [ style "background" (Diagram.palette (rowMiddle r) ++ "2e") ]
+
+                                                else
+                                                    []
+                                               )
+                                        )
                                         [ KaTeX.inline (lbl h) ]
 
                                 Nothing ->
-                                    td [ class "empty" ] [ text "·" ]
+                                    td [ class "empty", classList [ blockTop r, blockLeft c ] ] [ text "·" ]
                         )
                         colIdx
                 )
     in
-    table [ class "cayley", Html.Events.onMouseLeave (HoverPair Nothing) ]
-        [ thead [] [ header ]
-        , tbody [] (List.map row rowIdx)
-        ]
+    if List.isEmpty rowIdx then
+        p [ class "muted" ] [ text "There are no arrows besides identities; enable “Show identity arrows” to see the table." ]
+
+    else
+        table [ class "cayley", Html.Events.onMouseLeave (HoverPair Nothing) ]
+            [ thead []
+                (if model.colorByObject then
+                    [ bandRow, header ]
+
+                 else
+                    [ header ]
+                )
+            , tbody [] (List.map row rowIdx)
+            ]
+
+
+{-| Maximal runs of consecutive items with the same key, as (first item, length).
+-}
+runs : (a -> k) -> List a -> List ( a, Int )
+runs key items =
+    case items of
+        [] ->
+            []
+
+        x :: rest ->
+            case runs key rest of
+                ( y, n ) :: more ->
+                    if key y == key x then
+                        ( x, n + 1 ) :: more
+
+                    else
+                        ( x, 1 ) :: ( y, n ) :: more
+
+                [] ->
+                    [ ( x, 1 ) ]
 
 
 lawsCard : CompositionOrder -> Category -> Html msg
@@ -617,6 +773,11 @@ toQuery model =
 
               else
                 Nothing
+            , if model.colorByObject then
+                Just (Query.param "col" "1")
+
+              else
+                Nothing
             ]
 
 
@@ -661,5 +822,13 @@ fromQuery q model =
 
                 Nothing ->
                     md
+
+        withColors md =
+            case Query.string "col" q of
+                Just v ->
+                    { md | colorByObject = v == "1" }
+
+                Nothing ->
+                    md
     in
-    model |> withExample |> withArrows |> withIdentities
+    model |> withExample |> withArrows |> withIdentities |> withColors

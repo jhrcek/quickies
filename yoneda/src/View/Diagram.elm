@@ -1,4 +1,4 @@
-module View.Diagram exposing (Config, Highlight(..), Paint, palette, view, viewPainted)
+module View.Diagram exposing (Config, Highlight(..), Paint, palette, view, viewByObject, viewPainted)
 
 {-| SVG renderer for a finite category: objects as circles, morphisms as arrows.
 Parallel arrows between two objects are fanned out as curves; endomorphisms are drawn
@@ -7,6 +7,8 @@ as loops around their object. Arrows can be highlighted and clicked.
 A diagram can also be _painted_: every object and arrow gets a list of colours (e.g. the
 colours of the things a functor sends there). One colour fills it; several colours share
 it out (a split ring around an object, a striped arrow); no colour greys it out.
+
+Or it can be coloured _by object_: each object gets its palette colour, arrows stay plain.
 
 -}
 
@@ -96,19 +98,51 @@ type alias Geometry =
     }
 
 
+type Coloring
+    = Uncoloured
+    | Painted Paint
+    | ByObject
+
+
 view : Config msg -> Category -> Html msg
 view cfg =
-    render cfg Nothing
+    render cfg Uncoloured
 
 
 viewPainted : Config msg -> Paint -> Category -> Html msg
 viewPainted cfg paint =
-    render cfg (Just paint)
+    render cfg (Painted paint)
 
 
-render : Config msg -> Maybe Paint -> Category -> Html msg
-render cfg paint cat =
+{-| Object `i` takes `palette i`; arrows are drawn as in `view`.
+-}
+viewByObject : Config msg -> Category -> Html msg
+viewByObject cfg =
+    render cfg ByObject
+
+
+render : Config msg -> Coloring -> Category -> Html msg
+render cfg coloring cat =
     let
+        paint =
+            case coloring of
+                Painted p ->
+                    Just p
+
+                _ ->
+                    Nothing
+
+        objectColors o =
+            case coloring of
+                Uncoloured ->
+                    Nothing
+
+                Painted p ->
+                    Just (p.objectColors o)
+
+                ByObject ->
+                    Just [ palette o ]
+
         visible =
             Category.morphismIndices cat
                 |> List.filter
@@ -137,7 +171,7 @@ render cfg paint cat =
                                 position cfg o
                         in
                         Svg.g []
-                            (objectCircle ( x, y ) (Maybe.map (\p -> p.objectColors o) paint)
+                            (objectCircle ( x, y ) (objectColors o)
                                 ++ [ Svg.text_
                                         [ SA.x (str x)
                                         , SA.y (str (y + 5))
@@ -146,7 +180,7 @@ render cfg paint cat =
                                         , SA.fontFamily "KaTeX_Main, serif"
                                         , SA.fontStyle "italic"
                                         , SA.fill
-                                            (if Maybe.map (\p -> p.objectColors o) paint == Just [] then
+                                            (if objectColors o == Just [] then
                                                 "#aaa"
 
                                              else
