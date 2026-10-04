@@ -44,7 +44,7 @@ elementPicker toMsg grp current =
         )
 
 
-{-| TeX cycle notation of a permutation of the group's elements, labelled by the elements.
+{-| TeX cycle notation of a permutation of the group's elements, labeled by the elements.
 -}
 cycleNotation : Group -> FinFunction -> String
 cycleNotation grp f =

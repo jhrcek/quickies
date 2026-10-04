@@ -195,7 +195,7 @@ klein =
     }
 
 
-{-| Symmetric group on {0,1,2}, elements labelled in cycle notation.
+{-| Symmetric group on {0,1,2}, elements labeled in cycle notation.
 -}
 symmetric3 : Group
 symmetric3 =
@@ -207,7 +207,7 @@ symmetric3 =
 
 
 {-| Dihedral group of the square as permutations of its 4 vertices,
-labelled as words in r (rotation) and s (reflection).
+labeled as words in r (rotation) and s (reflection).
 -}
 dihedral4 : Group
 dihedral4 =

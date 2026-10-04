@@ -396,7 +396,7 @@ functorCard order model =
                 , case coloring of
                     Just _ ->
                         p [ class "muted" ]
-                            [ text "Every object and arrow of 𝒞 has its own colour, used in the equations above too, and its picture in 𝒟 wears the same colour. Where several things land in the same place, the colours share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; greyed-out parts of 𝒟 are not in the picture at all."
+                            [ text "Every object and arrow of 𝒞 has its own color, used in the equations above too, and its picture in 𝒟 wears the same color. Where several things land in the same place, the colors share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; grayed-out parts of 𝒟 are not in the picture at all."
                             ]
 
                     Nothing ->
@@ -407,7 +407,7 @@ functorCard order model =
         ]
 
 
-{-| Wrap a TeX snippet in `\textcolor` when there is a colour.
+{-| Wrap a TeX snippet in `\textcolor` when there is a color.
 -}
 textColor : Maybe String -> String -> String
 textColor color tex =
@@ -419,7 +419,7 @@ textColor color tex =
             tex
 
 
-{-| The image choices for one arrow; with a colour, the arrow's label and its chosen image
+{-| The image choices for one arrow; with a color, the arrow's label and its chosen image
 wear it.
 -}
 arrowRow : Functor -> Maybe String -> Int -> Html Msg
@@ -475,9 +475,9 @@ arrowRow fun color f =
         ]
 
 
-{-| Colours showing a (valid) functor: each object and each drawn non-identity arrow of
-the source gets its own palette colour (identities take their object's colour), and each
-item of the target collects the colours of everything drawn that is sent to it.
+{-| Colors showing a (valid) functor: each object and each drawn non-identity arrow of
+the source gets its own palette color (identities take their object's color), and each
+item of the target collects the colors of everything drawn that is sent to it.
 -}
 functorColoring :
     Bool

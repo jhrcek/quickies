@@ -189,7 +189,7 @@ byName name =
     ListUtil.find (\ex -> ex.category.name == name) all
 
 
-{-| Composition when one of the two arrows is an identity (labelled `\mathrm{id}_…`).
+{-| Composition when one of the two arrows is an identity (labeled `\mathrm{id}_…`).
 -}
 composeWithIdentities : String -> String -> String
 composeWithIdentities f g =

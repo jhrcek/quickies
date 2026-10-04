@@ -630,7 +630,7 @@ chaseCard order model =
         step =
             model.chaseStep
 
-        emphasised =
+        emphasized =
             case step of
                 1 ->
                     [ Square.Top, Square.Right ]
@@ -699,7 +699,7 @@ chaseCard order model =
                     , left = "α_" ++ aLbl
                     , right = "α_" ++ xLbl
                     , ok = True
-                    , emphasised = emphasised
+                    , emphasized = emphasized
                     }
                 , div [ class "controls" ]
                     [ button [ onClick (SetChaseStep (step - 1)), disabled (step == 0) ] [ text "← Back" ]

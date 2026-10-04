@@ -462,7 +462,7 @@ homMapInfo order g =
 
 
 {-| Hom(A,g) drawn like a function between finite sets: Hom(A,B) on the left grouped into
-fibers, Hom(A,C) on the right in enumeration order, each output centred on its fiber.
+fibers, Hom(A,C) on the right in enumeration order, each output centered on its fiber.
 -}
 homMapDiagram : FinFunction -> FinFunction -> List ( FinFunction, List FinFunction ) -> Html Msg
 homMapDiagram current g blocks =

@@ -463,7 +463,7 @@ squareView order model =
                     , left = "α_" ++ x
                     , right = "α_" ++ y
                     , ok = commutes
-                    , emphasised = []
+                    , emphasized = []
                     }
                 , KaTeX.display
                     (Notation.compose order ("F(" ++ flbl ++ ")") ("\\alpha_{" ++ y ++ "}")

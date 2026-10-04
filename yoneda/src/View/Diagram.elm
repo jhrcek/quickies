@@ -4,11 +4,11 @@ module View.Diagram exposing (Config, Highlight(..), Paint, palette, view, viewB
 Parallel arrows between two objects are fanned out as curves; endomorphisms are drawn
 as loops around their object. Arrows can be highlighted and clicked.
 
-A diagram can also be _painted_: every object and arrow gets a list of colours (e.g. the
-colours of the things a functor sends there). One colour fills it; several colours share
-it out (a split ring around an object, a striped arrow); no colour greys it out.
+A diagram can also be _painted_: every object and arrow gets a list of colors (e.g. the
+colors of the things a functor sends there). One color fills it; several colors share
+it out (a split ring around an object, a striped arrow); no color grays it out.
 
-Or it can be coloured _by object_: each object gets its palette colour, arrows stay plain.
+Or it can be colored _by object_: each object gets its palette color, arrows stay plain.
 
 -}
 
@@ -39,7 +39,7 @@ type alias Config msg =
     }
 
 
-{-| Colours of each object and arrow; `alsoShow` makes selected identities visible even
+{-| Colors of each object and arrow; `alsoShow` makes selected identities visible even
 when `showIdentities` is off. A non-`Plain` highlight takes precedence over the paint.
 -}
 type alias Paint =
@@ -49,7 +49,7 @@ type alias Paint =
     }
 
 
-{-| A qualitative palette, cycled when there are more items than colours.
+{-| A qualitative palette, cycled when there are more items than colors.
 -}
 palette : Int -> String
 palette i =
@@ -99,14 +99,14 @@ type alias Geometry =
 
 
 type Coloring
-    = Uncoloured
+    = Uncolored
     | Painted Paint
     | ByObject
 
 
 view : Config msg -> Category -> Html msg
 view cfg =
-    render cfg Uncoloured
+    render cfg Uncolored
 
 
 viewPainted : Config msg -> Paint -> Category -> Html msg
@@ -134,7 +134,7 @@ render cfg coloring cat =
 
         objectColors o =
             case coloring of
-                Uncoloured ->
+                Uncolored ->
                     Nothing
 
                 Painted p ->
@@ -381,8 +381,8 @@ colorOf h =
             "#2e8b57"
 
 
-{-| The circle of an object: plain, greyed out (no colours), filled with one colour, or
-with a ring split evenly between several colours.
+{-| The circle of an object: plain, grayed out (no colors), filled with one color, or
+with a ring split evenly between several colors.
 -}
 objectCircle : ( Float, Float ) -> Maybe (List String) -> List (Svg msg)
 objectCircle ( x, y ) colors =
@@ -468,7 +468,7 @@ arrowView cfg paint f g =
         strokes =
             case colors of
                 Just ((_ :: _ :: _) as cs) ->
-                    -- several colours: interleaved dashes, one dash per colour in turn
+                    -- several colors: interleaved dashes, one dash per color in turn
                     let
                         k =
                             List.length cs

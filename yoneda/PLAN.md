@@ -10,7 +10,7 @@ functors → hom functors → natural transformations → Yoneda lemma → Yoned
 (which recovers Cayley). Final showpiece: pick a small finite category, an object,
 a Set-valued functor, and *see* the bijection `Nat(Hom(A,−), F) ≅ F(A)`.
 
-Note on Cayley: yes, it is Yoneda specialised to a one-object category. A group `G`
+Note on Cayley: yes, it is Yoneda specialized to a one-object category. A group `G`
 is a category with one object `*`; `Hom(*,*) = G`. The Yoneda embedding is
 faithful, so `G → Nat(Hom(*,−), Hom(*,−))` is injective, and each such natural
 transformation is a permutation of `G` given by multiplication. That injective
@@ -102,7 +102,7 @@ Deviations from the original plan so far:
   C/A/F change (same in chapter 9).
 - Chapter 8's contravariant toggle offers only the contravariant hom functors `Hom(−, B)` as `F`
   (there are no curated functors on `C^op`). The "animated" chase is a click-through of the three
-  legs (`View/Square` emphasises the current edges), not a timed animation.
+  legs (`View/Square` emphasizes the current edges), not a timed animation.
 - The `Setting` (category + offered functors) shared by chapters 7 and 8 lives in `Math/Setting.elm`.
 - Chapter 7 offers only covariant hom functors (contravariant ones live on `C^op`, so they cannot
   be paired with functors on `C`); enumeration is capped at 200 000 candidate families.

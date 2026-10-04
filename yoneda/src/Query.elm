@@ -15,7 +15,7 @@ module Query exposing
 `#/categories?c=Mixed&f=2&g=3`. Keys and values are percent-encoded.
 
 Pages expose `toQuery : Model -> Query` and `fromQuery : Query -> Model -> Model`; the
-latter applies every parameter it recognises and ignores the rest, so partial or stale
+latter applies every parameter it recognizes and ignores the rest, so partial or stale
 links still load.
 
 -}

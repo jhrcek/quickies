@@ -123,7 +123,7 @@ drawing opts interaction f =
             toFloat opts.width * 0.75
 
         yOf total i =
-            -- centre the shorter column vertically
+            -- center the shorter column vertically
             toFloat top + (toFloat (rows - total) / 2 + toFloat i + 0.5) * toFloat opts.rowHeight
 
         selected =

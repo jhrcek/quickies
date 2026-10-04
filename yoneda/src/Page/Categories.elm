@@ -265,10 +265,10 @@ view order model =
                     [ text
                         (case order of
                             Notation.Diagrammatic ->
-                                "Coloured by object: a cell in row f : A → B, column g : B → C holds an arrow A → C. The strip on the left shows A, the source of the row arrow; the strip on top shows C, the target of the column arrow; the tint of each block is B, the object in the middle."
+                                "Colored by object: a cell in row f : A → B, column g : B → C holds an arrow A → C. The strip on the left shows A, the source of the row arrow; the strip on top shows C, the target of the column arrow; the tint of each block is B, the object in the middle."
 
                             Notation.Classical ->
-                                "Coloured by object: a cell in row g : B → C, column f : A → B holds an arrow A → C. The strip on the left shows C, the target of the row arrow; the strip on top shows A, the source of the column arrow; the tint of each block is B, the object in the middle."
+                                "Colored by object: a cell in row g : B → C, column f : A → B holds an arrow A → C. The strip on the left shows C, the target of the row arrow; the strip on top shows A, the source of the column arrow; the tint of each block is B, the object in the middle."
                         )
                     ]
 
@@ -469,7 +469,7 @@ buttons toggle the same model fields.
 displayToggles : Model -> List (Html Msg)
 displayToggles model =
     [ button [ onClick ToggleIdentities, classList [ ( "active", model.showIdentities ) ] ] [ text "Show identity arrows" ]
-    , button [ onClick ToggleColorByObject, classList [ ( "active", model.colorByObject ) ] ] [ text "Colour by object" ]
+    , button [ onClick ToggleColorByObject, classList [ ( "active", model.colorByObject ) ] ] [ text "Color by object" ]
     ]
 
 
@@ -531,7 +531,7 @@ compositionTable order model =
         lbl =
             Category.morphismLabel cat
 
-        -- a margin strip in the colour of the far object, spanning `n` rows or columns
+        -- a margin strip in the color of the far object, spanning `n` rows or columns
         objectBand span far ( f, n ) =
             th
                 [ class "band"
@@ -549,34 +549,6 @@ compositionTable order model =
 
                 _ ->
                     Nothing
-
-        gutter =
-            th [ class "gutter" ] []
-
-        bandRow =
-            tr []
-                (gutter
-                    :: gutter
-                    :: List.map (objectBand "colspan" colFar) (runs (bandKey colMiddle colFar) colIdx)
-                )
-
-        header =
-            tr []
-                ((if model.colorByObject then
-                    [ gutter ]
-
-                  else
-                    []
-                 )
-                    ++ th [] [ text (Notation.tableCorner order) ]
-                    :: List.map
-                        (\c ->
-                            th
-                                [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ), blockLeft c ] ]
-                                [ KaTeX.inline (lbl c) ]
-                        )
-                        colIdx
-                )
 
         rowBands =
             runs (bandKey rowMiddle rowFar) rowIdx
@@ -637,10 +609,38 @@ compositionTable order model =
         p [ class "muted" ] [ text "There are no arrows besides identities; enable “Show identity arrows” to see the table." ]
 
     else
+        let
+            gutter =
+                th [ class "gutter" ] []
+
+            header =
+                tr []
+                    ((if model.colorByObject then
+                        [ gutter ]
+
+                      else
+                        []
+                     )
+                        ++ th [] [ text (Notation.tableCorner order) ]
+                        :: List.map
+                            (\c ->
+                                th
+                                    [ classList [ ( "hl", Maybe.map Tuple.second selected == Just c ), blockLeft c ] ]
+                                    [ KaTeX.inline (lbl c) ]
+                            )
+                            colIdx
+                    )
+        in
         table [ class "cayley", Html.Events.onMouseLeave (HoverPair Nothing) ]
             [ thead []
                 (if model.colorByObject then
-                    [ bandRow, header ]
+                    [ tr []
+                        (gutter
+                            :: gutter
+                            :: List.map (objectBand "colspan" colFar) (runs (bandKey colMiddle colFar) colIdx)
+                        )
+                    , header
+                    ]
 
                  else
                     [ header ]
@@ -653,21 +653,24 @@ compositionTable order model =
 -}
 runs : (a -> k) -> List a -> List ( a, Int )
 runs key items =
-    case items of
-        [] ->
-            []
+    runsHelp key items []
 
-        x :: rest ->
-            case runs key rest of
-                ( y, n ) :: more ->
-                    if key y == key x then
-                        ( x, n + 1 ) :: more
 
-                    else
-                        ( x, 1 ) :: ( y, n ) :: more
+runsHelp : (a -> k) -> List a -> List ( a, Int ) -> List ( a, Int )
+runsHelp key items acc =
+    case ( items, acc ) of
+        ( [], _ ) ->
+            List.reverse acc
 
-                [] ->
-                    [ ( x, 1 ) ]
+        ( x :: rest, ( y, n ) :: more ) ->
+            if key x == key y then
+                runsHelp key rest (( y, n + 1 ) :: more)
+
+            else
+                runsHelp key rest (( x, 1 ) :: acc)
+
+        ( x :: rest, [] ) ->
+            runsHelp key rest [ ( x, 1 ) ]
 
 
 lawsCard : CompositionOrder -> Category -> Html msg

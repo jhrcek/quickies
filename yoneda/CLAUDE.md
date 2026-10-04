@@ -31,7 +31,7 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   order is model state only.
 - `Query.elm` - the deep-link query after `?` inside the hash (`#/sets?a=3&f=0,1,0`). Every
   chapter exposes `toQuery : Model -> List (String, String)` and
-  `fromQuery : Query -> Model -> Model` (apply what is recognised, ignore the rest);
+  `fromQuery : Query -> Model -> Model` (apply what is recognized, ignore the rest);
   `Main` mirrors the current page's state into the URL with `replaceUrl` after every page
   message that changed it (transient state such as hover must stay out of `toQuery`) and
   puts the target page's state into sidebar / prev-next links. Examples are

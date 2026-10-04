@@ -44,7 +44,7 @@ view order =
         , p []
             [ text "A well-known special case comes early: "
             , strong [] [ text "Cayley's theorem" ]
-            , text " (every group is a group of permutations) is exactly the Yoneda lemma for a category with a single object. We meet it in chapter 3 and recognise it again in chapter 9."
+            , text " (every group is a group of permutations) is exactly the Yoneda lemma for a category with a single object. We meet it in chapter 3 and recognize it again in chapter 9."
             ]
         , h3 [] [ text "A word about notation" ]
         , p []

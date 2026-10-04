@@ -1,8 +1,8 @@
 module View.Square exposing (Edge(..), view)
 
-{-| A schematic commutative square: four sets at the corners, labelled arrows on the
-sides, coloured green when it commutes and red when it does not. Some edges can be
-emphasised, e.g. to walk through a diagram chase one leg at a time.
+{-| A schematic commutative square: four sets at the corners, labeled arrows on the
+sides, colored green when it commutes and red when it does not. Some edges can be
+emphasized, e.g. to walk through a diagram chase one leg at a time.
 -}
 
 import Html exposing (Html)
@@ -29,7 +29,7 @@ view :
     , left : String
     , right : String
     , ok : Bool
-    , emphasised : List Edge
+    , emphasized : List Edge
     }
     -> Html msg
 view s =
@@ -66,11 +66,11 @@ view s =
 
         edge which ( ax, ay ) ( bx, by ) lbl ( lx, ly ) anchor =
             let
-                emphasised =
-                    List.member which s.emphasised
+                emphasized =
+                    List.member which s.emphasized
 
                 ( edgeColor, width ) =
-                    if emphasised then
+                    if emphasized then
                         ( "#e67e22", 3 )
 
                     else
@@ -89,7 +89,7 @@ view s =
                     , SA.fontFamily "KaTeX_Main, serif"
                     , SA.fontStyle "italic"
                     , SA.fontWeight
-                        (if emphasised then
+                        (if emphasized then
                             "bold"
 
                          else
