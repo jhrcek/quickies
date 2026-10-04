@@ -231,14 +231,20 @@ view order model =
             , text ", column "
             , KaTeX.inline "g"
             , text " holds "
-            , KaTeX.inline (Notation.compose order "f" "g")
+            , KaTeX.inline
+                (let
+                    ( applied1st, applied2nd ) =
+                        Notation.tableEntryOrder order "f" "g"
+                 in
+                 Notation.compose order applied1st applied2nd
+                )
             , text
                 (case order of
                     Notation.Diagrammatic ->
                         " — the row is applied first."
 
                     Notation.Classical ->
-                        " — the column is applied first, as in g ∘ f = “g after f”."
+                        " — the column is applied first, as in f ∘ g = “f after g”."
                 )
             , text " Hover over a cell to see it in the picture, click to select it."
             ]
