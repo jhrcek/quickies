@@ -209,6 +209,7 @@ view order model =
                         cat
                     , div [ class "controls" ]
                         (displayToggles model ++ [ button [ onClick Clear ] [ text "Clear selection" ] ])
+                    , homSets model.colorByObject cat
                     ]
                 , div [ class "col" ]
                     [ -- fixed-height box: hovering the composition table below changes this
@@ -229,7 +230,6 @@ view order model =
                                 ++ " composable pairs."
                             )
                         ]
-                    , homSets cat
                     ]
                 ]
             ]
@@ -419,18 +419,14 @@ compositionStatus order model =
                     p [ class "muted" ] [ text "These two arrows are not composable." ]
 
 
-homSets : Category -> Html msg
-homSets cat =
+homSets : Bool -> Category -> Html msg
+homSets colorByObject cat =
     let
         lbl =
             Category.morphismLabel cat
 
-        olbl =
-            Category.objectLabel cat
-
-        pairs =
+        objects =
             Category.objectIndices cat
-                |> List.concatMap (\a -> List.map (Tuple.pair a) (Category.objectIndices cat))
 
         setTex fs =
             if List.isEmpty fs then
@@ -450,16 +446,42 @@ homSets cat =
                             fs
                         )
                     ++ "\\}"
+
+        objectHeader o =
+            th
+                (if colorByObject then
+                    [ class "band", style "background" (Diagram.palette o) ]
+
+                 else
+                    []
+                )
+                [ KaTeX.inline (Category.objectLabel cat o) ]
     in
     div []
         [ p [] [ strong [] [ text "Hom sets" ] ]
-        , ul [ class "compact" ]
-            (List.map
-                (\( a, b ) ->
-                    li [] [ KaTeX.inline ("\\mathrm{Hom}(" ++ olbl a ++ ", " ++ olbl b ++ ") = " ++ setTex (Category.hom cat a b)) ]
+        , p [ class "muted" ]
+            [ text "Row "
+            , KaTeX.inline "A"
+            , text ", column "
+            , KaTeX.inline "B"
+            , text " holds "
+            , KaTeX.inline "\\mathrm{Hom}(A, B)"
+            , text "."
+            ]
+        , table [ class "cayley hom-table" ]
+            [ thead []
+                [ tr [] (th [] [ KaTeX.inline "\\mathrm{Hom}" ] :: List.map objectHeader objects) ]
+            , tbody []
+                (List.map
+                    (\a ->
+                        tr []
+                            (objectHeader a
+                                :: List.map (\b -> td [] [ KaTeX.inline (setTex (Category.hom cat a b)) ]) objects
+                            )
+                    )
+                    objects
                 )
-                pairs
-            )
+            ]
         ]
 
 
