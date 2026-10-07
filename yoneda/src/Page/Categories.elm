@@ -19,6 +19,8 @@ type alias Model =
     , second : Maybe Int
     , showIdentities : Bool
     , colorByObject : Bool
+    , rowSort : TableSort
+    , colSort : TableSort
     , hover : Maybe ( Int, Int ) -- composition-table cell under the mouse (transient)
     }
 
@@ -30,12 +32,24 @@ type Msg
     | HoverPair (Maybe ( Int, Int ))
     | ToggleIdentities
     | ToggleColorByObject
+    | SetRowSort TableSort
+    | SetColSort TableSort
     | Clear
+
+
+{-| How the rows (or columns) of the composition table are sorted. A row or column arrow
+meets the arrow it is composed with in the "middle" object B of a composable pair
+A -> B -> C; its other end (A or C) is the "far" object. Sorting by the middle object
+first (the default) makes the defined cells form contiguous blocks.
+-}
+type TableSort
+    = MiddleFirst
+    | FarFirst
 
 
 init : Model
 init =
-    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False, colorByObject = False, hover = Nothing }
+    { example = Categories.chain3, first = Nothing, second = Nothing, showIdentities = False, colorByObject = False, rowSort = MiddleFirst, colSort = MiddleFirst, hover = Nothing }
 
 
 update : Msg -> Model -> Model
@@ -71,6 +85,12 @@ update msg model =
 
         ToggleColorByObject ->
             { model | colorByObject = not model.colorByObject }
+
+        SetRowSort sort ->
+            { model | rowSort = sort }
+
+        SetColSort sort ->
+            { model | colSort = sort }
 
         Clear ->
             { model | first = Nothing, second = Nothing }
@@ -259,6 +279,7 @@ view order model =
             ]
         , div [ class "card" ]
             [ div [ class "controls" ] (displayToggles model)
+            , sortControls order model
             , div [ class "col fit" ] [ compositionTable order model ]
             , if model.colorByObject then
                 p [ class "muted" ]
@@ -495,31 +516,47 @@ displayToggles model =
     ]
 
 
+{-| The row and column sort options, labelled by the actual end of the arrows they sort
+by first: rows hold the first arrows in diagrammatic order (middle object = target) and
+the second arrows in classical order (middle object = source); columns the other way round.
+-}
+sortControls : CompositionOrder -> Model -> Html Msg
+sortControls order model =
+    let
+        ( rowEnds, colEnds ) =
+            Notation.tableEntryOrder order ( "target", "source" ) ( "source", "target" )
+
+        sortButton current msg ( middle, far ) sort =
+            let
+                ( primary, secondary ) =
+                    case sort of
+                        MiddleFirst ->
+                            ( middle, far )
+
+                        FarFirst ->
+                            ( far, middle )
+            in
+            button [ classList [ ( "active", current == sort ) ], onClick (msg sort) ]
+                [ text (primary ++ ", then " ++ secondary) ]
+
+        sortRow lbl current msg ends =
+            div [ class "controls" ]
+                [ span [ class "muted" ] [ text lbl ]
+                , sortButton current msg ends MiddleFirst
+                , sortButton current msg ends FarFirst
+                ]
+    in
+    div []
+        [ sortRow "Sort rows by:" model.rowSort SetRowSort rowEnds
+        , sortRow "Sort columns by:" model.colSort SetColSort colEnds
+        ]
+
+
 compositionTable : CompositionOrder -> Model -> Html Msg
 compositionTable order model =
     let
         cat =
             model.example.category
-
-        -- Group arrows by the middle object B of a composable pair A -> B -> C: first
-        -- arrows by target (then source), second arrows by source (then target), so
-        -- the defined cells form contiguous blocks.
-        sortedBy key =
-            List.sortBy
-                (\i ->
-                    Category.morphism cat i
-                        |> Maybe.map (\m -> ( key m, i ))
-                        |> Maybe.withDefault ( ( 0, 0 ), i )
-                )
-                (Category.morphismIndices cat
-                    |> List.filter (\f -> model.showIdentities || not (Category.isIdentity cat f))
-                )
-
-        -- first arrows are rows in diagrammatic order, columns in classical order
-        ( rowIdx, colIdx ) =
-            Notation.tableEntryOrder order
-                (sortedBy (\m -> ( m.tgt, m.src )))
-                (sortedBy (\m -> ( m.src, m.tgt )))
 
         objectOf key f =
             Category.morphism cat f |> Maybe.map key |> Maybe.withDefault 0
@@ -532,23 +569,52 @@ compositionTable order model =
         ( rowFar, colFar ) =
             Notation.tableEntryOrder order (objectOf .src) (objectOf .tgt)
 
-        bandKey middle far f =
-            ( middle f, far f )
+        -- the object a row / column is sorted by first
+        primaryKey sort middle far =
+            case sort of
+                MiddleFirst ->
+                    middle
 
-        startsBlock middle idx f =
+                FarFirst ->
+                    far
+
+        rowPrimary =
+            primaryKey model.rowSort rowMiddle rowFar
+
+        colPrimary =
+            primaryKey model.colSort colMiddle colFar
+
+        -- By default arrows are grouped by the middle object B of a composable pair
+        -- A -> B -> C, so the defined cells form contiguous blocks.
+        sortedBy primary far =
+            List.sortBy (\f -> ( primary f, far f, f ))
+                (Category.morphismIndices cat
+                    |> List.filter (\f -> model.showIdentities || not (Category.isIdentity cat f))
+                )
+
+        rowIdx =
+            sortedBy rowPrimary (primaryKey model.rowSort rowFar rowMiddle)
+
+        colIdx =
+            sortedBy colPrimary (primaryKey model.colSort colFar colMiddle)
+
+        bandKey primary far f =
+            ( primary f, far f )
+
+        startsBlock primary idx f =
             case ListUtil.findIndex ((==) f) idx of
                 Just i ->
-                    i > 0 && (List.drop (i - 1) idx |> List.head |> Maybe.map middle) /= Just (middle f)
+                    i > 0 && (List.drop (i - 1) idx |> List.head |> Maybe.map primary) /= Just (primary f)
 
                 Nothing ->
                     False
 
         -- thicker borders between the blocks
         blockTop r =
-            ( "block-top", model.colorByObject && startsBlock rowMiddle rowIdx r )
+            ( "block-top", model.colorByObject && startsBlock rowPrimary rowIdx r )
 
         blockLeft c =
-            ( "block-left", model.colorByObject && startsBlock colMiddle colIdx c )
+            ( "block-left", model.colorByObject && startsBlock colPrimary colIdx c )
 
         lbl =
             Category.morphismLabel cat
@@ -573,7 +639,7 @@ compositionTable order model =
                     Nothing
 
         rowBands =
-            runs (bandKey rowMiddle rowFar) rowIdx
+            runs (bandKey rowPrimary rowFar) rowIdx
 
         row r =
             tr []
@@ -659,7 +725,7 @@ compositionTable order model =
                     [ tr []
                         (gutter
                             :: gutter
-                            :: List.map (objectBand "colspan" colFar) (runs (bandKey colMiddle colFar) colIdx)
+                            :: List.map (objectBand "colspan" colFar) (runs (bandKey colPrimary colFar) colIdx)
                         )
                     , header
                     ]
@@ -785,7 +851,8 @@ lawsCard order cat =
 -- DEEP LINKS
 
 
-{-| `c` is the category name; `f` and `g` the two selected arrows; `ids` shows identities.
+{-| `c` is the category name; `f` and `g` the two selected arrows; `ids` shows identities;
+`col` colors by object; `rs` / `cs` sort the table's rows / columns by the far object first.
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
@@ -800,6 +867,16 @@ toQuery model =
                 Nothing
             , if model.colorByObject then
                 Just (Query.param "col" "1")
+
+              else
+                Nothing
+            , if model.rowSort == FarFirst then
+                Just (Query.param "rs" "1")
+
+              else
+                Nothing
+            , if model.colSort == FarFirst then
+                Just (Query.param "cs" "1")
 
               else
                 Nothing
@@ -855,5 +932,20 @@ fromQuery q model =
 
                 Nothing ->
                     md
+
+        sortFrom key current =
+            case Query.string key q of
+                Just v ->
+                    if v == "1" then
+                        FarFirst
+
+                    else
+                        MiddleFirst
+
+                Nothing ->
+                    current
+
+        withSorts md =
+            { md | rowSort = sortFrom "rs" md.rowSort, colSort = sortFrom "cs" md.colSort }
     in
-    model |> withExample |> withArrows |> withIdentities |> withColors
+    model |> withExample |> withArrows |> withIdentities |> withColors |> withSorts
