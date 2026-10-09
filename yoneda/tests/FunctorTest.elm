@@ -4,6 +4,7 @@ import Expect
 import Math.Categories as Categories
 import Math.Category as Category
 import Math.FinFunction as FinFunction
+import Math.FinSet as FinSet
 import Math.Functor as Functor
 import Math.Group as Group
 import Math.SetFunctor as SetFunctor
@@ -18,6 +19,50 @@ suite =
                 (\f -> test f.name <| \_ -> ( SetFunctor.typingViolations f, SetFunctor.identityViolations f, SetFunctor.compositionViolations f ) |> Expect.equal ( [], [], [] ))
                 SetFunctor.all
             )
+        , describe "resizing a set of a Set-valued functor"
+            [ test "fresh labels continue the naming pattern" <|
+                \_ ->
+                    [ FinSet.fromLabels "A" [ "a", "b", "c" ], FinSet.fromLabels "E" [ "e_1", "e_2" ], FinSet.fromLabels "X" [ "1", "2" ] ]
+                        |> List.map (FinSet.addElement >> .elements >> List.reverse >> List.head)
+                        |> Expect.equal [ Just "d", Just "e_3", Just "x_3" ]
+            , test "adding then removing an element restores every curated functor" <|
+                \_ ->
+                    SetFunctor.all
+                        |> List.concatMap
+                            (\f ->
+                                Category.objectIndices f.source
+                                    |> List.map
+                                        (\a ->
+                                            let
+                                                grow g =
+                                                    SetFunctor.setObjectImage a (FinSet.addElement (SetFunctor.objectImage g a)) g
+
+                                                shrink g =
+                                                    SetFunctor.setObjectImage a (FinSet.removeLast (SetFunctor.objectImage g a)) g
+                                            in
+                                            (shrink (grow f)).morphisms == f.morphisms
+                                        )
+                            )
+                        |> List.all identity
+                        |> Expect.equal True
+            , test "resized functions stay well typed and identities stay identities" <|
+                \_ ->
+                    SetFunctor.all
+                        |> List.concatMap
+                            (\f ->
+                                Category.objectIndices f.source
+                                    |> List.map
+                                        (\a ->
+                                            let
+                                                g =
+                                                    SetFunctor.setObjectImage a (FinSet.removeLast (SetFunctor.objectImage f a)) f
+                                            in
+                                            ( SetFunctor.typingViolations g, SetFunctor.identityViolations g )
+                                        )
+                            )
+                        |> List.filter ((/=) ( [], [] ))
+                        |> Expect.equal []
+            ]
         , test "identity and constant functors are functors" <|
             \_ ->
                 Categories.all

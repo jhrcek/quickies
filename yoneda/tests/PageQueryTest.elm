@@ -67,6 +67,20 @@ suite =
                         |> List.map Tuple.first
                         |> List.member "h"
                         |> Expect.equal False
+            , test "chapter 5, a focused arrow and the one-function view" <|
+                \_ ->
+                    [ [ ( "set", "S3 acting on itself" ), ( "arrow", "2" ), ( "setview", "one" ) ]
+                    , [ ( "set", "S3 acting on itself" ), ( "arrow", "2" ) ]
+                    ]
+                        |> List.map
+                            (roundTrip Page.Functors.toQuery Page.Functors.fromQuery Page.Functors.init
+                                >> Dict.fromList
+                                >> (\q -> List.map (\k -> Dict.get k q) [ "set", "arrow", "setview" ])
+                            )
+                        |> Expect.equal
+                            [ [ Just "S3 acting on itself", Just "2", Just "one" ]
+                            , [ Just "S3 acting on itself", Just "2", Nothing ]
+                            ]
             , test "groups: the hovered cell is not part of the link" <|
                 \_ ->
                     Page.Groups.toQuery Page.Groups.init

@@ -17,6 +17,7 @@ import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
+import View.SetPicture as SetPicture
 
 
 type alias Model =
@@ -27,9 +28,18 @@ type alias Model =
     , imageShape : Bool -- draw the image of a valid functor in the shape of the source
     , setExample : SetFunctor
     , setFunctor : SetFunctor -- possibly edited copy of setExample
-    , setArrow : Int -- selected arrow of the Set-valued functor's source
-    , setSelected : Maybe Int -- selected source element in the function editor
+    , setView : SetView
+    , setArrow : Maybe Int -- focused arrow of the Set-valued functor's source
+    , setSelected : Maybe Int -- selected element of the focused arrow's source set
     }
+
+
+{-| The Set-valued functor is shown either as one picture of all its sets and functions,
+or one function at a time.
+-}
+type SetView
+    = WholePicture
+    | OneArrow
 
 
 type Msg
@@ -44,6 +54,10 @@ type Msg
     | SelectSetArrow Int
     | ClickElement Int
     | ClickImage Int
+    | ClickSetElement Int Int
+    | SelectSetView SetView
+    | AddElement Int
+    | RemoveElement Int
     | ResetSetFunctor
 
 
@@ -63,7 +77,8 @@ init =
     , imageShape = False
     , setExample = SetFunctor.twoFunctions
     , setFunctor = SetFunctor.twoFunctions
-    , setArrow = Category.firstNonIdentity SetFunctor.twoFunctions.source
+    , setView = WholePicture
+    , setArrow = Nothing
     , setSelected = Nothing
     }
 
@@ -100,10 +115,29 @@ update msg model =
             { model | functor = fun }
 
         SelectSetExample ex ->
-            { model | setExample = ex, setFunctor = ex, setArrow = Category.firstNonIdentity ex.source, setSelected = Nothing }
+            { model
+                | setExample = ex
+                , setFunctor = ex
+                , setArrow =
+                    case model.setView of
+                        WholePicture ->
+                            Nothing
+
+                        OneArrow ->
+                            Just (Category.firstNonIdentity ex.source)
+                , setSelected = Nothing
+            }
 
         SelectSetArrow f ->
-            { model | setArrow = f, setSelected = Nothing }
+            { model
+                | setArrow =
+                    if model.setView == WholePicture && model.setArrow == Just f then
+                        Nothing
+
+                    else
+                        Just f
+                , setSelected = Nothing
+            }
 
         ClickElement i ->
             { model | setSelected = Just i }
@@ -111,20 +145,105 @@ update msg model =
         ClickImage j ->
             case model.setSelected of
                 Just i ->
-                    let
-                        ff =
-                            SetFunctor.morphismImage model.setFunctor model.setArrow
-                    in
-                    { model
-                        | setFunctor = SetFunctor.setMorphismImage model.setArrow (FinFunction.setMapping i j ff) model.setFunctor
-                        , setSelected = Nothing
-                    }
+                    setImage (shownArrow model) i j model
 
                 Nothing ->
                     model
 
+        ClickSetElement o i ->
+            case model.setArrow |> Maybe.andThen (editableArrow model.setFunctor) of
+                Just ( f, m ) ->
+                    case model.setSelected of
+                        Just i0 ->
+                            if o == m.tgt then
+                                setImage f i0 i model
+
+                            else if o == m.src then
+                                { model | setSelected = Just i }
+
+                            else
+                                model
+
+                        Nothing ->
+                            if o == m.src then
+                                { model | setSelected = Just i }
+
+                            else
+                                model
+
+                Nothing ->
+                    model
+
+        SelectSetView v ->
+            { model
+                | setView = v
+                , setArrow =
+                    if v == OneArrow && model.setArrow == Nothing then
+                        Just (Category.firstNonIdentity model.setFunctor.source)
+
+                    else
+                        model.setArrow
+                , setSelected = Nothing
+            }
+
+        AddElement o ->
+            resizeSet o FinSet.addElement model
+
+        RemoveElement o ->
+            resizeSet o FinSet.removeLast model
+
         ResetSetFunctor ->
             { model | setFunctor = model.setExample, setSelected = Nothing }
+
+
+{-| The arrow whose function is shown in the one-arrow view.
+-}
+shownArrow : Model -> Int
+shownArrow model =
+    Maybe.withDefault (Category.firstNonIdentity model.setFunctor.source) model.setArrow
+
+
+{-| A non-identity arrow, whose function may be edited.
+-}
+editableArrow : SetFunctor -> Int -> Maybe ( Int, Category.Morphism )
+editableArrow fun f =
+    if Category.isIdentity fun.source f then
+        Nothing
+
+    else
+        Category.morphism fun.source f |> Maybe.map (Tuple.pair f)
+
+
+{-| Send element `i` to `j` under the function of arrow `f`.
+-}
+setImage : Int -> Int -> Int -> Model -> Model
+setImage f i j model =
+    let
+        ff =
+            SetFunctor.morphismImage model.setFunctor f
+    in
+    { model
+        | setFunctor = SetFunctor.setMorphismImage f (FinFunction.setMapping i j ff) model.setFunctor
+        , setSelected = Nothing
+    }
+
+
+maxSetSize : Int
+maxSetSize =
+    8
+
+
+resizeSet : Int -> (FinSet.FinSet -> FinSet.FinSet) -> Model -> Model
+resizeSet o change model =
+    let
+        set =
+            change (SetFunctor.objectImage model.setFunctor o)
+    in
+    if FinSet.size set < 1 || FinSet.size set > maxSetSize then
+        model
+
+    else
+        { model | setFunctor = SetFunctor.setObjectImage o set model.setFunctor, setSelected = Nothing }
 
 
 {-| After an object assignment changed, fix identities and replace any arrow image that
@@ -274,9 +393,14 @@ view order model =
             , KaTeX.inline "F(A)"
             , text " to each object and an actual function "
             , KaTeX.inline "F(f) : F(A) \\to F(B)"
-            , text " (from chapter 1) to each arrow, such that following two arrows and then taking the function is the same as composing the two functions. Below, pick an example and click an arrow of "
+            , text " (from chapter 1) to each arrow, such that following two arrows and then taking the function is the same as composing the two functions."
+            ]
+        , p []
+            [ text "Just as the builder above can draw a functor's image in the shape of its source, the picture below draws the whole of "
+            , KaTeX.inline "F"
+            , text " at once, in the shape of "
             , KaTeX.inline "\\mathcal{C}"
-            , text " to see its function. You can also edit the functions the way you did in chapter 1 (click an element, then its image) and watch the composition law break."
+            , text ": every object becomes its set, every arrow becomes its function, drawn element by element. Following arrows from element to element in the picture is applying the functions; the composition law says that following the functions of two composable arrows one after the other takes every element to the same place as the function of their composite. Pick an example, click an arrow to bring its function to the front, and edit it the way you did in chapter 1 (click an element, then its image). The − and + buttons shrink and grow the sets. Watch the composition law break, and try to repair it."
             ]
         , div [ class "controls" ]
             (List.map
@@ -846,17 +970,246 @@ setFunctorCard order model =
         layout =
             Categories.layoutFor cat
 
-        lbl =
-            Category.morphismLabel cat
+        colors =
+            setColors fun
 
-        olbl =
-            Category.objectLabel cat
+        focus =
+            case model.setView of
+                WholePicture ->
+                    model.setArrow
 
-        ff =
-            SetFunctor.morphismImage fun model.setArrow
+                OneArrow ->
+                    Just (shownArrow model)
+
+        edited =
+            fun.morphisms /= model.setExample.morphisms || fun.objects /= model.setExample.objects
+
+        viewButton v label =
+            button [ classList [ ( "active", model.setView == v ) ], onClick (SelectSetView v) ] [ text label ]
+
+        chip f =
+            let
+                c =
+                    colors.morphismColor f
+
+                active =
+                    focus == Just f
+            in
+            button
+                ([ classList [ ( "active", active ) ], onClick (SelectSetArrow f) ]
+                    ++ (if active then
+                            [ style "background" c, style "border-color" c ]
+
+                        else
+                            [ style "border-color" c ]
+                       )
+                )
+                [ KaTeX.inline
+                    ("F("
+                        ++ (if active then
+                                Category.morphismLabel cat f
+
+                            else
+                                textColor (Just c) (Category.morphismLabel cat f)
+                           )
+                        ++ ")"
+                    )
+                ]
+
+        chips =
+            Category.morphismIndices cat
+                |> List.filter (\f -> model.setView == OneArrow || not (Category.isIdentity cat f))
+                |> List.map chip
+
+        objectRow a =
+            let
+                set =
+                    SetFunctor.objectImage fun a
+
+                n =
+                    FinSet.size set
+            in
+            -- the buttons come first so they stay put while the set changes size
+            div [ style "display" "flex", style "gap" "8px", style "align-items" "baseline", style "margin" "4px 0" ]
+                [ span [ style "flex" "0 0 auto", style "display" "flex", style "gap" "4px" ]
+                    [ button [ class "small", onClick (RemoveElement a), disabled (n <= 1), Html.Attributes.title "Remove the last element" ] [ text "−" ]
+                    , button [ class "small", onClick (AddElement a), disabled (n >= maxSetSize), Html.Attributes.title "Add an element" ] [ text "+" ]
+                    ]
+                , KaTeX.inline (textColor (Just (colors.objectColor a)) ("F(" ++ Category.objectLabel cat a ++ ")") ++ " = \\{" ++ String.join ", " set.elements ++ "\\}")
+                ]
+    in
+    div [ class "card" ]
+        [ p [] [ KaTeX.inline fun.texName, text (" — " ++ fun.description) ]
+        , div [ class "controls" ]
+            [ span [ class "muted" ] [ text "Show:" ]
+            , viewButton WholePicture "The whole picture in Set"
+            , viewButton OneArrow "One function at a time"
+            ]
+        , div [ class "row" ]
+            [ div [ class "col fit" ]
+                [ p [] [ KaTeX.inline ("\\mathcal{C} = " ++ cat.texName) ]
+                , Diagram.viewPainted
+                    { positions = layout.positions
+                    , width = layout.width
+                    , height = layout.height
+                    , showIdentities = False
+                    , onClickMorphism = Just SelectSetArrow
+                    , highlight = always Plain
+                    }
+                    { objectColors = \a -> [ colors.objectColor a ]
+                    , morphismColors =
+                        \f ->
+                            if focus == Nothing || focus == Just f then
+                                [ colors.morphismColor f ]
+
+                            else
+                                []
+                    , alsoShow = always False
+                    }
+                    cat
+                , p [] [ strong [] [ text "On objects" ] ]
+                , div [] (List.map objectRow (Category.objectIndices cat))
+                , if edited then
+                    button [ onClick ResetSetFunctor ] [ text "Reset to the original functor" ]
+
+                  else
+                    text ""
+                ]
+            , div [ class "col fit" ]
+                (case model.setView of
+                    WholePicture ->
+                        wholePicture colors model
+
+                    OneArrow ->
+                        oneArrow model
+                )
+            , div [ class "col" ]
+                [ p [] [ strong [] [ text "On arrows" ] ]
+                , div [ class "controls" ] chips
+                , setLaws order fun
+                ]
+            ]
+        ]
+
+
+{-| Colors of the Set-valued functor's pictures: each object and each non-identity arrow
+of the source gets its own palette color, as in the functor builder.
+-}
+setColors : SetFunctor -> { objectColor : Int -> String, morphismColor : Int -> String }
+setColors fun =
+    let
+        cat =
+            fun.source
+
+        nonIds =
+            Category.morphismIndices cat |> List.filter (not << Category.isIdentity cat)
+    in
+    { objectColor = Diagram.palette
+    , morphismColor =
+        \f ->
+            case ListUtil.indexOf f nonIds of
+                Just i ->
+                    Diagram.palette (Category.objectCount cat + i)
+
+                Nothing ->
+                    "#555"
+    }
+
+
+wholePicture : { objectColor : Int -> String, morphismColor : Int -> String } -> Model -> List (Html Msg)
+wholePicture colors model =
+    let
+        fun =
+            model.setFunctor
+
+        cat =
+            fun.source
+
+        editing =
+            model.setArrow |> Maybe.andThen (editableArrow fun)
+
+        flagged =
+            violatingElements fun
+    in
+    [ p [] [ KaTeX.inline "F(\\mathcal{C}) \\text{ in } \\mathbf{Set}" ]
+    , SetPicture.view
+        { positions = (Categories.layoutFor cat).positions
+        , objectColor = colors.objectColor
+        , morphismColor = colors.morphismColor
+        , focus = model.setArrow
+        , selected = model.setSelected
+        , flagged = \o i -> List.member ( o, i ) flagged
+        , clickable = \o -> editing |> Maybe.map (\( _, m ) -> o == m.src || o == m.tgt) |> Maybe.withDefault False
+        , onClickElement = ClickSetElement
+        , onClickMorphism = SelectSetArrow
+        }
+        fun
+    , p [ class "muted", style "max-width" "420px" ]
+        [ text
+            (case editing of
+                Just ( f, m ) ->
+                    case model.setSelected of
+                        Just i ->
+                            "Now click the new image of "
+                                ++ Notation.plain (FinSet.labelAt i (SetFunctor.objectImage fun m.src))
+                                ++ " in "
+                                ++ Notation.plain (SetFunctor.objectImage fun m.tgt).name
+                                ++ "."
+
+                        Nothing ->
+                            "Editing F("
+                                ++ Notation.plain (Category.morphismLabel cat f)
+                                ++ "): click an element of "
+                                ++ Notation.plain (SetFunctor.objectImage fun m.src).name
+                                ++ ", then its new image. Click the arrow again to see everything."
+
+                Nothing ->
+                    "Every set F(A) sits where A sits in 𝒞, and every arrow f of 𝒞 is drawn as the function F(f), element by element, in f's color. A ring around an element means F(f) sends it to itself. Identities are left out: they are always identity functions. Click an arrow (here, in 𝒞 or among the buttons) to bring it to the front and edit it; red elements are where the composition law fails."
+            )
+        ]
+    ]
+
+
+{-| Elements `(object, element)` at which some composite is not the composite of the
+functions: `F(f ; g)(x) ≠ F(g)(F(f)(x))`.
+-}
+violatingElements : SetFunctor -> List ( Int, Int )
+violatingElements fun =
+    SetFunctor.compositionViolations fun
+        |> List.concatMap
+            (\( f, g ) ->
+                case ( Category.compose fun.source f g, Category.morphism fun.source f ) of
+                    ( Just h, Just m ) ->
+                        let
+                            fh =
+                                SetFunctor.morphismImage fun h
+
+                            fg =
+                                FinFunction.compose (SetFunctor.morphismImage fun f) (SetFunctor.morphismImage fun g)
+                        in
+                        List.range 0 (FinSet.size (SetFunctor.objectImage fun m.src) - 1)
+                            |> List.filter (\x -> FinFunction.apply fh x /= FinFunction.apply fg x)
+                            |> List.map (Tuple.pair m.src)
+
+                    _ ->
+                        []
+            )
+
+
+oneArrow : Model -> List (Html Msg)
+oneArrow model =
+    let
+        fun =
+            model.setFunctor
+
+        cat =
+            fun.source
+
+        f =
+            shownArrow model
 
         isId =
-            Category.isIdentity cat model.setArrow
+            Category.isIdentity cat f
 
         interaction =
             if isId then
@@ -865,81 +1218,29 @@ setFunctorCard order model =
             else
                 Editable { selected = model.setSelected, onClickSource = ClickElement, onClickTarget = ClickImage }
 
-        arrowTex f =
+        arrowTex =
             case Category.morphism cat f of
                 Just m ->
-                    "F(" ++ lbl f ++ ") : F(" ++ olbl m.src ++ ") \\to F(" ++ olbl m.tgt ++ ")"
+                    "F(" ++ Category.morphismLabel cat f ++ ") : F(" ++ Category.objectLabel cat m.src ++ ") \\to F(" ++ Category.objectLabel cat m.tgt ++ ")"
 
                 Nothing ->
                     ""
-
-        edited =
-            fun.morphisms /= model.setExample.morphisms
     in
-    div [ class "card" ]
-        [ p [] [ KaTeX.inline fun.texName, text (" — " ++ fun.description) ]
-        , div [ class "row" ]
-            [ div [ class "col fit" ]
-                [ Diagram.view
-                    { positions = layout.positions
-                    , width = layout.width
-                    , height = layout.height
-                    , showIdentities = False
-                    , onClickMorphism = Just SelectSetArrow
-                    , highlight =
-                        \f ->
-                            if f == model.setArrow then
-                                First
+    [ p [] [ KaTeX.inline arrowTex ]
+    , FunctionEditor.viewWith
+        { width = 260, rowHeight = 36, radius = 9, showLabels = True, title = Nothing, highlightSource = Nothing }
+        interaction
+        (SetFunctor.morphismImage fun f)
+    , p [ class "muted" ]
+        [ text
+            (if isId then
+                "Identities go to identity functions; nothing to edit."
 
-                            else
-                                Plain
-                    }
-                    cat
-                , p [] [ strong [] [ text "On objects" ] ]
-                , ul [ class "compact" ]
-                    (List.map
-                        (\a ->
-                            let
-                                set =
-                                    SetFunctor.objectImage fun a
-                            in
-                            li [] [ KaTeX.inline ("F(" ++ olbl a ++ ") = \\{" ++ String.join ", " set.elements ++ "\\}") ]
-                        )
-                        (Category.objectIndices cat)
-                    )
-                ]
-            , div [ class "col fit" ]
-                [ div [ class "controls" ]
-                    (Category.morphismIndices cat
-                        |> List.map
-                            (\f ->
-                                button [ classList [ ( "active", f == model.setArrow ) ], onClick (SelectSetArrow f) ] [ KaTeX.inline ("F(" ++ lbl f ++ ")") ]
-                            )
-                    )
-                , p [] [ KaTeX.inline (arrowTex model.setArrow) ]
-                , FunctionEditor.viewWith
-                    { width = 260, rowHeight = 36, radius = 9, showLabels = True, title = Nothing, highlightSource = Nothing }
-                    interaction
-                    ff
-                , p [ class "muted" ]
-                    [ text
-                        (if isId then
-                            "Identities go to identity functions; nothing to edit."
-
-                         else
-                            "Click an element on the left, then its new image on the right."
-                        )
-                    ]
-                , if edited then
-                    button [ onClick ResetSetFunctor ] [ text "Reset to the original functor" ]
-
-                  else
-                    text ""
-                ]
-            , div [ class "col" ]
-                [ setLaws order fun ]
-            ]
+             else
+                "Click an element on the left, then its new image on the right."
+            )
         ]
+    ]
 
 
 setLaws : CompositionOrder -> SetFunctor -> Html Msg
@@ -1034,7 +1335,8 @@ setLaws order fun =
 
 
 {-| `src`/`tgt` are category names, `obj`/`mor` the object and arrow images of the functor
-being edited, `shape=1` draws its image in the shape of the source, `set` the name of the Set-valued example and `arrow` its selected arrow.
+being edited, `shape=1` draws its image in the shape of the source, `set` the name of the
+Set-valued example, `arrow` its focused arrow and `setview=one` shows one function at a time.
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
@@ -1043,8 +1345,20 @@ toQuery model =
     , Query.intListParam "obj" (Array.toList model.functor.onObjects)
     , Query.intListParam "mor" (Array.toList model.functor.onMorphisms)
     , Query.param "set" model.setExample.name
-    , Query.param "arrow" (String.fromInt model.setArrow)
     ]
+        ++ (case model.setArrow of
+                Just f ->
+                    [ Query.param "arrow" (String.fromInt f) ]
+
+                Nothing ->
+                    []
+           )
+        ++ (if model.setView == OneArrow then
+                [ Query.param "setview" "one" ]
+
+            else
+                []
+           )
         ++ (if model.imageShape then
                 [ Query.param "shape" "1" ]
 
@@ -1111,13 +1425,41 @@ fromQuery q model =
                 Nothing ->
                     md
 
-        withSetArrow md =
-            case Query.int "arrow" q |> Maybe.andThen (\f -> Category.morphism md.setExample.source f |> Maybe.map (always f)) of
-                Just f ->
-                    update (SelectSetArrow f) md
+        withSetView md =
+            let
+                v =
+                    if Query.string "setview" q == Just "one" then
+                        OneArrow
 
-                Nothing ->
-                    md
+                    else
+                        WholePicture
+            in
+            if v == md.setView then
+                md
+
+            else
+                update (SelectSetView v) md
+
+        withSetArrow md =
+            let
+                arrow =
+                    -- without one, the whole picture has no focus
+                    case Query.int "arrow" q |> Maybe.andThen (\f -> Category.morphism md.setExample.source f |> Maybe.map (always f)) of
+                        Just f ->
+                            Just f
+
+                        Nothing ->
+                            if md.setView == WholePicture then
+                                Nothing
+
+                            else
+                                md.setArrow
+            in
+            if arrow == md.setArrow then
+                md
+
+            else
+                { md | setArrow = arrow, setSelected = Nothing }
     in
     model
         |> category "src" .source SelectSource
@@ -1125,4 +1467,5 @@ fromQuery q model =
         |> withFunctor
         |> withImageShape
         |> withSetExample
+        |> withSetView
         |> withSetArrow

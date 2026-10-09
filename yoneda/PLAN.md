@@ -75,6 +75,13 @@ from the repo's nix devShell):
       chapter 8 got the contravariant toggle (`Yoneda.contraFromElement`) and a step-by-step
       chase; `tests/PageQueryTest.elm` round-trips every page's deep link.
 
+- [x] 12. Chapter 5's Set-valued functors are drawn as a whole (`View/SetPicture.elm`): every set
+      F(A) as a disc of elements where A sits in 𝒞's layout, every non-identity F(f) as colored
+      element-to-element arrows (fixed points of endomorphisms as rings). Click an arrow to focus
+      and edit it in place; −/+ resize the sets (`FinSet.addElement`/`removeLast`,
+      `SetFunctor.setObjectImage`); elements where the composition law fails are marked red. The
+      old one-function editor stays as a "One function at a time" view (`setview=one`).
+
 All milestones done. Possible follow-ups (not planned): per-chapter "copy link" button, encoding
 edits of the Set-valued functor in chapter 5 (only the example name is stored today), a dark theme.
 

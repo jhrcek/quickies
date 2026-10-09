@@ -45,6 +45,8 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
 - `ListUtil.elm` - `find`, `findIndex`, `indexOf`, `allDistinct`.
 - `View/FunctionEditor.elm` - reusable SVG widget: define a function between finite sets
   by clicking a source then a target element; also used read-only.
+- `View/SetPicture.elm` - a whole Set-valued functor in the shape of its source: sets as
+  discs of elements, functions as colored element-to-element arrows; focus/edit by clicking.
 - `View/Common.elm` - shared view bits (law/count badges, group element picker, cycle notation).
 - `View/ArrowHead.elm` - arrowheads as plain polygons; don't use SVG `<marker>`s (their ids
   clash between the many SVGs on one page).

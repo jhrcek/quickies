@@ -10,6 +10,7 @@ module Math.SetFunctor exposing
     , morphismImage
     , objectImage
     , setMorphismImage
+    , setObjectImage
     , twoFunctions
     , typingViolations
     )
@@ -100,6 +101,36 @@ morphismImage fun f =
 setMorphismImage : Int -> FinFunction -> SetFunctor -> SetFunctor
 setMorphismImage f ff fun =
     { fun | morphisms = Array.set f ff fun.morphisms }
+
+
+{-| Replace the set `F(a)`. Every function into or out of it is kept as far as it still
+makes sense (see `FinFunction.resize`); identities stay identities.
+-}
+setObjectImage : Int -> FinSet -> SetFunctor -> SetFunctor
+setObjectImage a set fun =
+    let
+        objects =
+            Array.set a set fun.objects
+
+        setOf o =
+            Array.get o objects |> Maybe.withDefault (FinSet.fromLabels "?" [])
+
+        retype f ff =
+            case Category.morphism fun.source f of
+                Just m ->
+                    if m.src /= a && m.tgt /= a then
+                        ff
+
+                    else if Category.isIdentity fun.source f then
+                        FinFunction.identity (setOf m.src)
+
+                    else
+                        FinFunction.resize (setOf m.src) (setOf m.tgt) ff
+
+                Nothing ->
+                    ff
+    in
+    { fun | objects = objects, morphisms = Array.indexedMap retype fun.morphisms }
 
 
 
