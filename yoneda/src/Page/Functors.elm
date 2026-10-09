@@ -24,6 +24,7 @@ type alias Model =
     , target : Example
     , functor : Functor
     , enumerated : Maybe (List Functor)
+    , imageShape : Bool -- draw the image of a valid functor in the shape of the source
     , setExample : SetFunctor
     , setFunctor : SetFunctor -- possibly edited copy of setExample
     , setArrow : Int -- selected arrow of the Set-valued functor's source
@@ -36,6 +37,7 @@ type Msg
     | SelectTarget Example
     | CycleObject Int
     | SetMorphism Int Int
+    | ToggleImageShape
     | Enumerate
     | Load Functor
     | SelectSetExample SetFunctor
@@ -58,6 +60,7 @@ init =
     , target = target
     , functor = Functor.constant source.category target.category 0
     , enumerated = Nothing
+    , imageShape = False
     , setExample = SetFunctor.twoFunctions
     , setFunctor = SetFunctor.twoFunctions
     , setArrow = Category.firstNonIdentity SetFunctor.twoFunctions.source
@@ -86,6 +89,9 @@ update msg model =
 
         SetMorphism f ff ->
             { model | functor = Functor.setMorphismImage f ff model.functor }
+
+        ToggleImageShape ->
+            { model | imageShape = not model.imageShape }
 
         Enumerate ->
             { model | enumerated = Just (Functor.enumerateAll model.source.category model.target.category) }
@@ -357,6 +363,18 @@ functorCard order model =
 
                 Nothing ->
                     Diagram.view cfg ex.category
+
+        showShape =
+            model.imageShape && Functor.isFunctor fun
+
+        relabeled ex =
+            { ex | category = imageShape fun }
+
+        shapeToggle =
+            div [ class "controls" ]
+                [ button [ onClick ToggleImageShape, classList [ ( "active", model.imageShape ) ] ]
+                    [ text "Draw image in the shape of 𝒞" ]
+                ]
     in
     div [ class "card" ]
         [ div [ class "row" ]
@@ -365,9 +383,23 @@ functorCard order model =
                 , diagram model.source .sourcePaint
                 ]
             , div [ class "col fit" ]
-                [ p [] [ KaTeX.inline ("\\mathcal{D} = " ++ tgt.texName) ]
-                , diagram model.target .targetPaint
-                ]
+                (if showShape then
+                    [ p [] [ KaTeX.inline ("F(\\mathcal{C}) \\text{ in } " ++ tgt.texName) ]
+                    , diagram (relabeled model.source) .sourcePaint
+                    , shapeToggle
+                    ]
+
+                 else
+                    [ p [] [ KaTeX.inline ("\\mathcal{D} = " ++ tgt.texName) ]
+                    , diagram model.target .targetPaint
+                    , shapeToggle
+                    , if model.imageShape then
+                        p [ class "muted" ] [ text "Only a functor has an image to draw." ]
+
+                      else
+                        text ""
+                    ]
+                )
             , div [ class "col" ]
                 [ p [] [ strong [] [ text "On objects" ] ]
                 , div [ class "controls" ]
@@ -395,9 +427,15 @@ functorCard order model =
                     text ""
                 , case coloring of
                     Just _ ->
-                        p [ class "muted" ]
-                            [ text "Every object and arrow of 𝒞 has its own color, used in the equations above too, and its picture in 𝒟 wears the same color. Where several things land in the same place, the colors share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; grayed-out parts of 𝒟 are not in the picture at all."
-                            ]
+                        if showShape then
+                            p [ class "muted" ]
+                                [ text "Every object and arrow of 𝒞 has its own color, used in the equations above too. On the right, 𝒞 is drawn once more, but each object and arrow is labeled by its picture in 𝒟. Where several things land in the same place, the same label shows up more than once; an arrow sent to an identity keeps its place in the shape but is labeled by that identity."
+                                ]
+
+                        else
+                            p [ class "muted" ]
+                                [ text "Every object and arrow of 𝒞 has its own color, used in the equations above too, and its picture in 𝒟 wears the same color. Where several things land in the same place, the colors share it: a split ring around an object, a striped arrow. Arrows sent to an identity make that identity loop appear; grayed-out parts of 𝒟 are not in the picture at all."
+                                ]
 
                     Nothing ->
                         text ""
@@ -405,6 +443,21 @@ functorCard order model =
             ]
         , lawsCard order fun
         ]
+
+
+{-| The source category with every object and arrow relabeled by its image, so that
+drawing it with the source's positions shows the picture in the shape of the source.
+-}
+imageShape : Functor -> Category.Category
+imageShape fun =
+    let
+        src =
+            fun.source
+    in
+    { src
+        | objects = List.map (Functor.objectImage fun >> Category.objectLabel fun.target) (Category.objectIndices src)
+        , morphisms = Array.indexedMap (\f m -> { m | label = Category.morphismLabel fun.target (Functor.morphismImage fun f) }) src.morphisms
+    }
 
 
 {-| Wrap a TeX snippet in `\textcolor` when there is a color.
@@ -981,7 +1034,7 @@ setLaws order fun =
 
 
 {-| `src`/`tgt` are category names, `obj`/`mor` the object and arrow images of the functor
-being edited, `set` the name of the Set-valued example and `arrow` its selected arrow.
+being edited, `shape=1` draws its image in the shape of the source, `set` the name of the Set-valued example and `arrow` its selected arrow.
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
@@ -992,6 +1045,12 @@ toQuery model =
     , Query.param "set" model.setExample.name
     , Query.param "arrow" (String.fromInt model.setArrow)
     ]
+        ++ (if model.imageShape then
+                [ Query.param "shape" "1" ]
+
+            else
+                []
+           )
 
 
 fromQuery : Query -> Model -> Model
@@ -1032,6 +1091,14 @@ fromQuery q model =
                 _ ->
                     md
 
+        withImageShape md =
+            case Query.string "shape" q of
+                Just v ->
+                    { md | imageShape = v == "1" }
+
+                Nothing ->
+                    md
+
         withSetExample md =
             case Query.string "set" q |> Maybe.andThen (\name -> ListUtil.find (\f -> f.name == name) SetFunctor.all) of
                 Just ex ->
@@ -1056,5 +1123,6 @@ fromQuery q model =
         |> category "src" .source SelectSource
         |> category "tgt" .target SelectTarget
         |> withFunctor
+        |> withImageShape
         |> withSetExample
         |> withSetArrow
