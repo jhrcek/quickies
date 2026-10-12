@@ -2,8 +2,9 @@ module Main exposing (main)
 
 {-| A minimal in-browser chessboard.
 
-The board is on the left, the move history (in PGN/SAN notation) on the right,
-with pager buttons to step through the game. Pieces are moved by dragging; while
+The board is on the left, the move history (in PGN/SAN notation) on the right
+(or below the board on a narrow screen), with pager buttons to step through the
+game. Pieces are moved by dragging; while
 a piece is held, every legal target square is highlighted, and dropping anywhere
 else is a no-op. All chess rules -- castling, en passant, pins, check evasion,
 promotion -- come from `romstad/elm-chess`, so none of them are reimplemented
@@ -840,42 +841,71 @@ mousePosition =
 -- VIEW
 
 
-squareSize : Int
-squareSize =
-    60
-
-
-boardSize : Int
-boardSize =
-    8 * squareSize
-
-
 pieceSize : Int
 pieceSize =
     56
 
 
-px : Int -> String
-px n =
-    String.fromInt n ++ "px"
+{-| Where a square (or anything else a square wide) sits along one edge of the
+board, as a percentage of the board's width.
+-}
+squareOffset : Int -> String
+squareOffset index =
+    String.fromFloat (toFloat index * 12.5) ++ "%"
+
+
+{-| The parts of the layout that change with the screen width, which inline
+styles cannot express. On a wide screen the board is 480px with the controls
+beside it (wrapping below it when they do not fit); on a narrow one the board
+takes the whole width and everything else goes below it.
+
+The board's squares are placed in percentages of it, so they follow whatever
+size it is given here. Pieces are drawn at `pieceSize` but scaled by CSS to the
+same fraction of their square.
+
+-}
+stylesheet : Html msg
+stylesheet =
+    H.node "style"
+        []
+        [ H.text """
+.cb-root { font-family: system-ui, sans-serif; padding: 20px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; user-select: none; }
+.cb-board { position: relative; width: 480px; height: 480px; border: 2px solid #334155; }
+.cb-square { position: absolute; width: 12.5%; height: 12.5%; display: flex; align-items: center; justify-content: center; }
+.cb-piece { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.cb-piece > svg { width: 93.33%; height: 93.33%; }
+.cb-float { position: fixed; width: 60px; height: 60px; transform: translate(-50%, -50%); pointer-events: none; z-index: 10; }
+.cb-palette { display: flex; justify-content: center; width: 484px; margin-top: 8px; }
+.cb-palette-square { width: 60px; height: 60px; background-color: #f8fafc; border: 1px solid #cbd5e1; }
+.cb-history { width: 220px; height: 484px; display: flex; flex-direction: column; gap: 8px; }
+.cb-moves { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #cbd5e1; padding: 6px; font-family: monospace; font-size: 14px; }
+.cb-editor-panel { width: 320px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+@media (max-width: 600px) {
+  .cb-root { flex-direction: column; flex-wrap: nowrap; align-items: stretch; padding: 8px 0; gap: 16px; }
+  .cb-pad { padding: 0 8px; }
+  .cb-board { width: 100%; height: auto; aspect-ratio: 1; box-sizing: border-box; }
+  .cb-float { width: 12.5vw; height: 12.5vw; }
+  .cb-palette { width: 100%; }
+  .cb-palette-square { width: 12.5%; height: auto; aspect-ratio: 1; box-sizing: border-box; }
+  .cb-history { width: auto; height: auto; }
+  .cb-moves { flex: none; min-height: 3em; max-height: 30vh; }
+  .cb-editor-panel { width: auto; }
+}
+"""
+        ]
 
 
 view : Model -> Html Msg
 view model =
-    H.div
-        [ HA.style "font-family" "system-ui, sans-serif"
-        , HA.style "padding" "20px"
-        , HA.style "display" "flex"
-        , HA.style "gap" "24px"
-        , HA.style "align-items" "flex-start"
-        , HA.style "user-select" "none"
-        ]
-        (case model.editor of
-            Just editor ->
-                viewEditor editor
+    H.div [ HA.class "cb-root" ]
+        (stylesheet
+            :: (case model.editor of
+                    Just editor ->
+                        viewEditor editor
 
-            Nothing ->
-                viewGame model
+                    Nothing ->
+                        viewGame model
+               )
         )
 
 
@@ -913,7 +943,8 @@ viewGame model =
 heading : String -> Html Msg
 heading text =
     H.div
-        [ HA.style "margin-bottom" "8px"
+        [ HA.class "cb-pad"
+        , HA.style "margin-bottom" "8px"
         , HA.style "color" "#334155"
         ]
         [ H.text text ]
@@ -944,13 +975,7 @@ statusText position =
 
 boardFrame : List (Html Msg) -> Html Msg
 boardFrame children =
-    H.div
-        [ HA.style "position" "relative"
-        , HA.style "width" (px boardSize)
-        , HA.style "height" (px boardSize)
-        , HA.style "border" "2px solid #334155"
-        ]
-        children
+    H.div [ HA.class "cb-board" ] children
 
 
 {-| One square of the board, placed at its coordinates and carrying the
@@ -966,15 +991,10 @@ squareCell square background attributes children =
             SquareRank.toIndex (Square.rank square)
     in
     H.div
-        (HA.style "position" "absolute"
-            :: HA.style "left" (px (fileIndex * squareSize))
-            :: HA.style "top" (px ((7 - rankIndex) * squareSize))
-            :: HA.style "width" (px squareSize)
-            :: HA.style "height" (px squareSize)
+        (HA.class "cb-square"
+            :: HA.style "left" (squareOffset fileIndex)
+            :: HA.style "top" (squareOffset (7 - rankIndex))
             :: HA.style "background-color" background
-            :: HA.style "display" "flex"
-            :: HA.style "align-items" "center"
-            :: HA.style "justify-content" "center"
             :: attributes
         )
         (viewCoordinates fileIndex rankIndex (isDark square) ++ children)
@@ -1097,7 +1117,14 @@ viewSquareContents model position square =
                     [ viewGrabbablePiece (DragStart square) piece ]
 
                 else
-                    [ Pieces.view pieceSize piece ]
+                    [ viewPiece piece ]
+
+
+{-| A piece, scaled to fill the square (or other square box) it is put in.
+-}
+viewPiece : Piece -> Html msg
+viewPiece piece =
+    H.div [ HA.class "cb-piece" ] [ Pieces.view pieceSize piece ]
 
 
 {-| A piece that starts a drag when pressed. `toMsg` receives the cursor
@@ -1106,7 +1133,8 @@ position the drag starts at.
 viewGrabbablePiece : (( Float, Float ) -> Msg) -> Piece -> Html Msg
 viewGrabbablePiece toMsg piece =
     H.div
-        [ HA.style "cursor" "grab"
+        [ HA.class "cb-piece"
+        , HA.style "cursor" "grab"
         , HE.preventDefaultOn "mousedown"
             (D.map (\at -> ( toMsg at, True )) mousePosition)
         ]
@@ -1123,18 +1151,11 @@ viewFloatingPiece held =
 
         Just ( piece, ( x, y ) ) ->
             H.div
-                [ HA.style "position" "fixed"
-                , HA.style "left" (px (round x - squareSize // 2))
-                , HA.style "top" (px (round y - squareSize // 2))
-                , HA.style "width" (px squareSize)
-                , HA.style "height" (px squareSize)
-                , HA.style "display" "flex"
-                , HA.style "align-items" "center"
-                , HA.style "justify-content" "center"
-                , HA.style "pointer-events" "none"
-                , HA.style "z-index" "10"
+                [ HA.class "cb-float"
+                , HA.style "left" (String.fromFloat x ++ "px")
+                , HA.style "top" (String.fromFloat y ++ "px")
                 ]
-                [ Pieces.view pieceSize piece ]
+                [ viewPiece piece ]
 
 
 
@@ -1177,10 +1198,10 @@ viewPromotion model position =
                         []
                     , H.div
                         [ HA.style "position" "absolute"
-                        , HA.style "left" (px (fileIndex * squareSize))
+                        , HA.style "left" (squareOffset fileIndex)
                         , HA.style "top" "0"
-                        , HA.style "width" (px squareSize)
-                        , HA.style "height" (px boardSize)
+                        , HA.style "width" "12.5%"
+                        , HA.style "height" "100%"
                         , HA.style "display" "flex"
                         , HA.style "flex-direction"
                             (if promotingUp then
@@ -1201,17 +1222,13 @@ viewPromotionChoice color move =
             Piece.make color (Maybe.withDefault PieceType.queen (Move.promotion move))
     in
     H.div
-        [ HA.style "width" (px squareSize)
-        , HA.style "height" (px squareSize)
+        [ HA.style "height" "12.5%"
         , HA.style "background-color" "#f8fafc"
         , HA.style "box-shadow" "0 1px 4px rgba(0,0,0,0.5)"
-        , HA.style "display" "flex"
-        , HA.style "align-items" "center"
-        , HA.style "justify-content" "center"
         , HA.style "cursor" "pointer"
         , HE.onClick (ChoosePromotion move)
         ]
-        [ Pieces.view pieceSize piece ]
+        [ viewPiece piece ]
 
 
 
@@ -1254,12 +1271,7 @@ pieces here are an inexhaustible supply, so dragging one out leaves it in place.
 -}
 viewPalette : PieceColor -> Html Msg
 viewPalette color =
-    H.div
-        [ HA.style "display" "flex"
-        , HA.style "justify-content" "center"
-        , HA.style "width" (px (boardSize + 4))
-        , HA.style "margin-top" "8px"
-        ]
+    H.div [ HA.class "cb-palette" ]
         (List.map (viewPaletteSquare color) paletteOrder)
 
 
@@ -1280,15 +1292,7 @@ viewPaletteSquare color kind =
         piece =
             Piece.make color kind
     in
-    H.div
-        [ HA.style "width" (px squareSize)
-        , HA.style "height" (px squareSize)
-        , HA.style "background-color" "#f8fafc"
-        , HA.style "border" "1px solid #cbd5e1"
-        , HA.style "display" "flex"
-        , HA.style "align-items" "center"
-        , HA.style "justify-content" "center"
-        ]
+    H.div [ HA.class "cb-palette-square" ]
         [ viewGrabbablePiece (EditorPick piece Nothing) piece ]
 
 
@@ -1298,13 +1302,7 @@ viewEditorPanel editor =
         problems =
             Setup.errors editor.setup
     in
-    H.div
-        [ HA.style "width" "320px"
-        , HA.style "display" "flex"
-        , HA.style "flex-direction" "column"
-        , HA.style "gap" "12px"
-        , HA.style "font-size" "14px"
-        ]
+    H.div [ HA.class "cb-editor-panel", HA.class "cb-pad" ]
         [ H.div [ HA.style "color" "#64748b" ]
             [ H.text "Drag pieces from the palette onto the board. Drag a piece off the board to take it off again." ]
         , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
@@ -1419,31 +1417,17 @@ viewHistory model =
         end =
             lastPly model
     in
-    H.div
-        [ HA.style "width" "220px"
-
-        -- As tall as the board including its border, with the move list
-        -- taking whatever the controls above and below it leave.
-        , HA.style "height" (px (boardSize + 4))
-        , HA.style "display" "flex"
-        , HA.style "flex-direction" "column"
-        , HA.style "gap" "8px"
-        ]
+    -- On a wide screen this is as tall as the board including its border,
+    -- with the move list taking whatever the controls above and below it
+    -- leave (see `stylesheet`).
+    H.div [ HA.class "cb-history", HA.class "cb-pad" ]
         [ H.div [ HA.style "display" "flex", HA.style "gap" "4px" ]
             [ pagerButton ToStart "Start" (GoTo 0) (model.ply > 0)
             , pagerButton Previous "Previous move" (GoTo (model.ply - 1)) (model.ply > 0)
             , pagerButton Next "Next move" (GoTo (model.ply + 1)) (model.ply < end)
             , pagerButton ToEnd "End" (GoTo end) (model.ply < end)
             ]
-        , H.div
-            [ HA.style "flex" "1"
-            , HA.style "min-height" "0"
-            , HA.style "overflow-y" "auto"
-            , HA.style "border" "1px solid #cbd5e1"
-            , HA.style "padding" "6px"
-            , HA.style "font-family" "monospace"
-            , HA.style "font-size" "14px"
-            ]
+        , H.div [ HA.class "cb-moves" ]
             (if end == 0 then
                 [ H.div [ HA.style "color" "#94a3b8" ] [ H.text "No moves yet" ] ]
 
