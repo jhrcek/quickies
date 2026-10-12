@@ -41,11 +41,16 @@ way to interrupt a pure computation, so instead the next depth is started only
 when it looks likely to finish inside the budget, taking it to cost several
 times what the previous one did.
 
+The starting position can be given in the URL as `?fen=<URL-encoded FEN>`. A
+valid one starts the game from that position; one that does not parse, or does
+not describe a legal position, opens the editor on it so the problem is shown.
+
 -}
 
 import Array exposing (Array)
 import Browser
 import Browser.Events
+import Browser.Navigation
 import Engine
 import Html as H exposing (Html)
 import Html.Attributes as HA
@@ -67,15 +72,21 @@ import Svg as S
 import Svg.Attributes as SA
 import Task
 import Time
+import Url exposing (Url)
 
 
 main : Program () Model Msg
 main =
-    Browser.element
+    Browser.application
         { init = init
         , update = update
-        , view = view
+        , view = \model -> { title = "Chessboard", body = [ view model ] }
         , subscriptions = subscriptions
+
+        -- The page has no links and never changes its own URL, so neither of
+        -- these is expected to happen.
+        , onUrlRequest = UrlRequested
+        , onUrlChange = always NoOp
         }
 
 
@@ -183,22 +194,75 @@ type alias EditorDrag =
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( { start = Position.initial
-      , moves = Array.empty
-      , positions = Array.fromList [ Position.initial ]
-      , ply = 0
-      , drag = Nothing
-      , promoting = Nothing
-      , editor = Nothing
-      , engine = Nothing
-      , thinking = Nothing
-      , searches = 0
-      , report = Nothing
-      }
+init : () -> Url -> Browser.Navigation.Key -> ( Model, Cmd Msg )
+init _ url _ =
+    ( startFrom (fenParam url)
+        { start = Position.initial
+        , moves = Array.empty
+        , positions = Array.fromList [ Position.initial ]
+        , ply = 0
+        , drag = Nothing
+        , promoting = Nothing
+        , editor = Nothing
+        , engine = Nothing
+        , thinking = Nothing
+        , searches = 0
+        , report = Nothing
+        }
     , Cmd.none
     )
+
+
+{-| The `fen` query parameter, decoded. In a query string a `+` stands for a
+space, which FENs are full of, so it is accepted as well as `%20`.
+-}
+fenParam : Url -> Maybe String
+fenParam url =
+    url.query
+        |> Maybe.map (String.split "&")
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\param ->
+                case String.split "=" param of
+                    [ "fen", value ] ->
+                        Url.percentDecode (String.replace "+" " " value)
+
+                    _ ->
+                        Nothing
+            )
+        |> List.head
+
+
+{-| Start the game from the FEN given in the URL, if any. When it cannot be
+played from, the editor is opened on it instead, showing what is wrong.
+-}
+startFrom : Maybe String -> Model -> Model
+startFrom fen model =
+    case fen of
+        Nothing ->
+            model
+
+        Just text ->
+            case Setup.fromFen text of
+                Ok setup ->
+                    case ( Setup.errors setup, Setup.toPosition setup ) of
+                        ( [], Just position ) ->
+                            newGame position model
+
+                        _ ->
+                            { model | editor = Just (newEditor setup) }
+
+                Err message ->
+                    { model
+                        | editor =
+                            Just
+                                { setup = Setup.empty
+                                , undo = []
+                                , fenInput = text
+                                , fenError = Just message
+                                , drag = Nothing
+                                }
+                    }
 
 
 {-| Start over from the given position. The engine keeps playing the side it
@@ -252,6 +316,8 @@ type Msg
     | EditorConfirm
     | EngineSide (Maybe PieceColor)
     | Iterate Int Time.Posix
+    | UrlRequested Browser.UrlRequest
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -259,6 +325,12 @@ update msg model =
     case msg of
         Iterate id now ->
             iterate id (Time.posixToMillis now) model
+
+        UrlRequested (Browser.Internal url) ->
+            ( model, Browser.Navigation.load (Url.toString url) )
+
+        UrlRequested (Browser.External href) ->
+            ( model, Browser.Navigation.load href )
 
         _ ->
             -- Every other message may change whose turn it is, or what the
@@ -417,6 +489,13 @@ updateModel msg model =
 
         -- Handled in `update`.
         Iterate _ _ ->
+            model
+
+        -- Handled in `update`.
+        UrlRequested _ ->
+            model
+
+        NoOp ->
             model
 
 
