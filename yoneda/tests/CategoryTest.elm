@@ -54,6 +54,24 @@ suite =
                                     |> Expect.equal (List.filter (Category.isIdentity c) (Category.morphismIndices c))
                             ]
                             ()
+               , test "swap and collapse: hom sets have the announced sizes, only s and identities are invertible" <|
+                    \_ ->
+                        let
+                            c =
+                                Categories.swapCollapse.category
+                        in
+                        Expect.all
+                            [ \_ -> Category.hom c 0 0 |> List.length |> Expect.equal 2
+                            , \_ -> Category.hom c 0 1 |> List.length |> Expect.equal 3
+                            , \_ -> Category.hom c 1 1 |> List.length |> Expect.equal 2
+                            , \_ -> Category.hom c 1 0 |> Expect.equal []
+                            , \_ ->
+                                Category.morphismIndices c
+                                    |> List.filter (Category.isIsomorphism c)
+                                    |> List.map (Category.morphismLabel c)
+                                    |> Expect.equal [ "\\mathrm{id}_A", "\\mathrm{id}_B", "s" ]
+                            ]
+                            ()
                , test "idempotent monoid: e is not an isomorphism" <|
                     \_ -> Category.isIsomorphism Categories.idempotentMonoid.category 1 |> Expect.equal False
                , test "BS3: 'f then g' is the group element g·f, and every arrow is an isomorphism" <|

@@ -9,6 +9,7 @@ module Math.Categories exposing
     , idempotentMonoid
     , layoutFor
     , mixed
+    , swapCollapse
     , terminal
     )
 
@@ -38,6 +39,7 @@ all =
     , diamond
     , idempotentMonoid
     , mixed
+    , swapCollapse
     , ofGroup (Group.cyclic 2)
     , ofGroup (Group.cyclic 3)
     , ofGroup (Group.cyclic 4)
@@ -170,6 +172,58 @@ mixed =
 
                         ( "e", "g" ) ->
                             "g"
+
+                        _ ->
+                            composeWithIdentities f g
+            }
+        )
+
+
+{-| Hom(A, B) has three elements, acted on from both sides: the invertible s swaps two
+of them, the idempotent e collapses all three onto the third.
+-}
+swapCollapse : Example
+swapCollapse =
+    twoObjects
+        (Category.make
+            { name = "Swap and collapse"
+            , texName = "\\mathcal{S}"
+            , description = "Two objects A and B with three arrows f, g, h : A → B, an invertible s : A → A that swaps f and g (s;f = g, s;g = f, s;h = h, s;s = id_A), and an idempotent e : B → B that collapses all three onto h (f;e = g;e = h;e = h, e;e = e)."
+            , objects = [ "A", "B" ]
+            , morphisms =
+                [ { label = "\\mathrm{id}_A", src = 0, tgt = 0 }
+                , { label = "\\mathrm{id}_B", src = 1, tgt = 1 }
+                , { label = "s", src = 0, tgt = 0 }
+                , { label = "e", src = 1, tgt = 1 }
+                , { label = "f", src = 0, tgt = 1 }
+                , { label = "g", src = 0, tgt = 1 }
+                , { label = "h", src = 0, tgt = 1 }
+                ]
+            , identities = [ "\\mathrm{id}_A", "\\mathrm{id}_B" ]
+            , compose =
+                \f g ->
+                    case ( f, g ) of
+                        ( "s", "s" ) ->
+                            "\\mathrm{id}_A"
+
+                        ( "s", "f" ) ->
+                            "g"
+
+                        ( "s", "g" ) ->
+                            "f"
+
+                        ( "s", "h" ) ->
+                            "h"
+
+                        ( "e", "e" ) ->
+                            "e"
+
+                        ( _, "e" ) ->
+                            if f == "f" || f == "g" || f == "h" then
+                                "h"
+
+                            else
+                                composeWithIdentities f g
 
                         _ ->
                             composeWithIdentities f g
