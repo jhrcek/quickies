@@ -1,11 +1,14 @@
 module Route exposing
     ( Chapter(..)
+    , Playground(..)
     , allChapters
+    , allPlaygrounds
     , chapterNumber
     , chapterTitle
     , fromUrl
     , next
     , parse
+    , playgroundTitle
     , previous
     , toString
     , toStringWith
@@ -14,12 +17,16 @@ module Route exposing
 {-| Chapters live in the URL hash (`#/sets`). A chapter's interactive state follows after
 a `?` inside the hash (`#/sets?a=3&b=2`), see `Query`. The composition order is not in
 the URL.
+
+Playgrounds (`#/playground/test`) are free-form explorations outside the chapter sequence,
+shown full-viewport instead of inside the sidebar layout.
+
 -}
 
 import ListUtil
 import Query exposing (Query)
 import Url exposing (Url)
-import Url.Parser as Parser exposing (Parser)
+import Url.Parser as Parser exposing ((</>), Parser)
 
 
 type Chapter
@@ -34,6 +41,30 @@ type Chapter
     | YonedaLemma
     | YonedaEmbedding
     | Glossary
+    | Playground Playground
+
+
+type Playground
+    = TestPlayground
+
+
+allPlaygrounds : List Playground
+allPlaygrounds =
+    [ TestPlayground ]
+
+
+playgroundTitle : Playground -> String
+playgroundTitle playground =
+    case playground of
+        TestPlayground ->
+            "Test playground"
+
+
+playgroundSlug : Playground -> String
+playgroundSlug playground =
+    case playground of
+        TestPlayground ->
+            "test"
 
 
 {-| The numbered chapters, in reading order. The glossary is reachable but not a chapter.
@@ -85,6 +116,9 @@ chapterTitle chapter =
         Glossary ->
             "Glossary"
 
+        Playground p ->
+            playgroundTitle p
+
 
 slug : Chapter -> String
 slug chapter =
@@ -122,6 +156,9 @@ slug chapter =
         Glossary ->
             "glossary"
 
+        Playground p ->
+            "playground/" ++ playgroundSlug p
+
 
 {-| The chapter after this one; the last chapter leads to the glossary.
 -}
@@ -129,6 +166,9 @@ next : Chapter -> Maybe Chapter
 next chapter =
     case chapter of
         Glossary ->
+            Nothing
+
+        Playground _ ->
             Nothing
 
         YonedaEmbedding ->
@@ -143,6 +183,9 @@ previous chapter =
     case chapter of
         Glossary ->
             Just YonedaEmbedding
+
+        Playground _ ->
+            Nothing
 
         _ ->
             List.drop (chapterNumber chapter - 1) allChapters
@@ -195,6 +238,7 @@ chapterParser =
     Parser.oneOf
         (Parser.map Intro Parser.top
             :: List.map (\c -> Parser.map c (Parser.s (slug c))) (List.filter ((/=) Intro) (Glossary :: allChapters))
+            ++ List.map (\p -> Parser.map (Playground p) (Parser.s "playground" </> Parser.s (playgroundSlug p))) allPlaygrounds
         )
 
 

@@ -52,6 +52,9 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   clash between the many SVGs on one page).
 - `Page/*` - one module per chapter (Model/Msg/init/update/view/toQuery/fromQuery);
   `Page/Glossary.elm` and `Page/Intro.elm` are stateless.
+- `Page/Playground/*` - free-form playgrounds (`Route.Playground`, `#/playground/<slug>`),
+  listed in the sidebar under "Playgrounds" and rendered by `Main.viewPlayground` full-viewport
+  with a title bar whose × returns to the last chapter visited (`Model.returnTo`).
 
 ## Conventions
 

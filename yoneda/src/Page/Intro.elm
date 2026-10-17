@@ -102,3 +102,6 @@ blurb chapter =
 
         Glossary ->
             "every term defined along the way, with a link to where it was introduced."
+
+        Playground _ ->
+            "a free-form, full-screen place to explore."

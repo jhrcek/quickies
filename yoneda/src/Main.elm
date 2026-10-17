@@ -7,13 +7,16 @@ is plain model state. Each chapter is its own `Page.*` module with local state, 
 mirrors its main selections into the hash query (`#/sets?a=3...`) so that every
 interactive state has a link. Navigation links carry the target chapter's current state.
 
+Playgrounds (`Route.Playground`) replace the whole layout with a full-viewport view whose
+close button leads back to the last chapter visited.
+
 -}
 
 import Browser
 import Browser.Navigation as Navigation
 import Dict
-import Html exposing (Html, a, div, h1, label, nav, span, text)
-import Html.Attributes exposing (class, classList, href, title)
+import Html exposing (Html, a, div, h1, h2, label, nav, span, text)
+import Html.Attributes exposing (attribute, class, classList, href, title)
 import Html.Events exposing (onClick)
 import Page.Categories
 import Page.Cayley
@@ -23,11 +26,12 @@ import Page.Groups
 import Page.HomFunctors
 import Page.Intro
 import Page.NaturalTransformations
+import Page.Playground.Test
 import Page.Sets
 import Page.YonedaEmbedding
 import Page.YonedaLemma
 import Query exposing (Query)
-import Route exposing (Chapter(..))
+import Route exposing (Chapter(..), Playground(..))
 import Url exposing (Url)
 import View.Notation as Notation exposing (CompositionOrder(..))
 
@@ -51,6 +55,7 @@ main =
 type alias Model =
     { key : Navigation.Key
     , chapter : Chapter
+    , returnTo : Chapter
     , order : CompositionOrder
     , sets : Page.Sets.Model
     , groups : Page.Groups.Model
@@ -72,6 +77,7 @@ init _ url key =
     in
     { key = key
     , chapter = chapter
+    , returnTo = Intro
     , order = Diagrammatic
     , sets = Page.Sets.init
     , groups = Page.Groups.init
@@ -83,8 +89,21 @@ init _ url key =
     , yonedaLemma = Page.YonedaLemma.init
     , yonedaEmbedding = Page.YonedaEmbedding.init
     }
+        |> rememberReturn
         |> applyQuery query
         |> syncUrl
+
+
+{-| Remember the current chapter as the place a playground's close button returns to.
+-}
+rememberReturn : Model -> Model
+rememberReturn model =
+    case model.chapter of
+        Playground _ ->
+            model
+
+        c ->
+            { model | returnTo = c }
 
 
 {-| Apply a deep-link query to the current chapter's page.
@@ -96,6 +115,9 @@ applyQuery query model =
             model
 
         Glossary ->
+            model
+
+        Playground _ ->
             model
 
         Sets ->
@@ -135,6 +157,9 @@ queryFor chapter model =
             []
 
         Glossary ->
+            []
+
+        Playground _ ->
             []
 
         Sets ->
@@ -226,7 +251,7 @@ update msg model =
                     Route.parse url
 
                 moved =
-                    { model | chapter = chapter }
+                    rememberReturn { model | chapter = chapter }
             in
             if chapter == model.chapter && Dict.toList query == Dict.toList (Query.fromString (Query.toString (queryFor chapter model))) then
                 -- our own `replaceUrl` echoing back: nothing to apply
@@ -274,18 +299,47 @@ view : Model -> Browser.Document Msg
 view model =
     { title = Route.chapterTitle model.chapter ++ " · Road to Yoneda"
     , body =
-        [ div [ class "app" ]
-            [ sidebar model
-            , div [ class "main" ]
-                [ topbar model
-                , div [ class "content" ]
-                    [ viewChapter model
-                    , prevNext model
+        [ case model.chapter of
+            Playground p ->
+                viewPlayground model p
+
+            _ ->
+                div [ class "app" ]
+                    [ sidebar model
+                    , div [ class "main" ]
+                        [ topbar model
+                        , div [ class "content" ]
+                            [ viewChapter model
+                            , prevNext model
+                            ]
+                        ]
                     ]
-                ]
-            ]
         ]
     }
+
+
+{-| A playground fills the viewport: a slim title bar with a close button, and the
+playground's own body below it.
+-}
+viewPlayground : Model -> Playground -> Html Msg
+viewPlayground model playground =
+    div [ class "playground" ]
+        [ div [ class "playground-titlebar" ]
+            [ h2 [] [ text (Route.playgroundTitle playground) ]
+            , a
+                [ class "playground-close"
+                , href (linkTo model.returnTo model)
+                , title "Close playground"
+                , attribute "aria-label" "Close playground"
+                ]
+                [ text "×" ]
+            ]
+        , div [ class "playground-body" ]
+            [ case playground of
+                TestPlayground ->
+                    Page.Playground.Test.view
+            ]
+        ]
 
 
 sidebar : Model -> Html Msg
@@ -316,7 +370,14 @@ sidebar model =
                     , classList [ ( "active", model.chapter == Glossary ), ( "glossary", True ) ]
                     ]
                     [ span [ class "num" ] [ text "" ], text (Route.chapterTitle Glossary) ]
+               , div [ class "sidebar-section" ] [ text "Playgrounds" ]
                ]
+            ++ List.map
+                (\p ->
+                    a [ href (Route.toString (Playground p)) ]
+                        [ span [ class "num" ] [ text "" ], text (Route.playgroundTitle p) ]
+                )
+                Route.allPlaygrounds
         )
 
 
@@ -331,6 +392,9 @@ topbar model =
 
                     Glossary ->
                         Route.chapterTitle Glossary
+
+                    Playground p ->
+                        Route.playgroundTitle p
 
                     c ->
                         "Chapter " ++ String.fromInt (Route.chapterNumber c) ++ ": " ++ Route.chapterTitle c
@@ -362,6 +426,9 @@ viewChapter model =
 
         Glossary ->
             Page.Glossary.view model.order
+
+        Playground _ ->
+            text ""
 
         Sets ->
             Html.map SetsMsg (Page.Sets.view model.order model.sets)
