@@ -53,7 +53,7 @@ type alias Paint =
 -}
 palette : Int -> String
 palette i =
-    case modBy 8 i of
+    case modBy 12 i of
         0 ->
             "#1f77b4"
 
@@ -75,8 +75,20 @@ palette i =
         6 ->
             "#e377c2"
 
-        _ ->
+        7 ->
             "#8c564b"
+
+        8 ->
+            "#bcbd22"
+
+        9 ->
+            "#393b79"
+
+        10 ->
+            "#8c6d31"
+
+        _ ->
+            "#a55194"
 
 
 dimmed : String

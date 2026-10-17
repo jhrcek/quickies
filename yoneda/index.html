@@ -142,7 +142,23 @@
         }
         .playground-close:hover { background: var(--bad); color: #fff; }
         .playground-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
-        .playground-placeholder { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--muted); }
+        .pg-grid {
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+            height: 100%; gap: 1px; background: var(--border);
+        }
+        .pg-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; padding: 8px 12px; box-sizing: border-box; }
+        .pg-panel-header { flex-shrink: 0; font-size: 0.9rem; }
+        .pg-panel-header p { margin: 2px 0 4px; }
+        .pg-panel-header .controls { margin: 0; }
+        .pg-panel-header select { font: inherit; font-size: 0.9rem; padding: 2px 4px; }
+        .pg-panel-body { flex: 1; min-height: 0; overflow: auto; display: flex; }
+        .pg-panel-body > * { margin: auto; }
+        .pg-panel-body > svg { width: auto; max-height: 100%; }
+        table.cayley th.pg-pick { cursor: pointer; }
+        table.cayley th.pg-pick:hover { filter: brightness(1.15); }
+        table.cayley th.pg-picked { outline: 3px solid var(--text); outline-offset: -3px; }
+        table.cayley .pg-dim { opacity: 0.3; cursor: default; }
+        table.cayley .pg-pinned { outline: 2px solid var(--text); outline-offset: -2px; }
 
         @media (max-width: 800px) {
             .app { flex-direction: column; }
@@ -157,6 +173,8 @@
             .sidebar a.active { border-left: none; padding-left: 8px; }
             .sidebar a.glossary { margin-top: 0; border-top: none; padding-top: 4px; }
             .sidebar .sidebar-section { flex: 1 0 100%; margin: 4px 0 0; padding: 4px 8px 0; }
+            .pg-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; }
+            .pg-panel-body > svg { max-height: 70vh; }
             .sidebar .num { width: auto; margin-right: 4px; }
             .topbar { padding: 8px 16px; }
             .content { padding: 16px; }

@@ -1,4 +1,4 @@
-module View.SetPicture exposing (Config, view)
+module View.SetPicture exposing (Config, Style, view, viewStyled)
 
 {-| The whole picture of a Set-valued functor `F : C → Set` at once, drawn in the shape of
 `C`: each object `A` becomes a disc holding the elements of `F(A)` (placed where `A` sits in
@@ -8,6 +8,9 @@ always identity functions. An element fixed by an endomorphism wears a ring of t
 arrow's color instead of a loop.
 
 One arrow can be focused: it is drawn on top, the others fade.
+
+`viewStyled` restyles the picture: solid element dots, one shared color for all arrows,
+and single element-to-element arrows emphasized on top in their own arrow's color.
 
 -}
 
@@ -42,6 +45,40 @@ type alias Config msg =
         -> Int
         -> msg -- object, element
     , onClickMorphism : Int -> msg
+    }
+
+
+{-| Optional restyling on top of `Config`.
+-}
+type alias Style =
+    { elementFill :
+        Int
+        -> Int
+        -> Maybe String -- object, element: a solid dot of this color
+    , emphasizedElement :
+        Int
+        -> Int
+        -> Bool -- object, element
+    , arrowColor :
+        Int
+        -> Maybe String -- arrow: color of its element arrows instead of the arrow's own
+    , emphasizedArrow :
+        Int
+        -> Int
+        -> Bool -- arrow, source element: drawn thick, on top, in the arrow's own color
+    , arrowLabel :
+        String
+        -> String -- plain label of an arrow ↦ label of its function
+    }
+
+
+plainStyle : Style
+plainStyle =
+    { elementFill = \_ _ -> Nothing
+    , emphasizedElement = \_ _ -> False
+    , arrowColor = \_ -> Nothing
+    , emphasizedArrow = \_ _ -> False
+    , arrowLabel = \l -> "F(" ++ l ++ ")"
     }
 
 
@@ -157,7 +194,12 @@ layout positions fun =
 
 
 view : Config msg -> SetFunctor -> Html msg
-view cfg fun =
+view cfg =
+    viewStyled plainStyle cfg
+
+
+viewStyled : Style -> Config msg -> SetFunctor -> Html msg
+viewStyled style cfg fun =
     let
         cat =
             fun.source
@@ -182,9 +224,10 @@ view cfg fun =
         , SA.style "max-width: 100%; height: auto; display: block;"
         ]
         (List.map (blob cfg lay fun) (Category.objectIndices cat)
-            ++ List.concatMap (\f -> arrowBundle cfg lay fun arrows (faded f) f) ordered
-            ++ List.concatMap (elements cfg lay fun arrows) (Category.objectIndices cat)
-            ++ List.map (\f -> arrowLabel cfg lay fun arrows (faded f) f) ordered
+            ++ List.concatMap (\f -> arrowBundle cfg style lay fun arrows False (faded f) f) ordered
+            ++ List.concatMap (\f -> arrowBundle cfg style lay fun arrows True False f) ordered
+            ++ List.concatMap (elements cfg style lay fun arrows) (Category.objectIndices cat)
+            ++ List.map (\f -> arrowLabel cfg style lay fun arrows (faded f) f) ordered
         )
 
 
@@ -218,8 +261,8 @@ blob cfg lay fun o =
 {-| The element dots of one object, with labels, rings for fixed points and click
 handlers.
 -}
-elements : Config msg -> Layout -> SetFunctor -> List Int -> Int -> List (Svg msg)
-elements cfg lay fun arrows o =
+elements : Config msg -> Style -> Layout -> SetFunctor -> List Int -> Int -> List (Svg msg)
+elements cfg style lay fun arrows o =
     let
         set =
             SetFunctor.objectImage fun o
@@ -238,11 +281,14 @@ elements cfg lay fun arrows o =
                 ( x, y ) =
                     lay.element o i
 
-                isSelected =
-                    focusedSource == Just o && cfg.selected == Just i
-
                 fixedBy =
                     endos |> List.filter (\f -> FinFunction.apply (SetFunctor.morphismImage fun f) i == i)
+
+                emphasized =
+                    style.emphasizedElement o i
+
+                fill =
+                    style.elementFill o i
 
                 fixedRings =
                     fixedBy
@@ -253,8 +299,20 @@ elements cfg lay fun arrows o =
                                     , SA.cy (str y)
                                     , SA.r (str (dotRadius + 3 + 3 * toFloat k))
                                     , SA.fill "none"
-                                    , SA.stroke (cfg.morphismColor f)
-                                    , SA.strokeWidth "2"
+                                    , SA.stroke
+                                        (if style.emphasizedArrow f i then
+                                            cfg.morphismColor f
+
+                                         else
+                                            style.arrowColor f |> Maybe.withDefault (cfg.morphismColor f)
+                                        )
+                                    , SA.strokeWidth
+                                        (if style.emphasizedArrow f i then
+                                            "3"
+
+                                         else
+                                            "2"
+                                        )
                                     , SA.opacity
                                         (if cfg.focus /= Nothing && cfg.focus /= Just f then
                                             "0.15"
@@ -292,17 +350,36 @@ elements cfg lay fun arrows o =
                     ++ [ Svg.circle
                             [ SA.cx (str x)
                             , SA.cy (str y)
-                            , SA.r (str dotRadius)
-                            , SA.fill
-                                (if isSelected then
-                                    "#1293D8"
+                            , SA.r
+                                (str
+                                    (if emphasized then
+                                        dotRadius + 2
 
-                                 else
-                                    "#fff"
+                                     else
+                                        dotRadius
+                                    )
+                                )
+                            , SA.fill
+                                (case fill of
+                                    Just color ->
+                                        color
+
+                                    Nothing ->
+                                        if focusedSource == Just o && cfg.selected == Just i then
+                                            "#1293D8"
+
+                                        else
+                                            "#fff"
                                 )
                             , SA.stroke
                                 (if cfg.flagged o i then
                                     "#c0392b"
+
+                                 else if emphasized then
+                                    "#222"
+
+                                 else if fill /= Nothing then
+                                    "#fff"
 
                                  else
                                     "#1293D8"
@@ -310,6 +387,9 @@ elements cfg lay fun arrows o =
                             , SA.strokeWidth
                                 (if cfg.flagged o i then
                                     "3"
+
+                                 else if emphasized then
+                                    "2.5"
 
                                  else
                                     "1.5"
@@ -322,6 +402,13 @@ elements cfg lay fun arrows o =
                             , SA.textAnchor "middle"
                             , SA.fontSize "12"
                             , SA.fontFamily "KaTeX_Main, serif"
+                            , SA.fontWeight
+                                (if emphasized then
+                                    "bold"
+
+                                 else
+                                    "normal"
+                                )
                             , SA.fill
                                 (if cfg.flagged o i then
                                     "#c0392b"
@@ -394,16 +481,18 @@ objectNormal lay ( a, b ) =
     ( -(qy - py) / len, (qx - px) / len )
 
 
-arrowBundle : Config msg -> Layout -> SetFunctor -> List Int -> Bool -> Int -> List (Svg msg)
-arrowBundle cfg lay fun arrows faded f =
+{-| The element arrows of `f`: the plain ones, or (`onTop`) only the emphasized ones.
+-}
+arrowBundle : Config msg -> Style -> Layout -> SetFunctor -> List Int -> Bool -> Bool -> Int -> List (Svg msg)
+arrowBundle cfg style lay fun arrows onTop faded f =
     case endpoints fun f of
         Just ( a, b ) ->
             let
                 ff =
                     SetFunctor.morphismImage fun f
 
-                color =
-                    cfg.morphismColor f
+                plainColor =
+                    style.arrowColor f |> Maybe.withDefault (cfg.morphismColor f)
 
                 focused =
                     cfg.focus == Just f
@@ -448,7 +537,7 @@ arrowBundle cfg lay fun arrows faded f =
                         ( mx - (qy - py) / len * bow, my + (qx - px) / len * bow )
 
                 one ( i, j ) =
-                    if j < 0 || j >= targetSize || (a == b && i == j) then
+                    if style.emphasizedArrow f i /= onTop || j < 0 || j >= targetSize || (a == b && i == j) then
                         -- fixed points are drawn as rings around the element
                         Svg.g [] []
 
@@ -469,11 +558,15 @@ arrowBundle cfg lay fun arrows faded f =
                             end =
                                 towards q c (dotRadius + 2)
 
-                            emphasized =
-                                focused && cfg.selected == Just i
+                            color =
+                                if onTop then
+                                    cfg.morphismColor f
+
+                                else
+                                    plainColor
 
                             width =
-                                if emphasized then
+                                if onTop || (focused && cfg.selected == Just i) then
                                     3
 
                                 else if focused then
@@ -498,6 +591,9 @@ arrowBundle cfg lay fun arrows faded f =
                     (if faded then
                         "0.12"
 
+                     else if onTop then
+                        "1"
+
                      else
                         "0.9"
                     )
@@ -509,8 +605,8 @@ arrowBundle cfg lay fun arrows faded f =
             []
 
 
-arrowLabel : Config msg -> Layout -> SetFunctor -> List Int -> Bool -> Int -> Svg msg
-arrowLabel cfg lay fun arrows faded f =
+arrowLabel : Config msg -> Style -> Layout -> SetFunctor -> List Int -> Bool -> Int -> Svg msg
+arrowLabel cfg style lay fun arrows faded f =
     case endpoints fun f of
         Just ( a, b ) ->
             let
@@ -596,7 +692,7 @@ arrowLabel cfg lay fun arrows faded f =
                     , SA.strokeWidth "3"
                     , SA.style "paint-order: stroke;"
                     ]
-                    [ Svg.text ("F(" ++ Notation.plain (Category.morphismLabel fun.source f) ++ ")") ]
+                    [ Svg.text (style.arrowLabel (Notation.plain (Category.morphismLabel fun.source f))) ]
                 ]
 
         Nothing ->

@@ -18,7 +18,7 @@ module Route exposing
 a `?` inside the hash (`#/sets?a=3&b=2`), see `Query`. The composition order is not in
 the URL.
 
-Playgrounds (`#/playground/test`) are free-form explorations outside the chapter sequence,
+Playgrounds (`#/playground/hom-functors`) are free-form explorations outside the chapter sequence,
 shown full-viewport instead of inside the sidebar layout.
 
 -}
@@ -45,26 +45,26 @@ type Chapter
 
 
 type Playground
-    = TestPlayground
+    = HomFunctorsPlayground
 
 
 allPlaygrounds : List Playground
 allPlaygrounds =
-    [ TestPlayground ]
+    [ HomFunctorsPlayground ]
 
 
 playgroundTitle : Playground -> String
 playgroundTitle playground =
     case playground of
-        TestPlayground ->
-            "Test playground"
+        HomFunctorsPlayground ->
+            "Hom functors"
 
 
 playgroundSlug : Playground -> String
 playgroundSlug playground =
     case playground of
-        TestPlayground ->
-            "test"
+        HomFunctorsPlayground ->
+            "hom-functors"
 
 
 {-| The numbered chapters, in reading order. The glossary is reachable but not a chapter.

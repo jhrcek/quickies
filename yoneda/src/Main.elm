@@ -26,7 +26,7 @@ import Page.Groups
 import Page.HomFunctors
 import Page.Intro
 import Page.NaturalTransformations
-import Page.Playground.Test
+import Page.Playground.HomFunctors
 import Page.Sets
 import Page.YonedaEmbedding
 import Page.YonedaLemma
@@ -66,6 +66,7 @@ type alias Model =
     , naturalTransformations : Page.NaturalTransformations.Model
     , yonedaLemma : Page.YonedaLemma.Model
     , yonedaEmbedding : Page.YonedaEmbedding.Model
+    , homFunctorsPlayground : Page.Playground.HomFunctors.Model
     }
 
 
@@ -88,6 +89,7 @@ init _ url key =
     , naturalTransformations = Page.NaturalTransformations.init
     , yonedaLemma = Page.YonedaLemma.init
     , yonedaEmbedding = Page.YonedaEmbedding.init
+    , homFunctorsPlayground = Page.Playground.HomFunctors.init
     }
         |> rememberReturn
         |> applyQuery query
@@ -117,8 +119,8 @@ applyQuery query model =
         Glossary ->
             model
 
-        Playground _ ->
-            model
+        Playground HomFunctorsPlayground ->
+            { model | homFunctorsPlayground = Page.Playground.HomFunctors.fromQuery query model.homFunctorsPlayground }
 
         Sets ->
             { model | sets = Page.Sets.fromQuery query model.sets }
@@ -159,8 +161,8 @@ queryFor chapter model =
         Glossary ->
             []
 
-        Playground _ ->
-            []
+        Playground HomFunctorsPlayground ->
+            Page.Playground.HomFunctors.toQuery model.homFunctorsPlayground
 
         Sets ->
             Page.Sets.toQuery model.sets
@@ -234,6 +236,7 @@ type Msg
     | NaturalTransformationsMsg Page.NaturalTransformations.Msg
     | YonedaLemmaMsg Page.YonedaLemma.Msg
     | YonedaEmbeddingMsg Page.YonedaEmbedding.Msg
+    | HomFunctorsPlaygroundMsg Page.Playground.HomFunctors.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -290,6 +293,9 @@ update msg model =
         YonedaEmbeddingMsg m ->
             syncIfChanged model { model | yonedaEmbedding = Page.YonedaEmbedding.update m model.yonedaEmbedding }
 
+        HomFunctorsPlaygroundMsg m ->
+            syncIfChanged model { model | homFunctorsPlayground = Page.Playground.HomFunctors.update m model.homFunctorsPlayground }
+
 
 
 -- VIEW
@@ -336,8 +342,8 @@ viewPlayground model playground =
             ]
         , div [ class "playground-body" ]
             [ case playground of
-                TestPlayground ->
-                    Page.Playground.Test.view
+                HomFunctorsPlayground ->
+                    Html.map HomFunctorsPlaygroundMsg (Page.Playground.HomFunctors.view model.homFunctorsPlayground)
             ]
         ]
 

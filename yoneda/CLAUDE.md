@@ -54,7 +54,10 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   `Page/Glossary.elm` and `Page/Intro.elm` are stateless.
 - `Page/Playground/*` - free-form playgrounds (`Route.Playground`, `#/playground/<slug>`),
   listed in the sidebar under "Playgrounds" and rendered by `Main.viewPlayground` full-viewport
-  with a title bar whose × returns to the last chapter visited (`Model.returnTo`).
+  with a title bar whose × returns to the last chapter visited (`Model.returnTo`). They have
+  the same Model/Msg/update/view/toQuery/fromQuery shape as chapters, but always use the
+  diagrammatic composition order (no `CompositionOrder` argument). `View/SetPicture.viewStyled`
+  restyles the Set picture (solid element dots, grey arrows, single emphasized element arrows).
 
 ## Conventions
 
