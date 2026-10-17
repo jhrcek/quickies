@@ -42,12 +42,20 @@ way to interrupt a pure computation, so instead the next depth is started only
 when it looks likely to finish inside the budget, taking it to cost several
 times what the previous one did.
 
+Beside the move list is an annotation panel with statistics about the
+position on the board (see `Analysis`). Hovering over a piece, or over one of
+the pieces it attacks or defends, shows that on the board: where the piece can
+go, or an arrow from it to the other piece. Clicking pins the highlight so it
+stays after the mouse leaves; clicking again unpins it, and so does any change
+of the position.
+
 The starting position can be given in the URL as `?fen=<URL-encoded FEN>`. A
 valid one starts the game from that position; one that does not parse, or does
 not describe a legal position, opens the editor on it so the problem is shown.
 
 -}
 
+import Analysis exposing (Analysis, PieceReport)
 import Array exposing (Array)
 import Browser
 import Browser.Events
@@ -126,7 +134,27 @@ type alias Model =
 
     -- What the engine's last completed search found, for display.
     , report : Maybe Report
+
+    -- Statistics about the current position, recomputed whenever it changes
+    -- (see `syncAnalysis`) rather than on every render, as they take a few
+    -- dozen rounds of move generation.
+    , analysis : Analysis
+
+    -- What the annotation panel shows on the board: what is under the mouse,
+    -- and what has been clicked to stay shown.
+    , hover : Maybe Highlight
+    , pinned : List Highlight
     }
+
+
+{-| Something shown on the board from the annotation panel: where the piece on
+a square can move to, or an arrow from one piece to a piece it attacks or
+defends.
+-}
+type Highlight
+    = Mobility Square
+    | Attack Square Square
+    | Defense Square Square
 
 
 {-| A search in progress. The results of the depths searched so far are kept
@@ -197,19 +225,25 @@ type alias EditorDrag =
 
 init : () -> Url -> Browser.Navigation.Key -> ( Model, Cmd Msg )
 init _ url _ =
-    ( startFrom (fenParam url)
-        { start = Position.initial
-        , moves = Array.empty
-        , positions = Array.fromList [ Position.initial ]
-        , ply = 0
-        , drag = Nothing
-        , promoting = Nothing
-        , editor = Nothing
-        , engine = Nothing
-        , thinking = Nothing
-        , searches = 0
-        , report = Nothing
-        }
+    let
+        model =
+            { start = Position.initial
+            , moves = Array.empty
+            , positions = Array.fromList [ Position.initial ]
+            , ply = 0
+            , drag = Nothing
+            , promoting = Nothing
+            , editor = Nothing
+            , engine = Nothing
+            , thinking = Nothing
+            , searches = 0
+            , report = Nothing
+            , analysis = Analysis.analyze Position.initial
+            , hover = Nothing
+            , pinned = []
+            }
+    in
+    ( syncAnalysis model (startFrom (fenParam url) model)
     , Cmd.none
     )
 
@@ -318,11 +352,42 @@ type Msg
     | EngineSide (Maybe PieceColor)
     | Iterate Int Time.Posix
     | UrlRequested Browser.UrlRequest
+    | Hover (Maybe Highlight)
+    | TogglePin Highlight
     | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        ( next, cmd ) =
+            step msg model
+    in
+    ( syncAnalysis model next, cmd )
+
+
+{-| Bring the analysis up to date when the position on the board has changed,
+dropping highlights that belonged to the old one.
+-}
+syncAnalysis : Model -> Model -> Model
+syncAnalysis before after =
+    let
+        fen m =
+            Position.toFen (currentPosition m)
+    in
+    if fen before == fen after then
+        after
+
+    else
+        { after
+            | analysis = Analysis.analyze (currentPosition after)
+            , hover = Nothing
+            , pinned = []
+        }
+
+
+step : Msg -> Model -> ( Model, Cmd Msg )
+step msg model =
     case msg of
         Iterate id now ->
             iterate id (Time.posixToMillis now) model
@@ -487,6 +552,16 @@ updateModel msg model =
 
         EngineSide side ->
             { model | engine = side }
+
+        Hover highlight ->
+            { model | hover = highlight }
+
+        TogglePin highlight ->
+            if List.member highlight model.pinned then
+                { model | pinned = List.filter ((/=) highlight) model.pinned }
+
+            else
+                { model | pinned = model.pinned ++ [ highlight ] }
 
         -- Handled in `update`.
         Iterate _ _ ->
@@ -880,6 +955,15 @@ stylesheet =
 .cb-history { width: 220px; height: 484px; display: flex; flex-direction: column; gap: 8px; }
 .cb-moves { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #cbd5e1; padding: 6px; font-family: monospace; font-size: 14px; }
 .cb-editor-panel { width: 320px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+.cb-notes { width: 380px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; color: #334155; }
+.cb-notes table { border-collapse: collapse; width: 100%; }
+.cb-notes th { text-align: left; font-weight: 600; color: #64748b; padding: 2px 4px; border-bottom: 1px solid #cbd5e1; }
+.cb-notes td { padding: 2px 4px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+.cb-notes tfoot td { font-weight: 600; border-bottom: none; }
+.cb-notes-title { font-weight: 600; margin-bottom: 4px; }
+.cb-chip { display: inline-flex; align-items: center; gap: 1px; padding: 1px 4px 1px 1px; margin: 1px; border-radius: 3px; cursor: pointer; font-family: monospace; white-space: nowrap; }
+.cb-chip:hover { background-color: #e2e8f0; }
+.cb-chip.cb-pinned { background-color: #bfdbfe; }
 @media (max-width: 600px) {
   .cb-root { flex-direction: column; flex-wrap: nowrap; align-items: stretch; padding: 8px 0; gap: 16px; }
   .cb-pad { padding: 0 8px; }
@@ -890,6 +974,7 @@ stylesheet =
   .cb-history { width: auto; height: auto; }
   .cb-moves { flex: none; min-height: 3em; max-height: 30vh; }
   .cb-editor-panel { width: auto; }
+  .cb-notes { width: auto; }
 }
 """
         ]
@@ -914,6 +999,9 @@ viewGame model =
     let
         position =
             currentPosition model
+
+        marks =
+            boardMarks model
     in
     [ H.div []
         [ heading
@@ -926,9 +1014,14 @@ viewGame model =
                             ""
                    )
             )
-        , boardFrame (List.map (viewSquare model position) Square.all ++ viewPromotion model position)
+        , boardFrame
+            (List.map (viewSquare model marks position) Square.all
+                ++ viewArrows (shownHighlights model)
+                :: viewPromotion model position
+            )
         ]
     , viewHistory model
+    , viewNotes model position
     , viewFloatingPiece
         (Maybe.andThen
             (\drag ->
@@ -1018,8 +1111,8 @@ plainBackground square =
         "#f0d9b5"
 
 
-viewSquare : Model -> Position -> Square -> Html Msg
-viewSquare model position square =
+viewSquare : Model -> Marks -> Position -> Square -> Html Msg
+viewSquare model marks position square =
     let
         isTarget =
             case model.drag of
@@ -1041,6 +1134,15 @@ viewSquare model position square =
                     "#aad06a"
 
             else if isOrigin then
+                "#d6c34a"
+
+            else if model.drag /= Nothing then
+                plainBackground square
+
+            else if List.member square marks.targets then
+                pick (isDark square) "#6f98c9" "#9dbde3"
+
+            else if List.member square marks.origins then
                 "#d6c34a"
 
             else
@@ -1156,6 +1258,307 @@ viewFloatingPiece held =
                 , HA.style "top" (String.fromFloat y ++ "px")
                 ]
                 [ viewPiece piece ]
+
+
+
+-- VIEW: HIGHLIGHTS
+
+
+shownHighlights : Model -> List Highlight
+shownHighlights model =
+    case model.hover of
+        Just highlight ->
+            highlight :: model.pinned
+
+        Nothing ->
+            model.pinned
+
+
+{-| Squares coloured for the `Mobility` highlights being shown: the pieces'
+own squares, and where they can move to.
+-}
+type alias Marks =
+    { origins : List Square
+    , targets : List Square
+    }
+
+
+boardMarks : Model -> Marks
+boardMarks model =
+    let
+        origins =
+            List.filterMap
+                (\highlight ->
+                    case highlight of
+                        Mobility square ->
+                            Just square
+
+                        _ ->
+                            Nothing
+                )
+                (shownHighlights model)
+    in
+    { origins = origins
+    , targets =
+        List.concatMap
+            (\square -> Maybe.withDefault [] (Maybe.map .targets (reportAt square model.analysis)))
+            origins
+    }
+
+
+reportAt : Square -> Analysis -> Maybe PieceReport
+reportAt square analysis =
+    List.head (List.filter (\report -> report.square == square) (analysis.white ++ analysis.black))
+
+
+{-| The arrows of the `Attack` and `Defense` highlights, drawn over the board
+in a coordinate system one unit per square. They let mouse events through to
+the squares underneath, so that pieces can still be dragged.
+-}
+viewArrows : List Highlight -> Html Msg
+viewArrows highlights =
+    S.svg
+        [ SA.viewBox "0 0 8 8"
+        , HA.style "position" "absolute"
+        , HA.style "inset" "0"
+        , HA.style "width" "100%"
+        , HA.style "height" "100%"
+        , HA.style "pointer-events" "none"
+        ]
+        (List.filterMap
+            (\highlight ->
+                case highlight of
+                    Attack from to ->
+                        Just (viewArrow "#dc2626" from to)
+
+                    Defense from to ->
+                        Just (viewArrow "#16a34a" from to)
+
+                    Mobility _ ->
+                        Nothing
+            )
+            highlights
+        )
+
+
+viewArrow : String -> Square -> Square -> S.Svg Msg
+viewArrow color from to =
+    let
+        center square =
+            ( toFloat (SquareFile.toIndex (Square.file square)) + 0.5
+            , 7.5 - toFloat (SquareRank.toIndex (Square.rank square))
+            )
+
+        ( x1, y1 ) =
+            center from
+
+        ( x2, y2 ) =
+            center to
+
+        length =
+            sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+
+        -- Unit vector along the arrow, and one across it.
+        ( ux, uy ) =
+            ( (x2 - x1) / length, (y2 - y1) / length )
+
+        ( px, py ) =
+            ( -uy, ux )
+
+        -- The tip stops short of the target's centre, and the shaft short of
+        -- the tip so that its square end does not poke out of the head.
+        tip =
+            ( x2 - ux * 0.15, y2 - uy * 0.15 )
+
+        base =
+            ( Tuple.first tip - ux * 0.4, Tuple.second tip - uy * 0.4 )
+
+        point ( x, y ) =
+            String.fromFloat x ++ "," ++ String.fromFloat y
+
+        offset ( x, y ) k =
+            ( x + px * k, y + py * k )
+    in
+    S.g [ SA.opacity "0.75" ]
+        [ S.line
+            [ SA.x1 (String.fromFloat (x1 + ux * 0.2))
+            , SA.y1 (String.fromFloat (y1 + uy * 0.2))
+            , SA.x2 (String.fromFloat (Tuple.first base + ux * 0.05))
+            , SA.y2 (String.fromFloat (Tuple.second base + uy * 0.05))
+            , SA.stroke color
+            , SA.strokeWidth "0.15"
+            ]
+            []
+        , S.polygon
+            [ SA.points (String.join " " [ point tip, point (offset base 0.22), point (offset base -0.22) ])
+            , SA.fill color
+            ]
+            []
+        ]
+
+
+
+-- VIEW: ANNOTATIONS
+
+
+viewNotes : Model -> Position -> Html Msg
+viewNotes model position =
+    H.div [ HA.class "cb-notes", HA.class "cb-pad" ]
+        [ viewMaterial position
+        , viewPieces model PieceColor.white model.analysis.white
+        , viewPieces model PieceColor.black model.analysis.black
+        ]
+
+
+{-| Per piece type, how many more of it one side has than the other, in that
+side's column; and below, the difference in points.
+-}
+viewMaterial : Position -> Html Msg
+viewMaterial position =
+    let
+        rows =
+            Analysis.material position
+
+        surplus difference =
+            ( if difference > 0 then
+                "+" ++ String.fromInt difference
+
+              else
+                ""
+            , if difference < 0 then
+                "+" ++ String.fromInt -difference
+
+              else
+                ""
+            )
+
+        row cells label =
+            let
+                ( white, black ) =
+                    cells
+            in
+            H.tr [] [ label, H.td [] [ H.text white ], H.td [] [ H.text black ] ]
+
+        points =
+            List.sum (List.map (\r -> r.difference * Analysis.pieceValue r.kind) rows)
+    in
+    H.div []
+        [ H.div [ HA.class "cb-notes-title" ] [ H.text "Material" ]
+        , H.table []
+            [ H.thead [] [ H.tr [] [ H.th [] [], H.th [] [ H.text "White" ], H.th [] [ H.text "Black" ] ] ]
+            , H.tbody []
+                (List.map
+                    (\r ->
+                        row (surplus r.difference)
+                            (H.td []
+                                [ H.span [ HA.style "display" "inline-flex", HA.style "align-items" "center", HA.style "gap" "4px" ]
+                                    [ Pieces.view 20 (Piece.make PieceColor.white r.kind)
+                                    , H.text (kindName r.kind ++ " (" ++ String.fromInt (Analysis.pieceValue r.kind) ++ ")")
+                                    ]
+                                ]
+                            )
+                    )
+                    rows
+                )
+            , H.tfoot [] [ row (surplus points) (H.td [] [ H.text "Points" ]) ]
+            ]
+        ]
+
+
+{-| One side's pieces, with where each can move, and what it attacks and
+defends, as if it were that side's turn.
+-}
+viewPieces : Model -> PieceColor -> List PieceReport -> Html Msg
+viewPieces model color reports =
+    let
+        toMove =
+            Position.sideToMove (currentPosition model) == color
+    in
+    H.div []
+        [ H.div [ HA.class "cb-notes-title" ]
+            [ H.text (Setup.colorName color)
+            , H.span [ HA.style "font-weight" "normal", HA.style "color" "#64748b" ]
+                [ H.text (pick toMove " (to move)" " (as if to move)") ]
+            ]
+        , H.table []
+            [ H.thead []
+                [ H.tr []
+                    [ H.th [] [ H.text "Piece" ]
+                    , H.th [] [ H.text "Moves" ]
+                    , H.th [] [ H.text "Attacks" ]
+                    , H.th [] [ H.text "Defends" ]
+                    ]
+                ]
+            , H.tbody [] (List.map (viewPieceRow model) reports)
+            , H.tfoot []
+                [ H.tr []
+                    [ H.td [] [ H.text "Mobility" ]
+                    , H.td [] [ H.text (String.fromInt (List.sum (List.map (.targets >> List.length) reports))) ]
+                    , H.td [] []
+                    , H.td [] []
+                    ]
+                ]
+            ]
+        ]
+
+
+viewPieceRow : Model -> PieceReport -> Html Msg
+viewPieceRow model report =
+    let
+        pieceOn square =
+            reportAt square model.analysis |> Maybe.map .piece
+
+        targetChips toHighlight squares =
+            List.filterMap
+                (\square ->
+                    Maybe.map (\piece -> viewChip model (toHighlight report.square square) piece square)
+                        (pieceOn square)
+                )
+                squares
+    in
+    H.tr []
+        [ H.td []
+            [ viewChip model (Mobility report.square) report.piece report.square ]
+        , H.td [] [ H.text (String.fromInt (List.length report.targets)) ]
+        , H.td [] (targetChips Attack report.attacks)
+        , H.td [] (targetChips Defense report.defends)
+        ]
+
+
+{-| A piece and its square, which shows `highlight` on the board while hovered
+and pins it when clicked.
+-}
+viewChip : Model -> Highlight -> Piece -> Square -> Html Msg
+viewChip model highlight piece square =
+    H.span
+        [ HA.class "cb-chip"
+        , HA.classList [ ( "cb-pinned", List.member highlight model.pinned ) ]
+        , HE.onMouseEnter (Hover (Just highlight))
+        , HE.onMouseLeave (Hover Nothing)
+        , HE.onClick (TogglePin highlight)
+        ]
+        [ Pieces.view 18 piece, H.text (Square.toString square) ]
+
+
+kindName : PieceType -> String
+kindName kind =
+    if kind == PieceType.queen then
+        "Queen"
+
+    else if kind == PieceType.rook then
+        "Rook"
+
+    else if kind == PieceType.bishop then
+        "Bishop"
+
+    else if kind == PieceType.knight then
+        "Knight"
+
+    else if kind == PieceType.pawn then
+        "Pawn"
+
+    else
+        "King"
 
 
 
