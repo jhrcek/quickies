@@ -125,6 +125,40 @@
         dl.glossary dd { margin: 2px 0 0 0; color: #333; }
         dl.glossary dt:target { background: var(--highlight); }
         .sidebar a.glossary { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+        .sidebar .sidebar-section {
+            margin: 12px 0 2px; padding: 10px 16px 0; border-top: 1px solid var(--border);
+            color: var(--muted); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+        }
+
+        .playground { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+        .playground-titlebar {
+            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+            padding: 4px 4px 4px 16px; border-bottom: 1px solid var(--border); background: #fff;
+        }
+        .playground-titlebar h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+        .playground-close {
+            display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+            border-radius: 4px; color: var(--muted); text-decoration: none; font-size: 1.5rem; line-height: 1;
+        }
+        .playground-close:hover { background: var(--bad); color: #fff; }
+        .playground-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
+        .pg-grid {
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+            height: 100%; gap: 1px; background: var(--border);
+        }
+        .pg-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; padding: 8px 12px; box-sizing: border-box; }
+        .pg-panel-header { flex-shrink: 0; font-size: 0.9rem; }
+        .pg-panel-header p { margin: 2px 0 4px; }
+        .pg-panel-header .controls { margin: 0; }
+        .pg-panel-header select { font: inherit; font-size: 0.9rem; padding: 2px 4px; }
+        .pg-panel-body { flex: 1; min-height: 0; overflow: auto; display: flex; }
+        .pg-panel-body > * { margin: auto; }
+        .pg-panel-body > svg { width: auto; max-height: 100%; }
+        table.cayley th.pg-pick { cursor: pointer; }
+        table.cayley th.pg-pick:hover { filter: brightness(1.15); }
+        table.cayley th.pg-picked { outline: 3px solid var(--text); outline-offset: -3px; }
+        table.cayley .pg-dim { opacity: 0.3; cursor: default; }
+        table.cayley .pg-pinned { outline: 2px solid var(--text); outline-offset: -2px; }
 
         @media (max-width: 800px) {
             .app { flex-direction: column; }
@@ -138,6 +172,9 @@
             .sidebar a { padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; }
             .sidebar a.active { border-left: none; padding-left: 8px; }
             .sidebar a.glossary { margin-top: 0; border-top: none; padding-top: 4px; }
+            .sidebar .sidebar-section { flex: 1 0 100%; margin: 4px 0 0; padding: 4px 8px 0; }
+            .pg-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; }
+            .pg-panel-body > svg { max-height: 70vh; }
             .sidebar .num { width: auto; margin-right: 4px; }
             .topbar { padding: 8px 16px; }
             .content { padding: 16px; }
