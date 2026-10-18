@@ -7,6 +7,7 @@ module Math.Category exposing
     , composablePairs
     , composableTriples
     , compose
+    , familiarKinds
     , firstNonIdentity
     , fromGroup
     , fromPreorder
@@ -263,6 +264,60 @@ isIsomorphism c f =
 
         Nothing ->
             False
+
+
+{-| Which of the familiar kinds of category (chapter 4) this one is, each with a short
+reason: discrete, poset or preorder, monoid or group, groupoid.
+-}
+familiarKinds : Category -> List ( String, String )
+familiarKinds cat =
+    let
+        objects =
+            objectIndices cat
+
+        homSizes =
+            List.concatMap (\a -> List.map (\b -> ( a, b, List.length (hom cat a b) )) objects) objects
+
+        thin =
+            List.all (\( _, _, n ) -> n <= 1) homSizes
+
+        antisymmetric =
+            List.all (\( a, b, n ) -> a == b || n == 0 || List.isEmpty (hom cat b a)) homSizes
+
+        allInvertible =
+            List.all (isIsomorphism cat) (morphismIndices cat)
+
+        oneObject =
+            List.length objects == 1
+    in
+    List.filterMap Basics.identity
+        [ if List.all (isIdentity cat) (morphismIndices cat) then
+            Just ( "discrete", "no arrows besides the identities" )
+
+          else
+            Nothing
+        , if thin && antisymmetric then
+            Just ( "poset", "at most one arrow between two objects, and never arrows both ways between different objects" )
+
+          else if thin then
+            Just ( "preorder", "at most one arrow between any two objects" )
+
+          else
+            Nothing
+        , if oneObject && allInvertible then
+            Just ( "group", "one object, every arrow invertible" )
+
+          else if oneObject then
+            Just ( "monoid", "one object" )
+
+          else
+            Nothing
+        , if allInvertible && not oneObject then
+            Just ( "groupoid", "every arrow is invertible" )
+
+          else
+            Nothing
+        ]
 
 
 

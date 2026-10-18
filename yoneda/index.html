@@ -160,6 +160,35 @@
         table.cayley .pg-dim { opacity: 0.3; cursor: default; }
         table.cayley .pg-pinned { outline: 2px solid var(--text); outline-offset: -2px; }
 
+        .cc-page { max-width: 1400px; margin: 0 auto; padding: 4px 16px 24px; }
+        .cc-page .card { margin: 12px 0; }
+        .cc-page h3 { margin: 0 0 8px; font-size: 1rem; }
+        .cc-main { flex: 3 1 480px; }
+        .cc-side { flex: 2 1 340px; }
+        .cc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+        button.cc-x { border: none; background: none; color: var(--muted); padding: 0 4px; font-size: 1rem; line-height: 1; }
+        button.cc-x:hover:not(:disabled) { color: #fff; background: var(--bad); }
+        .cc-arrow { display: inline-flex; align-items: center; margin-right: 6px; white-space: nowrap; }
+        table.cayley td.cc-cell { text-align: left; cursor: default; white-space: nowrap; }
+        button.cc-add { color: var(--accent-dark); margin-right: 6px; }
+        table.cayley td.cc-warn { background: #fff8e6; outline: 2px solid var(--warn); outline-offset: -2px; }
+        .cc-warnings li { color: #6b4a0f; }
+        table.cc-composition td { cursor: default; padding: 2px 6px; }
+        table.cc-composition select { font: inherit; font-size: 0.85rem; padding: 0 2px; }
+        table.cayley td.cc-forced { color: var(--muted); }
+        table.cayley td.cc-undecided { background: #fff8e6; }
+        table.cayley td.cc-bad { background: #fbeaea; color: var(--bad); }
+        .cc-ok { color: var(--ok); }
+        .cc-error { color: var(--bad); }
+        input.cc-name { font: inherit; font-size: 0.9rem; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; min-width: 14em; }
+        ul.cc-saved li { margin: 6px 0; }
+        .badge.kind { color: var(--accent-dark); border-color: var(--accent); background: #f0f7fc; cursor: help; }
+        .picker-yours { margin-left: 8px; }
+        .picker-links { margin-left: 8px; font-size: 0.85rem; white-space: nowrap; }
+        .picker-links a { color: var(--accent); text-decoration: none; margin-right: 10px; }
+        .picker-links a:hover { text-decoration: underline; }
+        button.cc-danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+
         @media (max-width: 800px) {
             .app { flex-direction: column; }
             .sidebar {
@@ -205,7 +234,16 @@
     </script>
 
     <script src="elm.min.js"></script>
-    <script>Elm.Main.init({ node: document.getElementById('app') });</script>
+    <script>
+        // custom categories from the category playground, see Ports.elm
+        const storageKey = 'yoneda.customCategories';
+        let stored = null;
+        try { stored = localStorage.getItem(storageKey); } catch (e) { }
+        const app = Elm.Main.init({ node: document.getElementById('app'), flags: stored });
+        app.ports.storeCustomCategories.subscribe(json => {
+            try { localStorage.setItem(storageKey, json); } catch (e) { }
+        });
+    </script>
 </body>
 
 </html>

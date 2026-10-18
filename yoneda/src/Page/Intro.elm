@@ -3,7 +3,7 @@ module Page.Intro exposing (view)
 import Html exposing (Html, a, div, h2, h3, li, ol, p, strong, text, ul)
 import Html.Attributes exposing (class, href)
 import KaTeX
-import Route exposing (Chapter(..))
+import Route exposing (Chapter(..), Playground(..))
 import View.Notation exposing (CompositionOrder)
 
 
@@ -21,6 +21,13 @@ view order =
         , h3 [] [ text "The plan" ]
         , ol []
             (List.map chapterItem (List.drop 1 Route.allChapters))
+        , p []
+            [ text "Besides the chapters, the sidebar lists "
+            , strong [] [ text "playgrounds" ]
+            , text ": free-form tools without the explanations. In the "
+            , a [ href (Route.toString (Playground CategoryPlayground)) ] [ text "category playground" ]
+            , text " you can build categories of your own; once saved, they can be picked in every chapter from chapter 4 on."
+            ]
         , h3 [] [ text "Where we are heading" ]
         , p []
             [ text "The lemma itself reads: for a category "

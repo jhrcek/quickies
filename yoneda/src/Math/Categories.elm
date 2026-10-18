@@ -1,8 +1,10 @@
 module Math.Categories exposing
     ( Example
     , all
+    , allWith
     , arrow
     , byName
+    , byNameWith
     , chain3
     , composeWithIdentities
     , diamond
@@ -243,6 +245,20 @@ byName name =
     ListUtil.find (\ex -> ex.category.name == name) all
 
 
+{-| The curated examples followed by the given custom ones (see `Math.CustomCategory`).
+-}
+allWith : List Example -> List Example
+allWith customs =
+    all ++ customs
+
+
+{-| The curated or custom example with the given category name.
+-}
+byNameWith : List Example -> String -> Maybe Example
+byNameWith customs name =
+    ListUtil.find (\ex -> ex.category.name == name) (allWith customs)
+
+
 {-| Composition when one of the two arrows is an identity (labeled `\mathrm{id}_…`).
 -}
 composeWithIdentities : String -> String -> String
@@ -254,8 +270,9 @@ composeWithIdentities f g =
         f
 
 
-{-| The curated layout of a category (looked up by name), or a fallback with the objects
-on a line, for categories that only appear as the source of a Set-valued functor.
+{-| The curated layout of a category (looked up by name), or a fallback for the other
+ones (the source of a Set-valued functor, custom categories): two objects on a line,
+three or more on a circle.
 -}
 layoutFor : Category -> Example
 layoutFor cat =
@@ -268,8 +285,38 @@ layoutFor cat =
                 n =
                     Category.objectCount cat
             in
-            { category = cat
-            , positions = List.map (\i -> ( 80 + 160 * toFloat i, 110 )) (List.range 0 (n - 1))
-            , width = 160 * toFloat n
-            , height = 220
-            }
+            if n == 1 then
+                oneObject cat
+
+            else if n == 2 then
+                { category = cat
+                , positions = List.map (\i -> ( 80 + 160 * toFloat i, 110 )) (List.range 0 (n - 1))
+                , width = 160 * toFloat n
+                , height = 220
+                }
+
+            else
+                let
+                    radius =
+                        70 + 20 * toFloat n
+
+                    margin =
+                        70
+
+                    center =
+                        radius + margin
+                in
+                { category = cat
+                , positions =
+                    List.range 0 (n - 1)
+                        |> List.map
+                            (\i ->
+                                let
+                                    angle =
+                                        -pi / 2 + 2 * pi * toFloat i / toFloat n
+                                in
+                                ( center + radius * cos angle, center + radius * sin angle )
+                            )
+                , width = 2 * center
+                , height = 2 * center
+                }

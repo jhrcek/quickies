@@ -1,4 +1,4 @@
-module Math.Setting exposing (Setting, all, byName, default)
+module Math.Setting exposing (Setting, all, allWith, byNameWith, default)
 
 {-| A category (with its diagram layout) together with the Set-valued functors a reader
 may pick on it, as offered by chapters 7 and 8: the curated examples of chapter 5 and the
@@ -32,6 +32,18 @@ all =
     List.map forExample (Categories.all ++ curatedOnly)
 
 
+{-| `all` followed by the given custom categories, which offer only the hom functors.
+-}
+allWith : List Example -> List Setting
+allWith customs =
+    all ++ List.map forExample customs
+
+
+byNameWith : List Example -> String -> Maybe Setting
+byNameWith customs name =
+    ListUtil.find (\s -> s.example.category.name == name) (allWith customs)
+
+
 forExample : Example -> Setting
 forExample ex =
     let
@@ -44,11 +56,6 @@ forExample ex =
             ++ List.map (SetFunctor.homFunctor ex.category) objects
     , contraFunctors = List.map (SetFunctor.contraHomFunctor ex.category) objects
     }
-
-
-byName : String -> Maybe Setting
-byName name =
-    ListUtil.find (\s -> s.example.category.name == name) all
 
 
 {-| The "Mixed" category, whose hom sets have several elements.

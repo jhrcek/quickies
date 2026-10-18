@@ -1,13 +1,15 @@
 module Page.Categories exposing (Model, Msg, fromQuery, init, toQuery, update, view)
 
 import Html exposing (Html, button, div, h2, h3, li, p, span, strong, table, tbody, td, text, th, thead, tr, ul)
-import Html.Attributes exposing (class, classList, style)
+import Html.Attributes exposing (class, classList, href, style)
 import Html.Events exposing (onClick)
 import KaTeX
 import ListUtil
 import Math.Categories as Categories exposing (Example)
 import Math.Category as Category exposing (Category)
 import Query exposing (Query)
+import Route
+import View.CategoryPicker as CategoryPicker
 import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.Notation as Notation exposing (CompositionOrder)
@@ -108,8 +110,8 @@ shown model =
             ( model.first, model.second )
 
 
-view : CompositionOrder -> Model -> Html Msg
-view order model =
+view : CompositionOrder -> List Example -> Model -> Html Msg
+view order customs model =
     let
         cat =
             model.example.category
@@ -200,15 +202,18 @@ view order model =
             ]
         , h3 [] [ text "A gallery of tiny categories" ]
         , p []
-            [ text "Everything below is finite, so we can draw the whole category. Pick one, then click an arrow and a second arrow that starts where the first one ends: their composite lights up in green."
+            [ text "Everything below is finite, so we can draw the whole category. Pick one, then click an arrow and a second arrow that starts where the first one ends: their composite lights up in green. Categories you build yourself in the "
+            , playgroundLink
+            , text " show up here too."
             ]
-        , div [ class "controls" ]
-            (List.map
-                (\ex ->
-                    button [ classList [ ( "active", ex.category.name == cat.name ) ], onClick (SelectExample ex) ] [ KaTeX.inline ex.category.texName ]
-                )
-                Categories.all
-            )
+        , CategoryPicker.view
+            { label = "Category:"
+            , items = Categories.allWith customs
+            , category = .category
+            , customs = customs
+            , selected = cat.name
+            , onSelect = SelectExample
+            }
         , div [ class "card" ]
             [ p [] [ KaTeX.inline cat.texName, text (" — " ++ cat.description) ]
             , div [ class "row" ]
@@ -298,6 +303,12 @@ view order model =
             ]
         , h3 [] [ text "Checking the laws" ]
         , lawsCard order cat
+        , div [ class "callout" ]
+            [ strong [] [ text "Try it yourself. " ]
+            , text "In the "
+            , playgroundLink
+            , text " you can build a category of your own: add objects and arrows, choose the composites, and it runs these same checks while you do — or fills in an associative composition for you. Saved categories can be picked here and in every later chapter."
+            ]
         , h3 [] [ text "Familiar things as categories" ]
         , ul []
             [ li []
@@ -370,6 +381,11 @@ view order model =
             , text " given by multiplication; in the language of this chapter those are functions between hom sets given by composition with a fixed arrow. Next we will need a way to compare categories: functors."
             ]
         ]
+
+
+playgroundLink : Html msg
+playgroundLink =
+    Html.a [ href (Route.toString (Route.Playground Route.CategoryPlayground)) ] [ text "category playground" ]
 
 
 em : String -> Html msg
@@ -883,11 +899,11 @@ toQuery model =
             ]
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen Categories.byName of
+            case Query.string "c" q |> Maybe.andThen (Categories.byNameWith customs) of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md

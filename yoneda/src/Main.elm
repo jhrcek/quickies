@@ -10,6 +10,10 @@ interactive state has a link. Navigation links carry the target chapter's curren
 Playgrounds (`Route.Playground`) replace the whole layout with a full-viewport view whose
 close button leads back to the last chapter visited.
 
+Custom categories built in the category playground live here (`customs`), are offered by
+the category pickers of the chapters, and are kept in local storage: `index.html` passes
+the stored JSON as flags and writes it back through `Ports.storeCustomCategories`.
+
 -}
 
 import Browser
@@ -18,6 +22,10 @@ import Dict
 import Html exposing (Html, a, div, h1, h2, label, nav, span, text)
 import Html.Attributes exposing (attribute, class, classList, href, title)
 import Html.Events exposing (onClick)
+import Json.Decode as Decode
+import Json.Encode as Encode
+import Math.Categories as Categories exposing (Example)
+import Math.CustomCategory as CustomCategory
 import Page.Categories
 import Page.Cayley
 import Page.Functors
@@ -26,17 +34,19 @@ import Page.Groups
 import Page.HomFunctors
 import Page.Intro
 import Page.NaturalTransformations
+import Page.Playground.Category
 import Page.Playground.HomFunctors
 import Page.Sets
 import Page.YonedaEmbedding
 import Page.YonedaLemma
+import Ports
 import Query exposing (Query)
 import Route exposing (Chapter(..), Playground(..))
 import Url exposing (Url)
 import View.Notation as Notation exposing (CompositionOrder(..))
 
 
-main : Program () Model Msg
+main : Program Decode.Value Model Msg
 main =
     Browser.application
         { init = init
@@ -57,6 +67,7 @@ type alias Model =
     , chapter : Chapter
     , returnTo : Chapter
     , order : CompositionOrder
+    , customs : List Example -- saved custom categories, in the order they were first saved
     , sets : Page.Sets.Model
     , groups : Page.Groups.Model
     , cayley : Page.Cayley.Model
@@ -66,12 +77,13 @@ type alias Model =
     , naturalTransformations : Page.NaturalTransformations.Model
     , yonedaLemma : Page.YonedaLemma.Model
     , yonedaEmbedding : Page.YonedaEmbedding.Model
+    , categoryPlayground : Page.Playground.Category.Model
     , homFunctorsPlayground : Page.Playground.HomFunctors.Model
     }
 
 
-init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
-init _ url key =
+init : Decode.Value -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init flags url key =
     let
         ( chapter, query ) =
             Route.parse url
@@ -80,6 +92,7 @@ init _ url key =
     , chapter = chapter
     , returnTo = Intro
     , order = Diagrammatic
+    , customs = decodeCustoms flags
     , sets = Page.Sets.init
     , groups = Page.Groups.init
     , cayley = Page.Cayley.init
@@ -89,11 +102,95 @@ init _ url key =
     , naturalTransformations = Page.NaturalTransformations.init
     , yonedaLemma = Page.YonedaLemma.init
     , yonedaEmbedding = Page.YonedaEmbedding.init
+    , categoryPlayground = Page.Playground.Category.init
     , homFunctorsPlayground = Page.Playground.HomFunctors.init
     }
         |> rememberReturn
         |> applyQuery query
         |> syncUrl
+
+
+{-| The custom categories stored in local storage (a JSON string, or null). Entries that
+fail to decode or are not categories are dropped.
+-}
+decodeCustoms : Decode.Value -> List Example
+decodeCustoms flags =
+    case Decode.decodeValue (Decode.nullable Decode.string) flags of
+        Ok (Just json) ->
+            Decode.decodeString CustomCategory.decoder json
+                |> Result.withDefault []
+                |> List.filterMap CustomCategory.toCategory
+                |> List.map Categories.layoutFor
+
+        _ ->
+            []
+
+
+storeCustoms : List Example -> Cmd msg
+storeCustoms customs =
+    customs
+        |> List.map (.category >> CustomCategory.fromCategory)
+        |> CustomCategory.encode
+        |> Encode.encode 0
+        |> Ports.storeCustomCategories
+
+
+{-| Apply a change to the saved custom categories: store them, and re-apply its own deep
+link to every page showing the category of that name, so that it picks up the new
+version (or falls back to its default when the category was deleted).
+-}
+applyEffect : Page.Playground.Category.Effect -> Model -> ( Model, Cmd Msg )
+applyEffect effect model =
+    let
+        ( customs, name ) =
+            case effect of
+                Page.Playground.Category.Store cat ->
+                    let
+                        ex =
+                            Categories.layoutFor cat
+                    in
+                    ( if List.any (\c -> c.category.name == cat.name) model.customs then
+                        List.map
+                            (\c ->
+                                if c.category.name == cat.name then
+                                    ex
+
+                                else
+                                    c
+                            )
+                            model.customs
+
+                      else
+                        model.customs ++ [ ex ]
+                    , cat.name
+                    )
+
+                Page.Playground.Category.Delete n ->
+                    ( List.filter (\c -> c.category.name /= n) model.customs, n )
+
+        reload toQuery fromQuery initial page =
+            let
+                params =
+                    toQuery page
+            in
+            if List.any (\( _, v ) -> v == name) params then
+                fromQuery customs (Query.fromString (Query.toString params)) initial
+
+            else
+                page
+    in
+    ( { model
+        | customs = customs
+        , categories = reload Page.Categories.toQuery Page.Categories.fromQuery Page.Categories.init model.categories
+        , functors = reload Page.Functors.toQuery Page.Functors.fromQuery Page.Functors.init model.functors
+        , homFunctors = reload Page.HomFunctors.toQuery Page.HomFunctors.fromQuery Page.HomFunctors.init model.homFunctors
+        , naturalTransformations = reload Page.NaturalTransformations.toQuery Page.NaturalTransformations.fromQuery Page.NaturalTransformations.init model.naturalTransformations
+        , yonedaLemma = reload Page.YonedaLemma.toQuery Page.YonedaLemma.fromQuery Page.YonedaLemma.init model.yonedaLemma
+        , yonedaEmbedding = reload Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.fromQuery Page.YonedaEmbedding.init model.yonedaEmbedding
+        , homFunctorsPlayground = reload Page.Playground.HomFunctors.toQuery Page.Playground.HomFunctors.fromQuery Page.Playground.HomFunctors.init model.homFunctorsPlayground
+      }
+    , storeCustoms customs
+    )
 
 
 {-| Remember the current chapter as the place a playground's close button returns to.
@@ -119,8 +216,11 @@ applyQuery query model =
         Glossary ->
             model
 
+        Playground CategoryPlayground ->
+            { model | categoryPlayground = Page.Playground.Category.fromQuery model.customs query model.categoryPlayground }
+
         Playground HomFunctorsPlayground ->
-            { model | homFunctorsPlayground = Page.Playground.HomFunctors.fromQuery query model.homFunctorsPlayground }
+            { model | homFunctorsPlayground = Page.Playground.HomFunctors.fromQuery model.customs query model.homFunctorsPlayground }
 
         Sets ->
             { model | sets = Page.Sets.fromQuery query model.sets }
@@ -132,22 +232,22 @@ applyQuery query model =
             { model | cayley = Page.Cayley.fromQuery query model.cayley }
 
         Categories ->
-            { model | categories = Page.Categories.fromQuery query model.categories }
+            { model | categories = Page.Categories.fromQuery model.customs query model.categories }
 
         Functors ->
-            { model | functors = Page.Functors.fromQuery query model.functors }
+            { model | functors = Page.Functors.fromQuery model.customs query model.functors }
 
         HomFunctors ->
-            { model | homFunctors = Page.HomFunctors.fromQuery query model.homFunctors }
+            { model | homFunctors = Page.HomFunctors.fromQuery model.customs query model.homFunctors }
 
         NaturalTransformations ->
-            { model | naturalTransformations = Page.NaturalTransformations.fromQuery query model.naturalTransformations }
+            { model | naturalTransformations = Page.NaturalTransformations.fromQuery model.customs query model.naturalTransformations }
 
         YonedaLemma ->
-            { model | yonedaLemma = Page.YonedaLemma.fromQuery query model.yonedaLemma }
+            { model | yonedaLemma = Page.YonedaLemma.fromQuery model.customs query model.yonedaLemma }
 
         YonedaEmbedding ->
-            { model | yonedaEmbedding = Page.YonedaEmbedding.fromQuery query model.yonedaEmbedding }
+            { model | yonedaEmbedding = Page.YonedaEmbedding.fromQuery model.customs query model.yonedaEmbedding }
 
 
 {-| The deep-link state of a chapter's page.
@@ -159,6 +259,9 @@ queryFor chapter model =
             []
 
         Glossary ->
+            []
+
+        Playground CategoryPlayground ->
             []
 
         Playground HomFunctorsPlayground ->
@@ -236,6 +339,7 @@ type Msg
     | NaturalTransformationsMsg Page.NaturalTransformations.Msg
     | YonedaLemmaMsg Page.YonedaLemma.Msg
     | YonedaEmbeddingMsg Page.YonedaEmbedding.Msg
+    | CategoryPlaygroundMsg Page.Playground.Category.Msg
     | HomFunctorsPlaygroundMsg Page.Playground.HomFunctors.Msg
 
 
@@ -293,8 +397,23 @@ update msg model =
         YonedaEmbeddingMsg m ->
             syncIfChanged model { model | yonedaEmbedding = Page.YonedaEmbedding.update m model.yonedaEmbedding }
 
+        CategoryPlaygroundMsg m ->
+            let
+                ( playground, effect ) =
+                    Page.Playground.Category.update model.customs m model.categoryPlayground
+
+                updated =
+                    { model | categoryPlayground = playground }
+            in
+            case effect of
+                Just e ->
+                    applyEffect e updated
+
+                Nothing ->
+                    ( updated, Cmd.none )
+
         HomFunctorsPlaygroundMsg m ->
-            syncIfChanged model { model | homFunctorsPlayground = Page.Playground.HomFunctors.update m model.homFunctorsPlayground }
+            syncIfChanged model { model | homFunctorsPlayground = Page.Playground.HomFunctors.update model.customs m model.homFunctorsPlayground }
 
 
 
@@ -342,8 +461,11 @@ viewPlayground model playground =
             ]
         , div [ class "playground-body" ]
             [ case playground of
+                CategoryPlayground ->
+                    Html.map CategoryPlaygroundMsg (Page.Playground.Category.view model.customs model.categoryPlayground)
+
                 HomFunctorsPlayground ->
-                    Html.map HomFunctorsPlaygroundMsg (Page.Playground.HomFunctors.view model.homFunctorsPlayground)
+                    Html.map HomFunctorsPlaygroundMsg (Page.Playground.HomFunctors.view model.customs model.homFunctorsPlayground)
             ]
         ]
 
@@ -446,22 +568,22 @@ viewChapter model =
             Html.map CayleyMsg (Page.Cayley.view model.order model.cayley)
 
         Categories ->
-            Html.map CategoriesMsg (Page.Categories.view model.order model.categories)
+            Html.map CategoriesMsg (Page.Categories.view model.order model.customs model.categories)
 
         Functors ->
-            Html.map FunctorsMsg (Page.Functors.view model.order model.functors)
+            Html.map FunctorsMsg (Page.Functors.view model.order model.customs model.functors)
 
         HomFunctors ->
-            Html.map HomFunctorsMsg (Page.HomFunctors.view model.order model.homFunctors)
+            Html.map HomFunctorsMsg (Page.HomFunctors.view model.order model.customs model.homFunctors)
 
         NaturalTransformations ->
-            Html.map NaturalTransformationsMsg (Page.NaturalTransformations.view model.order model.naturalTransformations)
+            Html.map NaturalTransformationsMsg (Page.NaturalTransformations.view model.order model.customs model.naturalTransformations)
 
         YonedaLemma ->
-            Html.map YonedaLemmaMsg (Page.YonedaLemma.view model.order model.yonedaLemma)
+            Html.map YonedaLemmaMsg (Page.YonedaLemma.view model.order model.customs model.yonedaLemma)
 
         YonedaEmbedding ->
-            Html.map YonedaEmbeddingMsg (Page.YonedaEmbedding.view model.order model.yonedaEmbedding)
+            Html.map YonedaEmbeddingMsg (Page.YonedaEmbedding.view model.order model.customs model.yonedaEmbedding)
 
 
 prevNext : Model -> Html Msg

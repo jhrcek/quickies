@@ -82,6 +82,23 @@ from the repo's nix devShell):
       `SetFunctor.setObjectImage`); elements where the composition law fails are marked red. The
       old one-function editor stays as a "One function at a time" view (`setview=one`).
 
+- [x] 13. Category playground (`#/playground/category`, 2026-10-18): build a category (objects,
+      arrows via +/× in the hom sets table, composites via dropdowns in the composition table,
+      forced ones shown grey), warnings for composable pairs with an empty target hom set and
+      for failing associativity triples, "Fill in the rest automatically" (depth-first search
+      keeping the user's choices, non-identity candidates first, only re-checking the triples a
+      choice can settle, budget 4 000 000 associativity checks; at most 5 objects and 25
+      arrows), start from any built-in or saved category, save / replace / delete in local
+      storage. `Categories.layoutFor` now puts 3+ objects on a circle and gives one object the
+      one-object layout. Tests in
+      `tests/CustomCategoryTest.elm`.
+- [x] 14. Playground integration: shared `View/CategoryPicker` in chapters 4–9 (custom categories
+      grouped as "Yours:", links to edit a copy of the selected category or build a new one),
+      grouped dropdown + same links in the hom functors playground, `?from=<name>` in the
+      category playground, "Open in" deep links for saved categories, hints in chapter 4 and
+      the intro, and `Category.familiarKinds` badges (discrete, poset/preorder, monoid/group,
+      groupoid) in the playground.
+
 All milestones done. Possible follow-ups (not planned): per-chapter "copy link" button, encoding
 edits of the Set-valued functor in chapter 5 (only the example name is stored today), a dark theme.
 

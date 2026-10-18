@@ -10,6 +10,7 @@ import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Query exposing (Query)
+import View.CategoryPicker as CategoryPicker
 import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
@@ -94,8 +95,8 @@ current model =
 -- VIEW
 
 
-view : CompositionOrder -> Model -> Html Msg
-view order model =
+view : CompositionOrder -> List Example -> Model -> Html Msg
+view order customs model =
     let
         cat =
             model.example.category
@@ -181,14 +182,14 @@ view order model =
             , KaTeX.inline "\\mathrm{Hom}(A, f)"
             , text " drawn as in chapter 1. Click an element of the left column to follow it."
             ]
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Category 𝒞:" ]
-                :: List.map
-                    (\ex ->
-                        button [ classList [ ( "active", ex.category.name == cat.name ) ], onClick (SelectCategory ex) ] [ KaTeX.inline ex.category.texName ]
-                    )
-                    Categories.all
-            )
+        , CategoryPicker.view
+            { label = "Category 𝒞:"
+            , items = Categories.allWith customs
+            , category = .category
+            , customs = customs
+            , selected = cat.name
+            , onSelect = SelectCategory
+            }
         , div [ class "controls" ]
             (span [ class "muted" ] [ text "Object A:" ]
                 :: List.map
@@ -528,11 +529,11 @@ toQuery model =
     ]
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen Categories.byName of
+            case Query.string "c" q |> Maybe.andThen (Categories.byNameWith customs) of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md

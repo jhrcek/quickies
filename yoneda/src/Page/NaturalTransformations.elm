@@ -6,6 +6,7 @@ import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import KaTeX
 import ListUtil
+import Math.Categories exposing (Example)
 import Math.Category as Category
 import Math.FinFunction as FinFunction
 import Math.FinSet as FinSet
@@ -13,6 +14,7 @@ import Math.NatTrans as NatTrans exposing (NatTrans)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Math.Setting as Setting exposing (Setting)
 import Query exposing (Query)
+import View.CategoryPicker as CategoryPicker
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
 import View.Notation as Notation exposing (CompositionOrder)
@@ -124,8 +126,8 @@ update msg model =
 -- VIEW
 
 
-view : CompositionOrder -> Model -> Html Msg
-view order model =
+view : CompositionOrder -> List Example -> Model -> Html Msg
+view order customs model =
     let
         cat =
             model.setting.example.category
@@ -189,14 +191,14 @@ view order model =
             , KaTeX.inline "G(X)"
             , text ". Every naturality square is checked live; click an arrow in the diagram to inspect its square."
             ]
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Category 𝒞:" ]
-                :: List.map
-                    (\s ->
-                        button [ classList [ ( "active", s.example.category.name == cat.name ) ], onClick (SelectSetting s) ] [ KaTeX.inline s.example.category.texName ]
-                    )
-                    Setting.all
-            )
+        , CategoryPicker.view
+            { label = "Category 𝒞:"
+            , items = Setting.allWith customs
+            , category = .example >> .category
+            , customs = customs
+            , selected = cat.name
+            , onSelect = SelectSetting
+            }
         , functorPicker "Functor F:" model.source SelectSource model.setting.functors
         , functorPicker "Functor G:" model.target SelectTarget model.setting.functors
         , card order model
@@ -615,11 +617,11 @@ toQuery model =
     ]
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         withSetting md =
-            case Query.string "c" q |> Maybe.andThen Setting.byName of
+            case Query.string "c" q |> Maybe.andThen (Setting.byNameWith customs) of
                 Just s ->
                     if s.example.category.name == md.setting.example.category.name then
                         md

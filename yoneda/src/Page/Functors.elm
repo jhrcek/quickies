@@ -13,6 +13,7 @@ import Math.FinSet as FinSet
 import Math.Functor as Functor exposing (Functor)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Query exposing (Query)
+import View.CategoryPicker as CategoryPicker
 import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
@@ -300,8 +301,8 @@ allowedImages fun f =
 -- VIEW
 
 
-view : CompositionOrder -> Model -> Html Msg
-view order model =
+view : CompositionOrder -> List Example -> Model -> Html Msg
+view order customs model =
     div []
         [ h2 [] [ text "5. Functors" ]
         , p []
@@ -357,14 +358,22 @@ view order model =
             , KaTeX.inline "F(A)"
             , text " to the next object). Then choose where each arrow goes with the buttons: only well-typed choices are offered. Identities are sent to identities automatically. The composition law is checked live below the pictures."
             ]
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Source 𝒞:" ]
-                :: List.map (\ex -> pickButton (ex.category.name == model.source.category.name) (SelectSource ex) ex) Categories.all
-            )
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Target 𝒟:" ]
-                :: List.map (\ex -> pickButton (ex.category.name == model.target.category.name) (SelectTarget ex) ex) Categories.all
-            )
+        , CategoryPicker.view
+            { label = "Source 𝒞:"
+            , items = Categories.allWith customs
+            , category = .category
+            , customs = customs
+            , selected = model.source.category.name
+            , onSelect = SelectSource
+            }
+        , CategoryPicker.view
+            { label = "Target 𝒟:"
+            , items = Categories.allWith customs
+            , category = .category
+            , customs = customs
+            , selected = model.target.category.name
+            , onSelect = SelectTarget
+            }
         , functorCard order model
         , h3 [] [ text "How many functors are there?" ]
         , p []
@@ -436,11 +445,6 @@ view order model =
 em : String -> Html msg
 em s =
     Html.em [] [ text s ]
-
-
-pickButton : Bool -> Msg -> Example -> Html Msg
-pickButton active msg ex =
-    button [ classList [ ( "active", active ) ], onClick msg ] [ KaTeX.inline ex.category.texName ]
 
 
 
@@ -1367,11 +1371,11 @@ toQuery model =
            )
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         category key current msg md =
-            case Query.string key q |> Maybe.andThen Categories.byName of
+            case Query.string key q |> Maybe.andThen (Categories.byNameWith customs) of
                 Just ex ->
                     if ex.category.name == (current md).category.name then
                         md

@@ -13,8 +13,8 @@ Unlike the chapters, the playground always uses the diagrammatic composition ord
 
 -}
 
-import Html exposing (Html, button, div, option, p, select, span, strong, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (class, classList, selected, style, title, value)
+import Html exposing (Html, button, div, optgroup, option, p, select, span, strong, table, tbody, td, text, th, thead, tr)
+import Html.Attributes exposing (attribute, class, classList, selected, style, title, value)
 import Html.Events exposing (onClick, onInput, onMouseEnter, onMouseLeave)
 import KaTeX
 import ListUtil
@@ -23,6 +23,7 @@ import Math.Category as Category exposing (Category)
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Math.Setting as Setting
 import Query exposing (Query)
+import View.CategoryPicker as CategoryPicker
 import View.Diagram as Diagram
 import View.Notation as Notation exposing (CompositionOrder(..))
 import View.SetPicture as SetPicture
@@ -65,21 +66,18 @@ init =
     { example = Setting.default.example, selection = Covariant 0, hover = Nothing, pinned = Nothing }
 
 
-examples : List Example
-examples =
-    List.map .example Setting.all
+{-| Every category with a layout: the curated ones, then the custom ones.
+-}
+examples : List Example -> List Example
+examples customs =
+    List.map .example (Setting.allWith customs)
 
 
-exampleByName : String -> Maybe Example
-exampleByName name =
-    ListUtil.find (\ex -> ex.category.name == name) examples
-
-
-update : Msg -> Model -> Model
-update msg model =
+update : List Example -> Msg -> Model -> Model
+update customs msg model =
     case msg of
         SelectCategory name ->
-            case exampleByName name of
+            case ListUtil.find (\ex -> ex.category.name == name) (examples customs) of
                 Just ex ->
                     { model | example = ex, selection = Covariant 0, hover = Nothing, pinned = Nothing }
 
@@ -284,10 +282,10 @@ hit model a b =
 -- VIEW
 
 
-view : Model -> Html Msg
-view model =
+view : List Example -> Model -> Html Msg
+view customs model =
     div [ class "pg-grid" ]
-        [ sourcePanel model
+        [ sourcePanel customs model
         , imagePanel model
         , homSetsPanel model
         , compositionPanel model
@@ -302,8 +300,8 @@ panel header body =
         ]
 
 
-sourcePanel : Model -> Html Msg
-sourcePanel model =
+sourcePanel : List Example -> Model -> Html Msg
+sourcePanel customs model =
     let
         ex =
             model.example
@@ -314,14 +312,21 @@ sourcePanel model =
     panel
         [ div [ class "controls" ]
             [ strong [] [ text "Category" ]
-            , select [ onInput SelectCategory ]
-                (List.map
-                    (\e ->
-                        option [ value e.category.name, selected (e.category.name == cat.name) ]
-                            [ text e.category.name ]
-                    )
-                    examples
+            , let
+                choice e =
+                    option [ value e.category.name, selected (e.category.name == cat.name) ]
+                        [ text e.category.name ]
+              in
+              select [ onInput SelectCategory ]
+                (List.map choice (List.map .example Setting.all)
+                    ++ (if List.isEmpty customs then
+                            []
+
+                        else
+                            [ optgroup [ attribute "label" "Your categories" ] (List.map choice customs) ]
+                       )
                 )
+            , CategoryPicker.editLinks customs cat.name
             ]
         ]
         (Diagram.viewPainted
@@ -714,8 +719,8 @@ toQuery model =
            )
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         withExample md =
             case Query.string "c" q of
@@ -724,7 +729,7 @@ fromQuery q model =
                         md
 
                     else
-                        update (SelectCategory name) md
+                        update customs (SelectCategory name) md
 
                 Nothing ->
                     md
@@ -736,14 +741,14 @@ fromQuery q model =
             case ( Query.int "x" q, Query.int "y" q ) of
                 ( Just x, _ ) ->
                     if inRange md x then
-                        update (SelectHom (Covariant x)) md
+                        update customs (SelectHom (Covariant x)) md
 
                     else
                         md
 
                 ( Nothing, Just y ) ->
                     if inRange md y then
-                        update (SelectHom (Contravariant y)) md
+                        update customs (SelectHom (Contravariant y)) md
 
                     else
                         md

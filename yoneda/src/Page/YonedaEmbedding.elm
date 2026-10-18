@@ -18,6 +18,7 @@ import Math.NatTrans as NatTrans exposing (NatTrans)
 import Math.SetFunctor as SetFunctor
 import Math.Yoneda as Yoneda
 import Query exposing (Query)
+import View.CategoryPicker as CategoryPicker
 import View.Common exposing (countBadge, cycleNotation, elementPicker)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
@@ -158,8 +159,8 @@ update msg model =
 -- VIEW
 
 
-view : CompositionOrder -> Model -> Html Msg
-view order model =
+view : CompositionOrder -> List Example -> Model -> Html Msg
+view order customs model =
     let
         cat =
             model.example.category
@@ -197,12 +198,14 @@ view order model =
             , KaTeX.inline "B \\to A"
             , text ". Click either side, or an arrow in the diagram."
             ]
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Category 𝒞:" ]
-                :: List.map
-                    (\ex -> button [ classList [ ( "active", ex.category.name == cat.name ) ], onClick (SelectExample ex) ] [ KaTeX.inline ex.category.texName ])
-                    Categories.all
-            )
+        , CategoryPicker.view
+            { label = "Category 𝒞:"
+            , items = Categories.allWith customs
+            , category = .category
+            , customs = customs
+            , selected = cat.name
+            , onSelect = SelectExample
+            }
         , div [ class "row" ]
             [ div [ class "col fit" ]
                 [ objectPicker "A:" SelectA cat model.a
@@ -912,11 +915,11 @@ toQuery model =
             ]
 
 
-fromQuery : Query -> Model -> Model
-fromQuery q model =
+fromQuery : List Example -> Query -> Model -> Model
+fromQuery customs q model =
     let
         withExample md =
-            case Query.string "c" q |> Maybe.andThen Categories.byName of
+            case Query.string "c" q |> Maybe.andThen (Categories.byNameWith customs) of
                 Just ex ->
                     if ex.category.name == md.example.category.name then
                         md
