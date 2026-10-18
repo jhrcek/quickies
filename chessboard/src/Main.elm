@@ -3,8 +3,8 @@ port module Main exposing (main)
 {-| A minimal in-browser chessboard.
 
 The board is on the left, the move history (in PGN/SAN notation) on the right
-(or below the board on a narrow screen), with pager buttons to step through the
-game. Pieces are moved by dragging; while
+(or below the board on a narrow screen), with pager buttons (and the left and
+right arrow keys) to step through the game. Pieces are moved by dragging; while
 a piece is held, every legal target square is highlighted, and dropping anywhere
 else is a no-op. All chess rules -- castling, en passant, pins, check evasion,
 promotion -- come from `romstad/elm-chess`, so none of them are reimplemented
@@ -1002,7 +1002,59 @@ subscriptions model =
         [ fromEngine EngineOutput
         , engineFailed EngineFailed
         , dragSubscriptions model
+        , keyboardSubscriptions model
         ]
+
+
+{-| The left and right arrow keys step backwards and forwards through the
+move history. They are left alone while the editor is open, while a form
+field such as the strength slider has focus, and when a modifier is held
+(so that e.g. Alt+Left still navigates the browser back).
+-}
+keyboardSubscriptions : Model -> Sub Msg
+keyboardSubscriptions model =
+    case model.editor of
+        Just _ ->
+            Sub.none
+
+        Nothing ->
+            Browser.Events.onKeyDown (historyKey model)
+
+
+historyKey : Model -> D.Decoder Msg
+historyKey model =
+    D.map3
+        (\key modified tag ->
+            if modified || List.member tag [ "INPUT", "TEXTAREA", "SELECT" ] then
+                NoOp
+
+            else
+                case key of
+                    "ArrowLeft" ->
+                        if model.ply > 0 then
+                            GoTo (model.ply - 1)
+
+                        else
+                            NoOp
+
+                    "ArrowRight" ->
+                        if model.ply < lastPly model then
+                            GoTo (model.ply + 1)
+
+                        else
+                            NoOp
+
+                    _ ->
+                        NoOp
+        )
+        (D.field "key" D.string)
+        (D.map4 (\a c m s -> a || c || m || s)
+            (D.field "altKey" D.bool)
+            (D.field "ctrlKey" D.bool)
+            (D.field "metaKey" D.bool)
+            (D.field "shiftKey" D.bool)
+        )
+        (D.oneOf [ D.at [ "target", "tagName" ] D.string, D.succeed "" ])
 
 
 dragSubscriptions : Model -> Sub Msg
