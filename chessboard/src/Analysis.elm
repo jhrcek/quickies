@@ -28,6 +28,14 @@ were it to give check, taking it would answer the check, so it rules out no
 recapture that would otherwise be legal. Kings are never listed as defended,
 since a king cannot be taken.
 
+A capture "wins" material when, after it, the exchange on that square comes out
+in the capturer's favour: each side in turn either recaptures with its least
+valuable piece or stops, whichever is better for it (a static exchange
+evaluation). The exchange is played out on the board, so pieces lined up behind
+one another join in as the ones in front leave, and a pinned piece cannot
+recapture. Taking an undefended piece, or a piece worth more than the taker,
+always wins. An attack on the king is a check, which is listed as well.
+
 @docs Analysis, PieceReport, analyze
 @docs MaterialRow, material, materialKinds, pieceValue
 
@@ -60,6 +68,9 @@ type alias PieceReport =
     -- taken rather than the one moved to.
     , attacks : List Square
     , defends : List Square
+
+    -- Those of `attacks` whose capture wins material, or which are the king.
+    , wins : List Square
     }
 
 
@@ -114,6 +125,7 @@ reportsFor color actual =
             , piece = piece
             , targets = dedupe (List.map Move.to moves)
             , attacks = dedupe (List.filterMap (capturedSquare position) moves)
+            , wins = dedupe (List.filterMap (winningCapture position) moves)
             , defends =
                 List.filterMap
                     (\( defended, from ) ->
@@ -240,6 +252,63 @@ capturedSquare position move =
 
     else
         Nothing
+
+
+{-| The square of the piece the move takes, when that is the king or taking it
+wins material.
+-}
+winningCapture : Position -> Move -> Maybe Square
+winningCapture position move =
+    capturedSquare position move
+        |> Maybe.andThen
+            (\square ->
+                case Position.pieceOn square position of
+                    Just victim ->
+                        if Piece.kind victim == PieceType.king then
+                            Just square
+
+                        else if pieceValue (Piece.kind victim) - exchange (Move.to move) (Position.doMove move position) > 0 then
+                            Just square
+
+                        else
+                            Nothing
+
+                    Nothing ->
+                        Nothing
+            )
+
+
+{-| What the side to move can gain by going on with the exchange on the square:
+nothing when it has no capture there or is better off stopping, otherwise the
+piece taken less what it goes on to lose. It recaptures with its least
+valuable piece, promoting to a queen.
+-}
+exchange : Square -> Position -> Int
+exchange square position =
+    let
+        valueOn sq pos =
+            Position.pieceOn sq pos
+                |> Maybe.map (Piece.kind >> pieceValue)
+                |> Maybe.withDefault 0
+
+        captures =
+            Position.moves position
+                |> List.filter
+                    (\move ->
+                        Move.to move == square && List.member (Move.promotion move) [ Nothing, Just PieceType.queen ]
+                    )
+
+        capturer move =
+            Position.pieceOn (Move.from move) position
+                |> Maybe.map (Piece.kind >> kindOrder)
+                |> Maybe.withDefault 0
+    in
+    case List.head (List.sortBy capturer captures) of
+        Just move ->
+            max 0 (valueOn square position - exchange square (Position.doMove move position))
+
+        Nothing ->
+            0
 
 
 dedupe : List a -> List a

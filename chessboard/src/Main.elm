@@ -149,6 +149,10 @@ type alias Model =
     -- and what has been clicked to stay shown.
     , hover : Maybe Highlight
     , pinned : List Highlight
+
+    -- The sides whose piece tables list every piece, rather than only those
+    -- that can win material or give check.
+    , details : List PieceColor
     }
 
 
@@ -254,6 +258,7 @@ init _ url _ =
             , analysis = Analysis.analyze Position.initial
             , hover = Nothing
             , pinned = []
+            , details = []
             }
     in
     ( syncAnalysis model (startFrom (fenParam url) model)
@@ -369,6 +374,7 @@ type Msg
     | UrlRequested Browser.UrlRequest
     | Hover (Maybe Highlight)
     | TogglePin Highlight
+    | ToggleDetails PieceColor
     | NoOp
 
 
@@ -588,6 +594,13 @@ updateModel msg model =
 
             else
                 { model | pinned = model.pinned ++ [ highlight ] }
+
+        ToggleDetails color ->
+            if List.member color model.details then
+                { model | details = List.filter ((/=) color) model.details }
+
+            else
+                { model | details = color :: model.details }
 
         -- Handled in `update`.
         UrlRequested _ ->
@@ -1525,14 +1538,14 @@ viewNotes model position =
         ]
 
 
-{-| Per piece type, how many more of it one side has than the other, in that
-side's column; and below, the difference in points.
+{-| Per piece type where the sides differ, how many more of it one side has
+than the other, in that side's column; and below, the difference in points.
 -}
 viewMaterial : Position -> Html Msg
 viewMaterial position =
     let
         rows =
-            Analysis.material position
+            List.filter (\r -> r.difference /= 0) (Analysis.material position)
 
         surplus difference =
             ( if difference > 0 then
@@ -1575,25 +1588,62 @@ viewMaterial position =
                     )
                     rows
                 )
-            , H.tfoot [] [ row (surplus points) (H.td [] [ H.text "Points" ]) ]
+            , H.tfoot []
+                [ if points == 0 then
+                    H.tr [] [ H.td [] [ H.text "Points" ], H.td [ HA.colspan 2 ] [ H.text "balanced" ] ]
+
+                  else
+                    row (surplus points) (H.td [] [ H.text "Points" ])
+                ]
             ]
         ]
 
 
 {-| One side's pieces, with where each can move, and what it attacks and
-defends, as if it were that side's turn.
+defends, as if it were that side's turn. Unless the side's details are shown,
+only the pieces that can win material or give check are listed, and those the
+opponent can win or check.
 -}
 viewPieces : Model -> PieceColor -> List PieceReport -> Html Msg
 viewPieces model color reports =
     let
         toMove =
             Position.sideToMove (currentPosition model) == color
+
+        details =
+            List.member color model.details
+
+        -- Squares of this side's pieces that the opponent can win or check.
+        threatened =
+            List.concatMap .wins (pick (color == PieceColor.white) model.analysis.black model.analysis.white)
+
+        shown =
+            if details then
+                reports
+
+            else
+                List.filter (\report -> not (List.isEmpty report.wins) || List.member report.square threatened) reports
     in
     H.div []
         [ H.div [ HA.class "cb-notes-title" ]
             [ H.text (Setup.colorName color)
             , H.span [ HA.style "font-weight" "normal", HA.style "color" "#64748b" ]
                 [ H.text (pick toMove " (to move)" " (as if to move)") ]
+            , H.label
+                [ HA.style "float" "right"
+                , HA.style "font-weight" "normal"
+                , HA.style "color" "#64748b"
+                , HA.style "cursor" "pointer"
+                ]
+                [ H.input
+                    [ HA.type_ "checkbox"
+                    , HA.checked details
+                    , HE.onCheck (\_ -> ToggleDetails color)
+                    , HA.style "vertical-align" "middle"
+                    ]
+                    []
+                , H.text "details"
+                ]
             ]
         , H.table []
             [ H.thead []
@@ -1604,7 +1654,17 @@ viewPieces model color reports =
                     , H.th [] [ H.text "Defends" ]
                     ]
                 ]
-            , H.tbody [] (List.map (viewPieceRow model) reports)
+            , H.tbody []
+                (if List.isEmpty shown then
+                    [ H.tr []
+                        [ H.td [ HA.colspan 4, HA.style "color" "#64748b" ]
+                            [ H.text "Nothing to win or lose, no check" ]
+                        ]
+                    ]
+
+                 else
+                    List.map (\report -> viewPieceRow model (List.member report.square threatened) report) shown
+                )
             , H.tfoot []
                 [ H.tr []
                     [ H.td [] [ H.text "Mobility" ]
@@ -1617,8 +1677,10 @@ viewPieces model color reports =
         ]
 
 
-viewPieceRow : Model -> PieceReport -> Html Msg
-viewPieceRow model report =
+{-| A piece's row, its piece tinted when the opponent can win or check it.
+-}
+viewPieceRow : Model -> Bool -> PieceReport -> Html Msg
+viewPieceRow model threatened report =
     let
         pieceOn square =
             reportAt square model.analysis |> Maybe.map .piece
@@ -1632,7 +1694,13 @@ viewPieceRow model report =
                 squares
     in
     H.tr []
-        [ H.td []
+        [ H.td
+            (if threatened then
+                [ HA.style "background" "#fee2e2", HA.title "The opponent can win or check this piece" ]
+
+             else
+                []
+            )
             [ viewChip model (Mobility report.square) report.piece report.square ]
         , H.td [] [ H.text (String.fromInt (List.length report.targets)) ]
         , H.td [] (targetChips Attack report.attacks)
