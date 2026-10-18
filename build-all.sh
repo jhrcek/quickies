@@ -17,7 +17,7 @@ projects=(
   ["binomial"]="Normal and Poisson approximations to Binomial distribution"
   ["bool-functions"]="Explore boolean functions"
   ["change-making"]="Interactive explainer of Pearson's change-making canonicity test"
-  ["chessboard"]="Chessboard with legal move validation, PGN move history and a simple engine to play against"
+  ["chessboard"]="Chessboard with legal move validation, PGN move history and Stockfish to play against"
   ["click-searcher"]="Search dictionary by clicking a word in text"
   ["congruence-equations"]="Linear congruence equation solver"
   ["conics"]="Interactive conic sections visualizer"
@@ -112,6 +112,15 @@ for project_name in $(echo "${!projects[@]}" | tr ' ' '\n' | sort); do
     min_js_file="$project_build_dir/elm.min.js"
 
     elm make src/Main.elm --optimize --output="$js_file"
+
+    # Files the page needs besides the compiled Elm code go in assets/; those
+    # not kept in git are downloaded by fetch-assets.sh
+    if [ -f "fetch-assets.sh" ]; then
+        ./fetch-assets.sh
+    fi
+    if [ -d "assets" ]; then
+        cp -r assets "$project_build_dir/assets"
+    fi
 
     # Minify the JS file
     echo "Minifying JavaScript for $project_name"

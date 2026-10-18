@@ -24,6 +24,7 @@
             uglify-js
             coreutils
             bash
+            curl
             git
           ];
           text = builtins.readFile ./build-all.sh;

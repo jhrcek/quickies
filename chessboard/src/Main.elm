@@ -1,4 +1,4 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 {-| A minimal in-browser chessboard.
 
@@ -33,14 +33,15 @@ drag-and-drop API, because HTML5 DnD requires calling
 `event.dataTransfer.setData` inside `dragstart` to work in Firefox, which is a
 side effect an Elm decoder cannot perform (it would need a port).
 
-Either side can be handed to a small engine (see `Engine`). The engine is a
-pure function from a position and a depth to a move, and it is run with
-iterative deepening: depth 1, then 2, and so on, each depth in its own
-`update` step with a `Process.sleep 0` in between so that the browser gets to
-paint the "thinking" status. The wall clock decides when to stop. There is no
-way to interrupt a pure computation, so instead the next depth is started only
-when it looks likely to finish inside the budget, taking it to cost several
-times what the previous one did.
+Either side can be handed to Stockfish, which runs in a Web Worker set up by
+`index.html` and is talked to through ports in its own text protocol, UCI: one
+line per message each way. Every search is a fresh `position ... moves ...`
+followed by `go movetime`, sent with the strength options in front of it, and
+the `bestmove` that ends it is played on the board. A search is abandoned by
+sending `stop`, after which the engine still reports a `bestmove` for it; those
+are counted (see `Model.abandoned`) so that they are not mistaken for the
+answer to a later search. If the engine fails to load, its controls stay
+disabled and the rest of the page works without it.
 
 Beside the move list is an annotation panel with statistics about the
 position on the board (see `Analysis`). Hovering over a piece, or over one of
@@ -60,7 +61,6 @@ import Array exposing (Array)
 import Browser
 import Browser.Events
 import Browser.Navigation
-import Engine
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events as HE
@@ -72,15 +72,12 @@ import PieceColor exposing (PieceColor)
 import PieceType exposing (PieceType)
 import Pieces
 import Position exposing (Position)
-import Process
 import Setup exposing (Setup)
 import Square exposing (Square)
 import SquareFile
 import SquareRank
 import Svg as S
 import Svg.Attributes as SA
-import Task
-import Time
 import Url exposing (Url)
 
 
@@ -122,15 +119,23 @@ type alias Model =
     -- board and the move list.
     , editor : Maybe Editor
 
+    -- Whether Stockfish has loaded; until it has, it cannot be asked anything.
+    , stockfish : EngineStatus
+
     -- The side the engine plays, or `Nothing` when both sides are the user's.
     , engine : Maybe PieceColor
+
+    -- The Elo rating the engine is held to, where `maxElo` means it plays at
+    -- full strength.
+    , elo : Int
 
     -- `Just` while the engine is searching for its move.
     , thinking : Maybe Thinking
 
-    -- How many searches have been started, so that each can be told apart from
-    -- the ones before it (see `Thinking.id`).
-    , searches : Int
+    -- How many searches have been stopped without their `bestmove` having
+    -- arrived yet. Until it has, whatever the engine says belongs to one of
+    -- them and is ignored.
+    , abandoned : Int
 
     -- What the engine's last completed search found, for display.
     , report : Maybe Report
@@ -157,33 +162,39 @@ type Highlight
     | Defense Square Square
 
 
-{-| A search in progress. The results of the depths searched so far are kept
-here, and the next depth picks up from them.
+type EngineStatus
+    = Loading
+    | Ready
+    | Failed String
+
+
+{-| A search in progress, with what the engine has reported about it so far.
 -}
 type alias Thinking =
-    { -- Each search gets its own id, and messages carrying a stale id are
-      -- ignored. Without this, a search abandoned because the user did
-      -- something (took a move back, say) could still deliver its result
-      -- into a search started afterwards.
-      id : Int
+    { -- The UCI `position` command the search was started with. It describes
+      -- the game exactly, so when the game no longer matches it, the search
+      -- is answering a question nobody is asking any more.
+      command : String
     , position : Position
-
-    -- Milliseconds, both zero until the first iteration starts.
-    , startedAt : Int
-    , tickedAt : Int
-
-    -- The deepest depth completed, and what it found.
     , depth : Int
-    , best : Maybe Move
-    , score : Int
+
+    -- From the point of view of the side to move in `position`, as UCI has
+    -- it; `Nothing` until the first report comes in.
+    , score : Maybe Score
     }
+
+
+type Score
+    = Centipawns Int
+      -- Positive when the side the score is for mates, in that many moves.
+    | MateIn Int
 
 
 type alias Report =
     { depth : Int
 
-    -- Centipawns from White's point of view.
-    , score : Int
+    -- From White's point of view.
+    , score : Score
     }
 
 
@@ -234,9 +245,11 @@ init _ url _ =
             , drag = Nothing
             , promoting = Nothing
             , editor = Nothing
+            , stockfish = Loading
             , engine = Nothing
+            , elo = 1500
             , thinking = Nothing
-            , searches = 0
+            , abandoned = 0
             , report = Nothing
             , analysis = Analysis.analyze Position.initial
             , hover = Nothing
@@ -301,7 +314,8 @@ startFrom fen model =
 
 
 {-| Start over from the given position. The engine keeps playing the side it
-was playing.
+was playing; a search it had running for the old game is stopped by
+`considerEngine`.
 -}
 newGame : Position -> Model -> Model
 newGame position model =
@@ -313,7 +327,6 @@ newGame position model =
         , drag = Nothing
         , promoting = Nothing
         , editor = Nothing
-        , thinking = Nothing
         , report = Nothing
     }
 
@@ -350,7 +363,9 @@ type Msg
     | EditorFen String
     | EditorConfirm
     | EngineSide (Maybe PieceColor)
-    | Iterate Int Time.Posix
+    | EngineStrength Int
+    | EngineOutput String
+    | EngineFailed String
     | UrlRequested Browser.UrlRequest
     | Hover (Maybe Highlight)
     | TogglePin Highlight
@@ -389,9 +404,6 @@ syncAnalysis before after =
 step : Msg -> Model -> ( Model, Cmd Msg )
 step msg model =
     case msg of
-        Iterate id now ->
-            iterate id (Time.posixToMillis now) model
-
         UrlRequested (Browser.Internal url) ->
             ( model, Browser.Navigation.load (Url.toString url) )
 
@@ -553,6 +565,20 @@ updateModel msg model =
         EngineSide side ->
             { model | engine = side }
 
+        EngineStrength elo ->
+            { model | elo = elo }
+
+        EngineOutput line ->
+            engineOutput (parseEngineLine line) model
+
+        EngineFailed reason ->
+            { model
+                | stockfish = Failed reason
+                , engine = Nothing
+                , thinking = Nothing
+                , abandoned = 0
+            }
+
         Hover highlight ->
             { model | hover = highlight }
 
@@ -562,10 +588,6 @@ updateModel msg model =
 
             else
                 { model | pinned = model.pinned ++ [ highlight ] }
-
-        -- Handled in `update`.
-        Iterate _ _ ->
-            model
 
         -- Handled in `update`.
         UrlRequested _ ->
@@ -639,9 +661,20 @@ promotionOrder move =
 -- UPDATE: ENGINE
 
 
-{-| Whether the engine should be looking for a move: it is its turn in a game
-that is not over, and the user is looking at the end of the game rather than
-browsing its history.
+port toEngine : List String -> Cmd msg
+
+
+port fromEngine : (String -> msg) -> Sub msg
+
+
+{-| Sent by `index.html` when the engine could not be loaded, or crashed.
+-}
+port engineFailed : (String -> msg) -> Sub msg
+
+
+{-| Whether the engine should be looking for a move: it has loaded, it is its
+turn in a game that is not over, and the user is looking at the end of the game
+rather than browsing its history.
 -}
 engineTurn : Model -> Bool
 engineTurn model =
@@ -649,7 +682,9 @@ engineTurn model =
         position =
             currentPosition model
     in
-    model.editor
+    model.stockfish
+        == Ready
+        && model.editor
         == Nothing
         && model.ply
         == lastPly model
@@ -658,157 +693,222 @@ engineTurn model =
         && not (List.isEmpty (Position.moves position))
 
 
-{-| Start a search if it is the engine's turn and none is running; abandon any
-running one if it is not. A search is only ever running at the last ply of the
-game, so any change to the game invalidates it, and this is where that
-happens.
+{-| Start a search if it is the engine's turn and none is running for the game
+as it stands; stop a running one that no longer is. Any change to the game
+invalidates a search, and this is where that happens.
 -}
 considerEngine : Model -> ( Model, Cmd Msg )
 considerEngine model =
-    if engineTurn model then
-        case model.thinking of
-            Just _ ->
-                ( model, Cmd.none )
+    let
+        command =
+            positionCommand model
 
-            Nothing ->
-                let
-                    id =
-                        model.searches + 1
-                in
-                ( { model
-                    | searches = id
-                    , thinking =
-                        Just
-                            { id = id
-                            , position = currentPosition model
-                            , startedAt = 0
-                            , tickedAt = 0
-                            , depth = 0
-                            , best = Nothing
-                            , score = 0
-                            }
-                  }
-                , scheduleIteration id
-                )
-
-    else
-        ( { model | thinking = Nothing }, Cmd.none )
-
-
-{-| The sleep lets the browser paint before the next depth, which blocks the
-page while it runs, begins.
--}
-scheduleIteration : Int -> Cmd Msg
-scheduleIteration id =
-    Process.sleep 0
-        |> Task.andThen (\_ -> Time.now)
-        |> Task.perform (Iterate id)
-
-
-{-| Milliseconds the engine may spend on a move. Depths are searched one after
-another, and a further one is started only if it is expected to end within
-this budget, so a move usually takes less than this and only occasionally
-more.
--}
-timeBudget : Int
-timeBudget =
-    4000
-
-
-{-| Plenty for any position that reaches it quickly, and a stop for endgames
-where the tree is so small that time alone would not stop the search for a
-long while.
--}
-maxDepth : Int
-maxDepth =
-    8
-
-
-{-| One step of iterative deepening: either search the next depth, or play the
-best move found so far. `now` is the time this step started; the time it took
-the previous step to get here is what the previous depth cost.
--}
-iterate : Int -> Int -> Model -> ( Model, Cmd Msg )
-iterate id now model =
+        wanted =
+            engineTurn model
+    in
     case model.thinking of
         Just thinking ->
-            if thinking.id /= id then
+            if wanted && thinking.command == command then
                 ( model, Cmd.none )
 
-            else if thinking.depth == 0 then
-                deepen { thinking | startedAt = now, tickedAt = now } model
-
             else
+                -- The stopped search's `bestmove` arrives before anything from
+                -- the new one, as the engine answers commands in order.
                 let
-                    elapsed =
-                        now - thinking.startedAt
-
-                    -- Each depth costs roughly this many times the previous
-                    -- one, in a middlegame with good move ordering.
-                    expected =
-                        5 * (now - thinking.tickedAt)
+                    ( next, cmd ) =
+                        considerEngine { model | thinking = Nothing, abandoned = model.abandoned + 1 }
                 in
-                if
-                    Engine.isMateScore thinking.score
-                        || thinking.depth
-                        >= maxDepth
-                        || elapsed
-                        + expected
-                        > timeBudget
-                then
-                    finishThinking thinking model
-
-                else
-                    deepen { thinking | tickedAt = now } model
+                ( next, Cmd.batch [ toEngine [ "stop" ], cmd ] )
 
         Nothing ->
-            ( model, Cmd.none )
-
-
-deepen : Thinking -> Model -> ( Model, Cmd Msg )
-deepen thinking model =
-    let
-        depth =
-            thinking.depth + 1
-
-        result =
-            Engine.search depth thinking.best thinking.position
-    in
-    ( { model
-        | thinking =
-            Just { thinking | depth = depth, best = result.move, score = result.score }
-      }
-    , scheduleIteration thinking.id
-    )
-
-
-finishThinking : Thinking -> Model -> ( Model, Cmd Msg )
-finishThinking thinking model =
-    let
-        -- The engine scores from its own point of view; the report is from
-        -- White's.
-        score =
-            if Position.sideToMove thinking.position == PieceColor.white then
-                thinking.score
+            if wanted then
+                ( { model
+                    | thinking =
+                        Just
+                            { command = command
+                            , position = currentPosition model
+                            , depth = 0
+                            , score = Nothing
+                            }
+                  }
+                , toEngine (strengthCommands model.elo ++ [ command, "go movetime " ++ String.fromInt moveTime ])
+                )
 
             else
-                -thinking.score
+                ( model, Cmd.none )
 
-        finished =
-            { model
-                | thinking = Nothing
-                , report = Just { depth = thinking.depth, score = score }
-            }
-    in
-    case thinking.best of
-        Just move ->
-            -- The engine has moved, so it is the user's turn; still, if the
-            -- engine has been switched to the other side meanwhile, this is
-            -- where it starts thinking again.
-            considerEngine (applyMove move finished)
 
-        Nothing ->
-            ( finished, Cmd.none )
+{-| The game up to the current ply, for the engine. It is given as the moves
+from the start rather than as the position they lead to, so that the engine
+knows about repetitions.
+-}
+positionCommand : Model -> String
+positionCommand model =
+    String.join " "
+        ("position fen"
+            :: Position.toFen model.start
+            :: "moves"
+            :: List.map Notation.toUci (Array.toList (Array.slice 0 model.ply model.moves))
+        )
+
+
+strengthCommands : Int -> List String
+strengthCommands elo =
+    if elo >= maxElo then
+        [ "setoption name UCI_LimitStrength value false" ]
+
+    else
+        [ "setoption name UCI_LimitStrength value true"
+        , "setoption name UCI_Elo value " ++ String.fromInt elo
+        ]
+
+
+{-| The range of Stockfish's `UCI_Elo` option.
+-}
+minElo : Int
+minElo =
+    1320
+
+
+maxElo : Int
+maxElo =
+    3190
+
+
+{-| Milliseconds the engine spends on a move.
+-}
+moveTime : Int
+moveTime =
+    1000
+
+
+{-| The lines of the engine's output that matter here.
+-}
+type EngineLine
+    = UciOk
+    | Info Int Score
+    | BestMove String
+    | Other
+
+
+parseEngineLine : String -> EngineLine
+parseEngineLine line =
+    case String.words line of
+        [ "uciok" ] ->
+            UciOk
+
+        "bestmove" :: move :: _ ->
+            BestMove move
+
+        "info" :: fields ->
+            -- Only the lines that carry a score are of interest; there are
+            -- others, about the move being searched or the network loaded.
+            Maybe.map2 Info
+                (Maybe.andThen String.toInt (valueOf "depth" fields))
+                (parseScore fields)
+                |> Maybe.withDefault Other
+
+        _ ->
+            Other
+
+
+{-| `score cp <centipawns>` or `score mate <moves>`, anywhere in an `info`
+line.
+-}
+parseScore : List String -> Maybe Score
+parseScore fields =
+    case fields of
+        "score" :: "cp" :: value :: _ ->
+            Maybe.map Centipawns (String.toInt value)
+
+        "score" :: "mate" :: value :: _ ->
+            Maybe.map MateIn (String.toInt value)
+
+        _ :: rest ->
+            parseScore rest
+
+        [] ->
+            Nothing
+
+
+{-| The field following the given one.
+-}
+valueOf : String -> List String -> Maybe String
+valueOf key fields =
+    case fields of
+        field :: value :: rest ->
+            if field == key then
+                Just value
+
+            else
+                valueOf key (value :: rest)
+
+        _ ->
+            Nothing
+
+
+engineOutput : EngineLine -> Model -> Model
+engineOutput line model =
+    case line of
+        UciOk ->
+            { model | stockfish = Ready }
+
+        Info depth score ->
+            if model.abandoned > 0 then
+                model
+
+            else
+                { model | thinking = Maybe.map (\thinking -> { thinking | depth = depth, score = Just score }) model.thinking }
+
+        BestMove uci ->
+            if model.abandoned > 0 then
+                { model | abandoned = model.abandoned - 1 }
+
+            else
+                case model.thinking of
+                    -- `considerEngine` keeps the search in step with the
+                    -- game, so its move can be played as it is.
+                    Just thinking ->
+                        let
+                            finished =
+                                { model
+                                    | thinking = Nothing
+                                    , report =
+                                        Maybe.map
+                                            (\score -> { depth = thinking.depth, score = forWhite thinking.position score })
+                                            thinking.score
+                                }
+                        in
+                        case Notation.fromUci uci thinking.position of
+                            Just move ->
+                                applyMove move finished
+
+                            Nothing ->
+                                -- Asking again would only get the same answer,
+                                -- so the engine is taken off the game instead.
+                                { finished | engine = Nothing }
+
+                    Nothing ->
+                        model
+
+        Other ->
+            model
+
+
+{-| A score from the point of view of the side to move, turned to White's.
+-}
+forWhite : Position -> Score -> Score
+forWhite position score =
+    if Position.sideToMove position == PieceColor.white then
+        score
+
+    else
+        case score of
+            Centipawns value ->
+                Centipawns -value
+
+            MateIn moves ->
+                MateIn -moves
 
 
 
@@ -885,6 +985,15 @@ movePiece drag target setup =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
+    Sub.batch
+        [ fromEngine EngineOutput
+        , engineFailed EngineFailed
+        , dragSubscriptions model
+        ]
+
+
+dragSubscriptions : Model -> Sub Msg
+dragSubscriptions model =
     let
         dragging =
             case model.editor of
@@ -1008,7 +1117,13 @@ viewGame model =
             (statusText position
                 ++ (case model.thinking of
                         Just thinking ->
-                            " -- thinking (depth " ++ String.fromInt (thinking.depth + 1) ++ ")"
+                            " -- thinking"
+                                ++ (if thinking.depth > 0 then
+                                        " (depth " ++ String.fromInt thinking.depth ++ ")"
+
+                                    else
+                                        ""
+                                   )
 
                         Nothing ->
                             ""
@@ -1854,6 +1969,10 @@ viewHistory model =
 
 viewEngineControls : Model -> Html Msg
 viewEngineControls model =
+    let
+        ready =
+            model.stockfish == Ready
+    in
     H.div
         [ HA.style "font-size" "14px"
         , HA.style "display" "flex"
@@ -1862,34 +1981,83 @@ viewEngineControls model =
         ]
         [ H.div [ HA.style "color" "#334155" ] [ H.text "Engine plays" ]
         , H.div [ HA.style "display" "flex", HA.style "gap" "6px" ]
-            [ engineSideButton model Nothing "Nobody"
-            , engineSideButton model (Just PieceColor.white) "White"
-            , engineSideButton model (Just PieceColor.black) "Black"
+            [ engineSideButton ready model Nothing "Nobody"
+            , engineSideButton ready model (Just PieceColor.white) "White"
+            , engineSideButton ready model (Just PieceColor.black) "Black"
+            ]
+        , H.label
+            [ HA.style "display" "flex"
+            , HA.style "flex-direction" "column"
+            , HA.style "gap" "2px"
+            , HA.style "color" (pick ready "#334155" "#94a3b8")
+            ]
+            [ H.text
+                ("Strength: "
+                    ++ (if model.elo >= maxElo then
+                            "full"
+
+                        else
+                            String.fromInt model.elo ++ " Elo"
+                       )
+                )
+            , H.input
+                [ HA.type_ "range"
+                , HA.min (String.fromInt minElo)
+                , HA.max (String.fromInt maxElo)
+                , HA.step "10"
+                , HA.value (String.fromInt model.elo)
+                , HA.disabled (not ready)
+                , HE.onInput (String.toInt >> Maybe.withDefault model.elo >> EngineStrength)
+                , HA.style "width" "100%"
+                , HA.style "margin" "0"
+                ]
+                []
             ]
         , H.div
             [ HA.style "color" "#64748b"
             , HA.style "font-size" "12px"
             , HA.style "min-height" "15px"
             ]
-            [ H.text (engineReport model) ]
+            [ H.text (engineStatusText model) ]
+        , H.div [ HA.style "color" "#94a3b8", HA.style "font-size" "11px" ]
+            [ H.text "Stockfish 18 ("
+            , H.a [ HA.href "assets/STOCKFISH-LICENSE.txt", HA.style "color" "inherit" ] [ H.text "GPLv3" ]
+            , H.text ", "
+            , H.a [ HA.href "https://github.com/nmrugg/stockfish.js/tree/v18.0.0", HA.style "color" "inherit" ] [ H.text "source" ]
+            , H.text ")"
+            ]
         ]
 
 
-engineSideButton : Model -> Maybe PieceColor -> String -> Html Msg
-engineSideButton model side label =
+engineSideButton : Bool -> Model -> Maybe PieceColor -> String -> Html Msg
+engineSideButton enabled model side label =
     let
         selected =
             model.engine == side
     in
     H.button
         [ HE.onClick (EngineSide side)
+        , HA.disabled (not enabled)
         , HA.style "flex" "1"
         , HA.style "padding" "5px 0"
-        , HA.style "cursor" "pointer"
+        , HA.style "cursor" (pick enabled "pointer" "default")
         , HA.style "border" ("1px solid " ++ pick selected "#2563eb" "#cbd5e1")
         , HA.style "background-color" (pick selected "#bfdbfe" "#f8fafc")
         ]
         [ H.text label ]
+
+
+engineStatusText : Model -> String
+engineStatusText model =
+    case model.stockfish of
+        Loading ->
+            "Loading engine..."
+
+        Failed reason ->
+            "Engine failed to load: " ++ reason
+
+        Ready ->
+            engineReport model
 
 
 {-| What the engine's last search found, as "depth 5, +0.35" or "depth 6,
@@ -1905,20 +2073,17 @@ engineReport model =
         Just report ->
             let
                 verdict =
-                    if Engine.isMateScore report.score then
-                        let
-                            moves =
-                                Engine.mateIn report.score
-                        in
-                        pick (moves > 0) "White" "Black"
-                            ++ " mates in "
-                            ++ String.fromInt (abs moves)
+                    case report.score of
+                        MateIn moves ->
+                            pick (moves > 0) "White" "Black"
+                                ++ " mates in "
+                                ++ String.fromInt (abs moves)
 
-                    else
-                        pick (report.score >= 0) "+" "-"
-                            ++ String.fromInt (abs report.score // 100)
-                            ++ "."
-                            ++ String.padLeft 2 '0' (String.fromInt (modBy 100 (abs report.score)))
+                        Centipawns score ->
+                            pick (score >= 0) "+" "-"
+                                ++ String.fromInt (abs score // 100)
+                                ++ "."
+                                ++ String.padLeft 2 '0' (String.fromInt (modBy 100 (abs score)))
             in
             "Last search: depth " ++ String.fromInt report.depth ++ ", " ++ verdict
 

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Chessboard</title>
+  <meta name="description" content="Chessboard with legal move validation, PGN move history and Stockfish to play against">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>body{padding: 0;margin: 0;}</style>
+</head>
+
+<body>
+  <div id="elm"></div>
+  <script src="elm.min.js"></script>
+  <script>
+    var app = Elm.Main.init({
+      node: document.getElementById('elm')
+    });
+
+    // Stockfish runs in a worker and speaks UCI: one line of text per message
+    // each way. If it does not load (or later crashes), Elm is told, and the
+    // page carries on without an engine.
+    (function () {
+      var failed = false;
+      function fail(reason) {
+        if (!failed) {
+          failed = true;
+          app.ports.engineFailed.send(String(reason));
+        }
+      }
+      try {
+        var engine = new Worker('assets/stockfish-18-lite-single.js');
+        // A missing or broken .wasm file does not necessarily surface as an
+        // error event, so give up if the engine has not answered in time.
+        var timeout = setTimeout(function () {
+          fail('timed out');
+          engine.terminate();
+        }, 60000);
+        engine.onmessage = function (event) {
+          if (event.data === 'uciok') clearTimeout(timeout);
+          if (!failed) app.ports.fromEngine.send(event.data);
+        };
+        engine.onerror = function (event) {
+          event.preventDefault();
+          clearTimeout(timeout);
+          fail(event.message || 'could not start the worker');
+          engine.terminate();
+        };
+        app.ports.toEngine.subscribe(function (commands) {
+          if (!failed) commands.forEach(function (command) { engine.postMessage(command); });
+        });
+        engine.postMessage('uci');
+      } catch (error) {
+        fail(error.message || error);
+      }
+    })();
+  </script>
+</body>
+
+</html>

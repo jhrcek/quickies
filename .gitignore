@@ -1,3 +1,5 @@
 elm-stuff
 **/index.html
 /build/
+**/elm.min.js
+/chessboard/assets/stockfish-*
