@@ -1,4 +1,4 @@
-module View.SetPicture exposing (Config, Style, view, viewStyled)
+module View.SetPicture exposing (Config, Style, colors, view, viewStyled)
 
 {-| The whole picture of a Set-valued functor `F : C → Set` at once, drawn in the shape of
 `C`: each object `A` becomes a disc holding the elements of `F(A)` (placed where `A` sits in
@@ -24,6 +24,7 @@ import Svg exposing (Svg)
 import Svg.Attributes as SA
 import Svg.Events
 import View.ArrowHead as ArrowHead
+import View.Diagram as Diagram
 import View.Notation as Notation
 
 
@@ -69,6 +70,30 @@ type alias Style =
     , arrowLabel :
         String
         -> String -- plain label of an arrow ↦ label of its function
+    }
+
+
+{-| Colors of the Set-valued functor's pictures: each object and each non-identity arrow
+of the source gets its own palette color.
+-}
+colors : SetFunctor -> { objectColor : Int -> String, morphismColor : Int -> String }
+colors fun =
+    let
+        cat =
+            fun.source
+
+        nonIds =
+            Category.morphismIndices cat |> List.filter (not << Category.isIdentity cat)
+    in
+    { objectColor = Diagram.palette
+    , morphismColor =
+        \f ->
+            case ListUtil.indexOf f nonIds of
+                Just i ->
+                    Diagram.palette (Category.objectCount cat + i)
+
+                Nothing ->
+                    "#555"
     }
 
 

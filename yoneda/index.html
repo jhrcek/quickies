@@ -187,6 +187,11 @@
         .picker-links { margin-left: 8px; font-size: 0.85rem; white-space: nowrap; }
         .picker-links a { color: var(--accent); text-decoration: none; margin-right: 10px; }
         .picker-links a:hover { text-decoration: underline; }
+        .fp-set { display: flex; gap: 8px; align-items: baseline; margin: 4px 0; }
+        .fp-set-buttons { flex: 0 0 auto; display: flex; gap: 4px; }
+        table.fp-functions th.fp-arrow { text-align: left; white-space: nowrap; }
+        table.fp-functions td { cursor: default; padding: 2px 8px; white-space: nowrap; }
+        table.fp-functions select { font: inherit; font-size: 0.85rem; padding: 0 2px; }
         button.cc-danger { background: var(--bad); border-color: var(--bad); color: #fff; }
 
         @media (max-width: 800px) {
@@ -235,14 +240,17 @@
 
     <script src="elm.min.js"></script>
     <script>
-        // custom categories from the category playground, see Ports.elm
-        const storageKey = 'yoneda.customCategories';
-        let stored = null;
-        try { stored = localStorage.getItem(storageKey); } catch (e) { }
-        const app = Elm.Main.init({ node: document.getElementById('app'), flags: stored });
-        app.ports.storeCustomCategories.subscribe(json => {
-            try { localStorage.setItem(storageKey, json); } catch (e) { }
+        // custom categories and functors from the playgrounds, see Ports.elm
+        const categoriesKey = 'yoneda.customCategories';
+        const functorsKey = 'yoneda.customFunctors';
+        const load = key => { try { return localStorage.getItem(key); } catch (e) { return null; } };
+        const store = key => json => { try { localStorage.setItem(key, json); } catch (e) { } };
+        const app = Elm.Main.init({
+            node: document.getElementById('app'),
+            flags: { categories: load(categoriesKey), functors: load(functorsKey) }
         });
+        app.ports.storeCustomCategories.subscribe(store(categoriesKey));
+        app.ports.storeCustomFunctors.subscribe(store(functorsKey));
     </script>
 </body>
 

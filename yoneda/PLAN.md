@@ -99,8 +99,54 @@ from the repo's nix devShell):
       the intro, and `Category.familiarKinds` badges (discrete, poset/preorder, monoid/group,
       groupoid) in the playground.
 
-All milestones done. Possible follow-ups (not planned): per-chapter "copy link" button, encoding
-edits of the Set-valued functor in chapter 5 (only the example name is stored today), a dark theme.
+Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playground it builds on.
+- [x] 15. Functor playground (`#/playground/functor`, 2026-10-19): build an arbitrary Set-valued
+      functor F : C → Set on any built-in or saved category.
+      - `Math/CustomFunctor.elm`: a draft = category (`Example`) + the sets F(X) (by object index,
+        possibly empty, at most 8 elements) + the user's choices `( arrow, element ) ↦ image` for
+        the non-identity arrows. `analyze` propagates the composition law
+        F(h)(x) = F(g)(F(f)(x)) for every f ; g = h (knowing F(f)(x) and one side forces the
+        other), seeded by the choices and by one-element target sets; it returns every known value
+        with its `Reason` (`Chosen` / `OnlyElement` / `ByLaw f g x`) and the failing instances.
+        `complete` is a depth-first search over the undecided values (arrows that are not
+        composites first), propagating every guess, budget 3 000 000 law instances; it adds only
+        its guesses to the choices. `fromSetFunctor` / `toDraft` keep only the values not forced by
+        earlier ones as choices, so forced values show as such (e.g. F(0≤2) in "Two composable
+        functions"). `Saved` refers to the category by name and to objects/arrows by label;
+        `resolve` gives the `SetFunctor` if it still fits. Tests in `tests/CustomFunctorTest.elm`
+        (round trips of every curated and hom functor, JSON, forcing, conflicts, auto-fill on
+        every curated category with sets of size 2 and 3).
+      - `Page/Playground/Functor.elm`: category dropdown + `CategoryPicker.editLinks`, "Start
+        from" (blank, curated and hom functors on that category, saved ones), −/+ per set,
+        `SetPicture` with click-to-edit (arrow chips, then source element, then image), a
+        functions table (dropdown per element; grey = forced with the reason as tooltip, yellow =
+        undecided, red = conflict / empty target), laws card, save / replace / delete with
+        confirmation, "Your functors" list flagging those whose category changed or was deleted.
+      - Deep link `?c=<category>&sizes=2,3&m=<choices per non-identity arrow, -1 = none>`;
+        `?from=<name>` (with optional `c`) loads a saved or built-in functor. Element labels are
+        not in the link.
+      - Storage: second port `Ports.storeCustomFunctors` (key `yoneda.customFunctors`); flags are
+        now `{ categories, functors }`. `Main.customFunctors` keeps every stored functor, even
+        broken ones (so a functor survives its category being deleted and saved again);
+        `Main.applyEffect` carries the playground's draft over when its category is edited.
+      - `SetPicture.colors` (moved from chapter 5) gives the shared object/arrow colors.
+- [ ] 16. Playground integration of custom functors: `Setting.allWith` offers saved functors on
+      their category, so chapters 5, 7 and 8 (and the hom functors playground where it makes
+      sense) can pick them, grouped as "Yours:" with "Edit (a copy)" / "Build your own" links;
+      `Main.applyEffect` re-applies deep links after a functor is saved/deleted and when its
+      category changes.
+- [ ] 17. Yoneda playground (`#/playground/yoneda`): pick C, A and F (curated, hom or custom).
+      Fill in α : Hom(A,−) ⇒ F as a table (one row per object X, one cell per f ∈ Hom(A,X)) in any
+      order. A propagation engine (fixpoint of "assigned α_X(f), arrow g : X → Y ⇒
+      α_Y(f;g) = F(g)(α_X(f))") marks forced cells with their one-line reason (link to the square
+      chase) and conflicts as naturality violations. Choosing α_A(id_A) forces every cell; other
+      cells force only what is reachable from them, which shows id_A as the universal element.
+      "Fill in from a": click a ∈ F(A) to run the propagation from α_A(id_A) = a, cells filling in
+      one by one. Tests: starting from id_A forces everything for every curated (C, A, F).
+
+Possible follow-ups (not planned): per-chapter "copy link" button, encoding edits of the
+Set-valued functor in chapter 5 (only the example name is stored today; 15 may make this easy),
+a dark theme.
 
 Deviations from the original plan so far:
 - Composition order is model state, not a URL query parameter (user request).

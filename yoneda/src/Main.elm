@@ -12,7 +12,9 @@ close button leads back to the last chapter visited.
 
 Custom categories built in the category playground live here (`customs`), are offered by
 the category pickers of the chapters, and are kept in local storage: `index.html` passes
-the stored JSON as flags and writes it back through `Ports.storeCustomCategories`.
+the stored JSON as flags and writes it back through `Ports.storeCustomCategories`. Custom
+functors built in the functor playground (`customFunctors`) are kept the same way
+(`Ports.storeCustomFunctors`); they refer to their category by name.
 
 -}
 
@@ -26,6 +28,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Math.Categories as Categories exposing (Example)
 import Math.CustomCategory as CustomCategory
+import Math.CustomFunctor as CustomFunctor
 import Page.Categories
 import Page.Cayley
 import Page.Functors
@@ -35,6 +38,7 @@ import Page.HomFunctors
 import Page.Intro
 import Page.NaturalTransformations
 import Page.Playground.Category
+import Page.Playground.Functor
 import Page.Playground.HomFunctors
 import Page.Sets
 import Page.YonedaEmbedding
@@ -68,6 +72,7 @@ type alias Model =
     , returnTo : Chapter
     , order : CompositionOrder
     , customs : List Example -- saved custom categories, in the order they were first saved
+    , customFunctors : List CustomFunctor.Saved -- saved custom functors, in the order they were first saved
     , sets : Page.Sets.Model
     , groups : Page.Groups.Model
     , cayley : Page.Cayley.Model
@@ -78,6 +83,7 @@ type alias Model =
     , yonedaLemma : Page.YonedaLemma.Model
     , yonedaEmbedding : Page.YonedaEmbedding.Model
     , categoryPlayground : Page.Playground.Category.Model
+    , functorPlayground : Page.Playground.Functor.Model
     , homFunctorsPlayground : Page.Playground.HomFunctors.Model
     }
 
@@ -93,6 +99,7 @@ init flags url key =
     , returnTo = Intro
     , order = Diagrammatic
     , customs = decodeCustoms flags
+    , customFunctors = decodeCustomFunctors flags
     , sets = Page.Sets.init
     , groups = Page.Groups.init
     , cayley = Page.Cayley.init
@@ -103,6 +110,7 @@ init flags url key =
     , yonedaLemma = Page.YonedaLemma.init
     , yonedaEmbedding = Page.YonedaEmbedding.init
     , categoryPlayground = Page.Playground.Category.init
+    , functorPlayground = Page.Playground.Functor.init
     , homFunctorsPlayground = Page.Playground.HomFunctors.init
     }
         |> rememberReturn
@@ -115,12 +123,27 @@ fail to decode or are not categories are dropped.
 -}
 decodeCustoms : Decode.Value -> List Example
 decodeCustoms flags =
-    case Decode.decodeValue (Decode.nullable Decode.string) flags of
+    case Decode.decodeValue (Decode.field "categories" (Decode.nullable Decode.string)) flags of
         Ok (Just json) ->
             Decode.decodeString CustomCategory.decoder json
                 |> Result.withDefault []
                 |> List.filterMap CustomCategory.toCategory
                 |> List.map Categories.layoutFor
+
+        _ ->
+            []
+
+
+{-| The custom functors stored in local storage (a JSON string, or null). They are kept
+even when they no longer fit their category, so that a functor survives its category
+being deleted and saved again.
+-}
+decodeCustomFunctors : Decode.Value -> List CustomFunctor.Saved
+decodeCustomFunctors flags =
+    case Decode.decodeValue (Decode.field "functors" (Decode.nullable Decode.string)) flags of
+        Ok (Just json) ->
+            Decode.decodeString CustomFunctor.decoder json
+                |> Result.withDefault []
 
         _ ->
             []
@@ -188,8 +211,42 @@ applyEffect effect model =
         , yonedaLemma = reload Page.YonedaLemma.toQuery Page.YonedaLemma.fromQuery Page.YonedaLemma.init model.yonedaLemma
         , yonedaEmbedding = reload Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.fromQuery Page.YonedaEmbedding.init model.yonedaEmbedding
         , homFunctorsPlayground = reload Page.Playground.HomFunctors.toQuery Page.Playground.HomFunctors.fromQuery Page.Playground.HomFunctors.init model.homFunctorsPlayground
+        , functorPlayground = Page.Playground.Functor.categoryChanged customs name model.functorPlayground
       }
     , storeCustoms customs
+    )
+
+
+{-| Apply a change to the saved custom functors, and store them.
+-}
+applyFunctorEffect : Page.Playground.Functor.Effect -> Model -> ( Model, Cmd Msg )
+applyFunctorEffect effect model =
+    let
+        customFunctors =
+            case effect of
+                Page.Playground.Functor.Store saved ->
+                    if List.any (\s -> s.name == saved.name) model.customFunctors then
+                        List.map
+                            (\s ->
+                                if s.name == saved.name then
+                                    saved
+
+                                else
+                                    s
+                            )
+                            model.customFunctors
+
+                    else
+                        model.customFunctors ++ [ saved ]
+
+                Page.Playground.Functor.Delete name ->
+                    List.filter (\s -> s.name /= name) model.customFunctors
+    in
+    ( { model | customFunctors = customFunctors }
+    , customFunctors
+        |> CustomFunctor.encode
+        |> Encode.encode 0
+        |> Ports.storeCustomFunctors
     )
 
 
@@ -218,6 +275,9 @@ applyQuery query model =
 
         Playground CategoryPlayground ->
             { model | categoryPlayground = Page.Playground.Category.fromQuery model.customs query model.categoryPlayground }
+
+        Playground FunctorPlayground ->
+            { model | functorPlayground = Page.Playground.Functor.fromQuery model.customs model.customFunctors query model.functorPlayground }
 
         Playground HomFunctorsPlayground ->
             { model | homFunctorsPlayground = Page.Playground.HomFunctors.fromQuery model.customs query model.homFunctorsPlayground }
@@ -263,6 +323,9 @@ queryFor chapter model =
 
         Playground CategoryPlayground ->
             []
+
+        Playground FunctorPlayground ->
+            Page.Playground.Functor.toQuery model.functorPlayground
 
         Playground HomFunctorsPlayground ->
             Page.Playground.HomFunctors.toQuery model.homFunctorsPlayground
@@ -340,6 +403,7 @@ type Msg
     | YonedaLemmaMsg Page.YonedaLemma.Msg
     | YonedaEmbeddingMsg Page.YonedaEmbedding.Msg
     | CategoryPlaygroundMsg Page.Playground.Category.Msg
+    | FunctorPlaygroundMsg Page.Playground.Functor.Msg
     | HomFunctorsPlaygroundMsg Page.Playground.HomFunctors.Msg
 
 
@@ -412,6 +476,21 @@ update msg model =
                 Nothing ->
                     ( updated, Cmd.none )
 
+        FunctorPlaygroundMsg m ->
+            let
+                ( playground, effect ) =
+                    Page.Playground.Functor.update model.customs model.customFunctors m model.functorPlayground
+
+                ( updated, cmd ) =
+                    syncIfChanged model { model | functorPlayground = playground }
+            in
+            case effect of
+                Just e ->
+                    applyFunctorEffect e updated |> Tuple.mapSecond (\store -> Cmd.batch [ cmd, store ])
+
+                Nothing ->
+                    ( updated, cmd )
+
         HomFunctorsPlaygroundMsg m ->
             syncIfChanged model { model | homFunctorsPlayground = Page.Playground.HomFunctors.update model.customs m model.homFunctorsPlayground }
 
@@ -463,6 +542,9 @@ viewPlayground model playground =
             [ case playground of
                 CategoryPlayground ->
                     Html.map CategoryPlaygroundMsg (Page.Playground.Category.view model.customs model.categoryPlayground)
+
+                FunctorPlayground ->
+                    Html.map FunctorPlaygroundMsg (Page.Playground.Functor.view model.customs model.customFunctors model.functorPlayground)
 
                 HomFunctorsPlayground ->
                     Html.map HomFunctorsPlaygroundMsg (Page.Playground.HomFunctors.view model.customs model.homFunctorsPlayground)

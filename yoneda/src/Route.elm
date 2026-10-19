@@ -46,12 +46,13 @@ type Chapter
 
 type Playground
     = CategoryPlayground
+    | FunctorPlayground
     | HomFunctorsPlayground
 
 
 allPlaygrounds : List Playground
 allPlaygrounds =
-    [ CategoryPlayground, HomFunctorsPlayground ]
+    [ CategoryPlayground, FunctorPlayground, HomFunctorsPlayground ]
 
 
 playgroundTitle : Playground -> String
@@ -59,6 +60,9 @@ playgroundTitle playground =
     case playground of
         CategoryPlayground ->
             "Category"
+
+        FunctorPlayground ->
+            "Set-valued functor"
 
         HomFunctorsPlayground ->
             "Hom functors"
@@ -69,6 +73,9 @@ playgroundSlug playground =
     case playground of
         CategoryPlayground ->
             "category"
+
+        FunctorPlayground ->
+            "functor"
 
         HomFunctorsPlayground ->
             "hom-functors"

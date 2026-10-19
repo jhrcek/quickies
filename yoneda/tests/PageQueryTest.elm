@@ -8,6 +8,7 @@ import Page.Functors
 import Page.Groups
 import Page.HomFunctors
 import Page.NaturalTransformations
+import Page.Playground.Functor
 import Page.Sets
 import Page.YonedaEmbedding
 import Page.YonedaLemma
@@ -49,6 +50,32 @@ suite =
             , stable "natural transformations" Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery []) Page.NaturalTransformations.init (Page.NaturalTransformations.toQuery Page.NaturalTransformations.init)
             , stable "yoneda lemma" Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery []) Page.YonedaLemma.init (Page.YonedaLemma.toQuery Page.YonedaLemma.init)
             , stable "yoneda embedding" Page.YonedaEmbedding.toQuery (Page.YonedaEmbedding.fromQuery []) Page.YonedaEmbedding.init (Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.init)
+            , stable "functor playground" Page.Playground.Functor.toQuery (Page.Playground.Functor.fromQuery [] []) Page.Playground.Functor.init (Page.Playground.Functor.toQuery Page.Playground.Functor.init)
+            ]
+        , describe "functor playground"
+            [ test "sizes and choices are reproduced" <|
+                \_ ->
+                    -- Mixed: arrows e : A → A, f, g : A → B
+                    roundTrip Page.Playground.Functor.toQuery
+                        (Page.Playground.Functor.fromQuery [] [])
+                        Page.Playground.Functor.init
+                        [ ( "c", "Mixed" ), ( "sizes", "3,1" ), ( "m", "1,-1,2;-1,-1,-1;-1,-1,-1" ) ]
+                        |> Expect.equal [ ( "c", "Mixed" ), ( "sizes", "3,1" ), ( "m", "1,-1,2;-1,-1,-1;-1,-1,-1" ) ]
+            , test "out-of-range choices are dropped" <|
+                \_ ->
+                    roundTrip Page.Playground.Functor.toQuery
+                        (Page.Playground.Functor.fromQuery [] [])
+                        Page.Playground.Functor.init
+                        [ ( "c", "Mixed" ), ( "sizes", "2,2" ), ( "m", "5,0;-1,-1;-1,-1" ) ]
+                        |> Expect.equal [ ( "c", "Mixed" ), ( "sizes", "2,2" ), ( "m", "-1,0;-1,-1;-1,-1" ) ]
+            , test "a built-in functor is loaded by name" <|
+                \_ ->
+                    roundTrip Page.Playground.Functor.toQuery
+                        (Page.Playground.Functor.fromQuery [] [])
+                        Page.Playground.Functor.init
+                        [ ( "from", "Two composable functions" ), ( "c", "Chain 0 < 1 < 2" ) ]
+                        |> List.take 2
+                        |> Expect.equal [ ( "c", "Chain 0 < 1 < 2" ), ( "sizes", "3,2,3" ) ]
             ]
         , describe "non-default states are reproduced"
             [ test "chapter 8, contravariant lemma on the diamond" <|

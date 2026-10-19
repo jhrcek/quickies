@@ -975,7 +975,7 @@ setFunctorCard order model =
             Categories.layoutFor cat
 
         colors =
-            setColors fun
+            SetPicture.colors fun
 
         focus =
             case model.setView of
@@ -1094,30 +1094,6 @@ setFunctorCard order model =
                 ]
             ]
         ]
-
-
-{-| Colors of the Set-valued functor's pictures: each object and each non-identity arrow
-of the source gets its own palette color, as in the functor builder.
--}
-setColors : SetFunctor -> { objectColor : Int -> String, morphismColor : Int -> String }
-setColors fun =
-    let
-        cat =
-            fun.source
-
-        nonIds =
-            Category.morphismIndices cat |> List.filter (not << Category.isIdentity cat)
-    in
-    { objectColor = Diagram.palette
-    , morphismColor =
-        \f ->
-            case ListUtil.indexOf f nonIds of
-                Just i ->
-                    Diagram.palette (Category.objectCount cat + i)
-
-                Nothing ->
-                    "#555"
-    }
 
 
 wholePicture : { objectColor : Int -> String, morphismColor : Int -> String } -> Model -> List (Html Msg)

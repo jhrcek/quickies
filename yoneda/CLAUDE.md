@@ -37,14 +37,19 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   puts the target page's state into sidebar / prev-next links. Examples are
   identified by their `name` fields (categories, groups, Set-valued functors).
 - `KaTeX.elm` - `<math-tex>` custom element wrapper (defined in `index.html`).
-- `Ports.elm` - the only port: `storeCustomCategories` writes the custom categories (JSON)
-  to local storage; `index.html` passes the stored JSON back as `Main`'s flags.
+- `Ports.elm` - the only ports: `storeCustomCategories` / `storeCustomFunctors` write the
+  custom categories / functors (JSON) to local storage; `index.html` passes the stored JSON
+  back as `Main`'s flags `{ categories, functors }`.
 - Custom categories: `Main.customs : List Example`, built in the category playground
   (`Page/Playground/Category.elm`, pure logic in `Math/CustomCategory.elm`: drafts keyed by
   labels, validation, backtracking auto-fill, JSON codec). Chapters 4-9 and the hom functor
   playground take `customs` in `view` and `fromQuery` and list `Categories.allWith` /
   `Setting.allWith customs`. After a save/delete, `Main.applyEffect` re-applies the deep link
   of every page that shows a category of that name.
+- Custom functors: `Main.customFunctors : List CustomFunctor.Saved` (category by name, objects
+  and arrows by label; kept even when they no longer fit), built in the functor playground
+  (`Page/Playground/Functor.elm`, pure logic in `Math/CustomFunctor.elm`: drafts by index,
+  propagation of the composition law with reasons, backtracking auto-fill, JSON codec).
 - `Math/*` - pure, UI-free math: `FinSet`, `FinFunction` (functions as `Array Int` of
   target indices), `Group` (finite group as Cayley table + curated examples).
 - `View/Notation.elm` - the ONLY place composition-order dependent TeX/prose is produced.
