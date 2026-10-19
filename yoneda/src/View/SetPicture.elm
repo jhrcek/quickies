@@ -1,4 +1,4 @@
-module View.SetPicture exposing (Config, Style, colors, view, viewStyled)
+module View.SetPicture exposing (Config, Layer, Style, colors, discRadius, dotRadius, layer, view, viewStyled)
 
 {-| The whole picture of a Set-valued functor `F : C → Set` at once, drawn in the shape of
 `C`: each object `A` becomes a disc holding the elements of `F(A)` (placed where `A` sits in
@@ -8,6 +8,9 @@ always identity functions. An element fixed by an endomorphism wears a ring of t
 arrow's color instead of a loop.
 
 One arrow can be focused: it is drawn on top, the others fade.
+
+`layer` gives the picture's pieces without the surrounding `<svg>`, so that several
+pictures can share one drawing (see `View.NatPicture`).
 
 `viewStyled` restyles the picture: solid element dots, one shared color for all arrows,
 and single element-to-element arrows emphasized on top in their own arrow's color.
@@ -139,20 +142,40 @@ type alias Layout =
     }
 
 
-layout : List ( Float, Float ) -> SetFunctor -> Layout
-layout positions fun =
+endoCount : SetFunctor -> Int -> Int
+endoCount fun o =
+    Category.hom fun.source o o |> List.filter (not << Category.isIdentity fun.source) |> List.length
+
+
+{-| Radius of the discs of the sets: room for the largest ring of elements.
+-}
+discRadius : SetFunctor -> Float
+discRadius fun =
+    (Category.objectIndices fun.source
+        |> List.map (\o -> ringRadius (endoCount fun o) (FinSet.size (SetFunctor.objectImage fun o)))
+        |> List.maximum
+        |> Maybe.withDefault 0
+    )
+        + 30
+
+
+{-| The layout with discs of at least the given radius. Pictures of functors on the same
+category with the same disc radius have the same size and the same disc centers.
+-}
+layout : Float -> List ( Float, Float ) -> SetFunctor -> Layout
+layout minRadius positions fun =
     let
         cat =
             fun.source
 
-        endoCount o =
-            Category.hom cat o o |> List.filter (not << Category.isIdentity cat) |> List.length
+        endoCount_ =
+            endoCount fun
 
         ring o =
-            ringRadius (endoCount o) (FinSet.size (SetFunctor.objectImage fun o))
+            ringRadius (endoCount_ o) (FinSet.size (SetFunctor.objectImage fun o))
 
         blobRadius =
-            (List.map ring (Category.objectIndices cat) |> List.maximum |> Maybe.withDefault 0) + 30
+            max minRadius (discRadius fun)
 
         pairs =
             List.indexedMap (\i p -> List.map (dist p) (List.drop (i + 1) positions)) positions |> List.concat
@@ -178,7 +201,7 @@ layout positions fun =
             ( List.minimum ys |> Maybe.withDefault 0, List.maximum ys |> Maybe.withDefault 0 )
 
         hasEndos =
-            List.any (\o -> endoCount o > 0) (Category.objectIndices cat)
+            List.any (\o -> endoCount_ o > 0) (Category.objectIndices cat)
 
         -- room for the set names below the discs and the labels of loops around them
         ( padX, padY ) =
@@ -226,11 +249,39 @@ view cfg =
 viewStyled : Style -> Config msg -> SetFunctor -> Html msg
 viewStyled style cfg fun =
     let
+        pieces =
+            layer style cfg 0 fun
+    in
+    Svg.svg
+        [ SA.viewBox ("0 0 " ++ str pieces.width ++ " " ++ str pieces.height)
+        , SA.width (str pieces.width)
+        , SA.height (str pieces.height)
+        , SA.style "max-width: 100%; height: auto; display: block;"
+        ]
+        pieces.content
+
+
+{-| A picture without its `<svg>`: its size, where each element dot sits (object, element)
+and the drawing itself.
+-}
+type alias Layer msg =
+    { width : Float
+    , height : Float
+    , element : Int -> Int -> ( Float, Float )
+    , content : List (Svg msg)
+    }
+
+
+{-| The picture as a `Layer`, with discs of at least the given radius.
+-}
+layer : Style -> Config msg -> Float -> SetFunctor -> Layer msg
+layer style cfg minRadius fun =
+    let
         cat =
             fun.source
 
         lay =
-            layout cfg.positions fun
+            layout minRadius cfg.positions fun
 
         arrows =
             Category.morphismIndices cat |> List.filter (not << Category.isIdentity cat)
@@ -242,18 +293,16 @@ viewStyled style cfg fun =
         faded f =
             cfg.focus /= Nothing && cfg.focus /= Just f
     in
-    Svg.svg
-        [ SA.viewBox ("0 0 " ++ str lay.width ++ " " ++ str lay.height)
-        , SA.width (str lay.width)
-        , SA.height (str lay.height)
-        , SA.style "max-width: 100%; height: auto; display: block;"
-        ]
-        (List.map (blob cfg lay fun) (Category.objectIndices cat)
+    { width = lay.width
+    , height = lay.height
+    , element = lay.element
+    , content =
+        List.map (blob cfg lay fun) (Category.objectIndices cat)
             ++ List.concatMap (\f -> arrowBundle cfg style lay fun arrows False (faded f) f) ordered
             ++ List.concatMap (\f -> arrowBundle cfg style lay fun arrows True False f) ordered
             ++ List.concatMap (elements cfg style lay fun arrows) (Category.objectIndices cat)
             ++ List.map (\f -> arrowLabel cfg style lay fun arrows (faded f) f) ordered
-        )
+    }
 
 
 blob : Config msg -> Layout -> SetFunctor -> Int -> Svg msg

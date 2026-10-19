@@ -48,11 +48,12 @@ type Playground
     = CategoryPlayground
     | FunctorPlayground
     | HomFunctorsPlayground
+    | YonedaPlayground
 
 
 allPlaygrounds : List Playground
 allPlaygrounds =
-    [ CategoryPlayground, FunctorPlayground, HomFunctorsPlayground ]
+    [ CategoryPlayground, FunctorPlayground, HomFunctorsPlayground, YonedaPlayground ]
 
 
 playgroundTitle : Playground -> String
@@ -67,6 +68,9 @@ playgroundTitle playground =
         HomFunctorsPlayground ->
             "Hom functors"
 
+        YonedaPlayground ->
+            "Yoneda lemma"
+
 
 playgroundSlug : Playground -> String
 playgroundSlug playground =
@@ -79,6 +83,9 @@ playgroundSlug playground =
 
         HomFunctorsPlayground ->
             "hom-functors"
+
+        YonedaPlayground ->
+            "yoneda"
 
 
 {-| The numbered chapters, in reading order. The glossary is reachable but not a chapter.

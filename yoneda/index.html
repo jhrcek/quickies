@@ -193,6 +193,10 @@
         table.fp-functions td { cursor: default; padding: 2px 8px; white-space: nowrap; }
         table.fp-functions select { font: inherit; font-size: 0.85rem; padding: 0 2px; }
         button.cc-danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+        table.cayley td.yp-reach { box-shadow: inset 0 0 0 2px var(--accent); }
+        table.cayley td.yp-focus { outline: 3px solid var(--text); outline-offset: -3px; }
+        table.cayley td.yp-new { animation: yp-flash 0.7s ease-out; }
+        @keyframes yp-flash { from { background: #ffd54f; } }
 
         @media (max-width: 800px) {
             .app { flex-direction: column; }

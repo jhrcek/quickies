@@ -65,6 +65,9 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   by clicking a source then a target element; also used read-only.
 - `View/SetPicture.elm` - a whole Set-valued functor in the shape of its source: sets as
   discs of elements, functions as colored element-to-element arrows; focus/edit by clicking.
+  `layer` gives the picture without its `<svg>` (size, element positions, content).
+- `View/NatPicture.elm` - a natural transformation F ⇒ G: both functors' pictures in one SVG
+  and the components as element arrows between them (used by the Yoneda playground).
 - `View/CategoryPicker.elm` - the category button row of every chapter: built-in categories,
   then the reader's own ("Yours:"), then "Edit (a copy)" / "Build your own" links into the
   category playground (`#/playground/category?from=<name>` loads a category there).
@@ -79,6 +82,10 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   the same Model/Msg/update/view/toQuery/fromQuery shape as chapters, but always use the
   diagrammatic composition order (no `CompositionOrder` argument). `View/SetPicture.viewStyled`
   restyles the Set picture (solid element dots, grey arrows, single emphasized element arrows).
+- Yoneda playground (`Page/Playground/Yoneda.elm`, pure logic in `Math/YonedaFill.elm`): fill in
+  α : Hom(A,−) ⇒ F cell by cell (a cell = an arrow out of A), naturality propagates the choices.
+  It is the only page with a subscription (an animation frame tick while forced cells are being
+  revealed); `Main.subscriptions` forwards it only while that playground is shown.
 
 ## Conventions
 

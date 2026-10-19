@@ -42,6 +42,7 @@ import Page.NaturalTransformations
 import Page.Playground.Category
 import Page.Playground.Functor
 import Page.Playground.HomFunctors
+import Page.Playground.Yoneda
 import Page.Sets
 import Page.YonedaEmbedding
 import Page.YonedaLemma
@@ -58,7 +59,7 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         , onUrlRequest = UrlRequested
         , onUrlChange = UrlChanged
         }
@@ -87,6 +88,7 @@ type alias Model =
     , categoryPlayground : Page.Playground.Category.Model
     , functorPlayground : Page.Playground.Functor.Model
     , homFunctorsPlayground : Page.Playground.HomFunctors.Model
+    , yonedaPlayground : Page.Playground.Yoneda.Model
     }
 
 
@@ -114,6 +116,7 @@ init flags url key =
     , categoryPlayground = Page.Playground.Category.init
     , functorPlayground = Page.Playground.Functor.init
     , homFunctorsPlayground = Page.Playground.HomFunctors.init
+    , yonedaPlayground = Page.Playground.Yoneda.init
     }
         |> rememberReturn
         |> applyQuery query
@@ -290,6 +293,7 @@ reloadFunctorPages names model =
         | functors = reload Page.Functors.toQuery (Page.Functors.fromQuery model.customs yours) Page.Functors.init model.functors
         , naturalTransformations = reload Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery model.customs yours) Page.NaturalTransformations.init model.naturalTransformations
         , yonedaLemma = reload Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery model.customs yours) Page.YonedaLemma.init model.yonedaLemma
+        , yonedaPlayground = reload Page.Playground.Yoneda.toQuery (Page.Playground.Yoneda.fromQuery model.customs yours) Page.Playground.Yoneda.init model.yonedaPlayground
     }
 
 
@@ -331,6 +335,9 @@ applyQuery query model =
 
         Playground HomFunctorsPlayground ->
             { model | homFunctorsPlayground = Page.Playground.HomFunctors.fromQuery model.customs query model.homFunctorsPlayground }
+
+        Playground YonedaPlayground ->
+            { model | yonedaPlayground = Page.Playground.Yoneda.fromQuery model.customs (yourFunctors model) query model.yonedaPlayground }
 
         Sets ->
             { model | sets = Page.Sets.fromQuery query model.sets }
@@ -379,6 +386,9 @@ queryFor chapter model =
 
         Playground HomFunctorsPlayground ->
             Page.Playground.HomFunctors.toQuery model.homFunctorsPlayground
+
+        Playground YonedaPlayground ->
+            Page.Playground.Yoneda.toQuery model.yonedaPlayground
 
         Sets ->
             Page.Sets.toQuery model.sets
@@ -455,6 +465,7 @@ type Msg
     | CategoryPlaygroundMsg Page.Playground.Category.Msg
     | FunctorPlaygroundMsg Page.Playground.Functor.Msg
     | HomFunctorsPlaygroundMsg Page.Playground.HomFunctors.Msg
+    | YonedaPlaygroundMsg Page.Playground.Yoneda.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -544,6 +555,26 @@ update msg model =
         HomFunctorsPlaygroundMsg m ->
             syncIfChanged model { model | homFunctorsPlayground = Page.Playground.HomFunctors.update model.customs m model.homFunctorsPlayground }
 
+        YonedaPlaygroundMsg m ->
+            syncIfChanged model { model | yonedaPlayground = Page.Playground.Yoneda.update model.customs (yourFunctors model) m model.yonedaPlayground }
+
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Only the Yoneda playground animates (it reveals forced cells one by one), and only
+while it is shown.
+-}
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    case model.chapter of
+        Playground YonedaPlayground ->
+            Sub.map YonedaPlaygroundMsg (Page.Playground.Yoneda.subscriptions model.yonedaPlayground)
+
+        _ ->
+            Sub.none
+
 
 
 -- VIEW
@@ -598,6 +629,9 @@ viewPlayground model playground =
 
                 HomFunctorsPlayground ->
                     Html.map HomFunctorsPlaygroundMsg (Page.Playground.HomFunctors.view model.customs model.homFunctorsPlayground)
+
+                YonedaPlayground ->
+                    Html.map YonedaPlaygroundMsg (Page.Playground.Yoneda.view model.customs model.yonedaPlayground)
             ]
         ]
 

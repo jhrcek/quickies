@@ -1,7 +1,7 @@
 module Page.YonedaLemma exposing (Model, Msg, fromQuery, init, toQuery, update, view)
 
-import Html exposing (Html, button, div, h2, h3, li, ol, p, span, strong, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (class, classList, disabled)
+import Html exposing (Html, a, button, div, h2, h3, li, ol, p, span, strong, table, tbody, td, text, th, thead, tr)
+import Html.Attributes exposing (class, classList, disabled, href)
 import Html.Events exposing (onClick)
 import KaTeX
 import ListUtil
@@ -14,6 +14,7 @@ import Math.SetFunctor as SetFunctor exposing (SetFunctor)
 import Math.Setting as Setting exposing (Setting)
 import Math.Yoneda as Yoneda
 import Query exposing (Query)
+import Route exposing (Chapter(..), Playground(..))
 import View.CategoryPicker as CategoryPicker
 import View.Common exposing (countBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
@@ -392,6 +393,18 @@ view order customs yours model =
         , bijectionCard model
         , h3 [] [ text "Why one element determines everything" ]
         , chaseCard order model
+        , case model.variance of
+            Covariant ->
+                p []
+                    [ text "To see the chase run the other way, fill in a transformation by hand in the "
+                    , a [ href (playgroundLink model) ] [ text "Yoneda playground" ]
+                    , text ": a value at "
+                    , KaTeX.inline "\\mathrm{id}_A"
+                    , text " forces every other entry, while a value elsewhere forces only some of them."
+                    ]
+
+            Contravariant ->
+                text ""
         , h3 [] [ text "Proof" ]
         , proof order model.variance
         , div [ class "callout remember" ]
@@ -893,6 +906,17 @@ proof order variance =
 
 
 -- DEEP LINKS
+
+
+{-| The Yoneda playground with the same category, object and functor.
+-}
+playgroundLink : Model -> String
+playgroundLink model =
+    Route.toStringWith (Playground YonedaPlayground)
+        [ Query.param "c" model.setting.example.category.name
+        , Query.param "a" (String.fromInt model.object)
+        , Query.param "F" model.functor.name
+        ]
 
 
 {-| `c` is the category name, `v` the variance (`co`/`contra`), `a` the object, `F` the

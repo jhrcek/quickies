@@ -25,7 +25,7 @@ can be computed by brute force in pure Elm and tested with elm-test.
 
 ## Status (updated 2026-10-19)
 
-Done (compiles, `make check` passes, `make test` passes: 609 tests; `elm-test` 0.19.2 comes
+Done (compiles, `make check` passes, `make test` passes: 681 tests; `elm-test` 0.19.2 comes
 from the repo's nix devShell):
 - [x] 0. Scaffold, routing, shell, KaTeX, composition-order toggle (model state only, NOT in URL)
 - [x] 1. Sets and functions (`Page/Sets.elm`, `View/FunctionEditor.elm`, `Math/FinSet`, `Math/FinFunction`)
@@ -148,14 +148,35 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
       only, so it does not offer custom functors. Tests in `tests/CustomFunctorTest.elm`
       (offered on their category only, name clashes, deleted category) and
       `tests/PageQueryTest.elm` (deep links naming a saved functor in chapters 5, 7, 8).
-- [ ] 17. Yoneda playground (`#/playground/yoneda`): pick C, A and F (curated, hom or custom).
-      Fill in α : Hom(A,−) ⇒ F as a table (one row per object X, one cell per f ∈ Hom(A,X)) in any
-      order. A propagation engine (fixpoint of "assigned α_X(f), arrow g : X → Y ⇒
-      α_Y(f;g) = F(g)(α_X(f))") marks forced cells with their one-line reason (link to the square
-      chase) and conflicts as naturality violations. Choosing α_A(id_A) forces every cell; other
-      cells force only what is reachable from them, which shows id_A as the universal element.
-      "Fill in from a": click a ∈ F(A) to run the propagation from α_A(id_A) = a, cells filling in
-      one by one. Tests: starting from id_A forces everything for every curated (C, A, F).
+- [x] 17. Yoneda playground (`#/playground/yoneda`, 2026-10-19): pick C, A and F (curated, hom or
+      custom, via `View/FunctorPicker`). `Math/YonedaFill.elm`: a cell is an arrow f : A → X (the entry
+      α_X(f)); `analyze` propagates the reader's choices breadth first along "α_Y(f;g) = F(g)(α_X(f))"
+      with a `Reason` per value (`Chosen` / `ByNaturality f g`), the discovery `order`, the failing
+      instances as `Conflict`s and the `impossible` cells (F(X) empty); `reach f` = { f;g } (all cells iff
+      f has a g with f;g = id_A); `toNatTrans` once natural. `Page/Playground/Yoneda.elm`: table with a
+      dropdown per cell (grey forced, yellow unknown, red conflict, blue frame = reach of the focused
+      cell), "Why this value?" card with the naturality square of the forcing arrow (or the failing one)
+      and a link into chapter 8's chase for that cell, the category diagram highlighting the arrow
+      chased from / along / the cell, "Fill in from an element of F(A)" revealing the forced cells one by
+      one (`Browser.Events.onAnimationFrameDelta`; `Main.subscriptions` only while the playground is
+      shown), "Is it natural?" card (matches `Yoneda.fromElement` of α_A(id_A)) and "Which single cell
+      decides everything?". Deep link `?c=&a=&F=&alpha=<value per arrow out of A, -1 = none>`; chapter
+      8 links to the playground (covariant case). Tests in `tests/YonedaFillTest.elm` (id_A forces every
+      cell for every curated (C, A, F), reach, conflicts, empty sets, deep link).
+- [x] 18. Yoneda playground picture (2026-10-19): `View/NatPicture.elm` draws a natural transformation
+      F ⇒ G whole: the `SetPicture`s of both functors (shared disc radius, so objects sit at the same
+      places; stacked when the layout is wider than tall, else side by side) and the components as
+      element arrows from F(X) to G(X). `SetPicture.layer` / `discRadius` expose a picture without its
+      `<svg>`. The playground's "Picture" card shows Hom(A, −) and F with the known part of α (object
+      color; solid = chosen, dashed = forced, red = conflict); click an element of a hom set to focus its
+      cell, then an element of F(X) to set it, or an arrow label g to move to the cell f ; g. A forced
+      cell lights up its whole square (p ↦ p ; g in Hom(A, g), α(p) ↦ F(g)(α(p)), both α arrows); the
+      cells its value would force are filled light blue.
+- [x] 19. Stepped walkthrough (2026-10-19): "Fill in from an element of F(A)" starts paused at step 1
+      (α_A(id_A) = x) with ⏮ / ← Previous / Next → / ▶ Play–⏸ Pause (Replay at the end), a speed choice
+      (slow / normal / fast), "Step k of n", the current step's equation
+      α_Y(f) = α(p ; g) = F(g)(α_X(p)) = z, and "Show all" / "Done" to leave the walkthrough. The focus
+      follows the current step, so the picture and "Why this value?" show its square.
 
 Possible follow-ups (not planned): per-chapter "copy link" button, encoding edits of the
 Set-valued functor in chapter 5 (only the example name is stored today; 15 may make this easy),
