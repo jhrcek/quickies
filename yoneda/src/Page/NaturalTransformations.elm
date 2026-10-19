@@ -17,6 +17,7 @@ import Query exposing (Query)
 import View.CategoryPicker as CategoryPicker
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
+import View.FunctorPicker as FunctorPicker
 import View.Notation as Notation exposing (CompositionOrder)
 import View.Square as Square
 
@@ -126,8 +127,8 @@ update msg model =
 -- VIEW
 
 
-view : CompositionOrder -> List Example -> Model -> Html Msg
-view order customs model =
+view : CompositionOrder -> List Example -> List SetFunctor -> Model -> Html Msg
+view order customs yours model =
     let
         cat =
             model.setting.example.category
@@ -185,7 +186,7 @@ view order customs model =
             ]
         , h3 [] [ text "Explore" ]
         , p []
-            [ text "Pick a category and two functors on it (the Set-valued examples from chapter 5 and the hom functors from chapter 6). Choose the components by clicking in the editor, as in chapter 1: click an element of "
+            [ text "Pick a category and two functors on it (the Set-valued examples from chapter 5, the hom functors from chapter 6, or functors of your own from the functor playground). Choose the components by clicking in the editor, as in chapter 1: click an element of "
             , KaTeX.inline "F(X)"
             , text ", then its image in "
             , KaTeX.inline "G(X)"
@@ -193,14 +194,14 @@ view order customs model =
             ]
         , CategoryPicker.view
             { label = "Category 𝒞:"
-            , items = Setting.allWith customs
+            , items = Setting.allWith customs yours
             , category = .example >> .category
             , customs = customs
             , selected = cat.name
             , onSelect = SelectSetting
             }
-        , functorPicker "Functor F:" model.source SelectSource model.setting.functors
-        , functorPicker "Functor G:" model.target SelectTarget model.setting.functors
+        , functorPicker "Functor F:" model.source SelectSource model.setting
+        , functorPicker "Functor G:" model.target SelectTarget model.setting
         , card order model
         , enumeration model
         , h3 [] [ text "Why “natural”?" ]
@@ -243,16 +244,16 @@ view order customs model =
         ]
 
 
-functorPicker : String -> SetFunctor -> (SetFunctor -> Msg) -> List SetFunctor -> Html Msg
-functorPicker caption current toMsg functors =
-    div [ class "controls" ]
-        (span [ class "muted" ] [ text caption ]
-            :: List.map
-                (\f ->
-                    button [ classList [ ( "active", f.name == current.name ) ], onClick (toMsg f) ] [ KaTeX.inline f.texName ]
-                )
-                functors
-        )
+functorPicker : String -> SetFunctor -> (SetFunctor -> Msg) -> Setting -> Html Msg
+functorPicker caption current toMsg setting =
+    FunctorPicker.view
+        { label = caption
+        , functors = setting.functors
+        , yours = setting.yours
+        , selected = current
+        , onSelect = toMsg
+        , links = True
+        }
 
 
 card : CompositionOrder -> Model -> Html Msg
@@ -617,14 +618,15 @@ toQuery model =
     ]
 
 
-fromQuery : List Example -> Query -> Model -> Model
-fromQuery customs q model =
+fromQuery : List Example -> List SetFunctor -> Query -> Model -> Model
+fromQuery customs yours q model =
     let
         withSetting md =
-            case Query.string "c" q |> Maybe.andThen (Setting.byNameWith customs) of
+            case Query.string "c" q |> Maybe.andThen (Setting.byNameWith customs yours) of
                 Just s ->
                     if s.example.category.name == md.setting.example.category.name then
-                        md
+                        -- the same category, but the reader's functors on it may have changed
+                        { md | setting = s }
 
                     else
                         update (SelectSetting s) md

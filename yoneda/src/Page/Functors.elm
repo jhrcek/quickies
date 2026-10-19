@@ -17,6 +17,7 @@ import View.CategoryPicker as CategoryPicker
 import View.Common exposing (lawBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
+import View.FunctorPicker as FunctorPicker
 import View.Notation as Notation exposing (CompositionOrder)
 import View.SetPicture as SetPicture
 
@@ -301,8 +302,8 @@ allowedImages fun f =
 -- VIEW
 
 
-view : CompositionOrder -> List Example -> Model -> Html Msg
-view order customs model =
+view : CompositionOrder -> List Example -> List SetFunctor -> Model -> Html Msg
+view order customs yours model =
     div []
         [ h2 [] [ text "5. Functors" ]
         , p []
@@ -409,15 +410,16 @@ view order customs model =
             , KaTeX.inline "F"
             , text " at once, in the shape of "
             , KaTeX.inline "\\mathcal{C}"
-            , text ": every object becomes its set, every arrow becomes its function, drawn element by element. Following arrows from element to element in the picture is applying the functions; the composition law says that following the functions of two composable arrows one after the other takes every element to the same place as the function of their composite. Pick an example, click an arrow to bring its function to the front, and edit it the way you did in chapter 1 (click an element, then its image). The − and + buttons shrink and grow the sets. Watch the composition law break, and try to repair it."
+            , text ": every object becomes its set, every arrow becomes its function, drawn element by element. Following arrows from element to element in the picture is applying the functions; the composition law says that following the functions of two composable arrows one after the other takes every element to the same place as the function of their composite. Pick an example, click an arrow to bring its function to the front, and edit it the way you did in chapter 1 (click an element, then its image). The − and + buttons shrink and grow the sets. Watch the composition law break, and try to repair it. Functors of your own, built in the functor playground, are listed after the built-in ones."
             ]
-        , div [ class "controls" ]
-            (List.map
-                (\ex ->
-                    button [ classList [ ( "active", ex.name == model.setExample.name ) ], onClick (SelectSetExample ex) ] [ KaTeX.inline ex.texName ]
-                )
-                SetFunctor.all
-            )
+        , FunctorPicker.view
+            { label = "Example:"
+            , functors = SetFunctor.all ++ yours
+            , yours = yours
+            , selected = model.setExample
+            , onSelect = SelectSetExample
+            , links = True
+            }
         , setFunctorCard order model
         , div [ class "callout remember" ]
             [ strong [] [ text "Remember this. " ]
@@ -1347,8 +1349,8 @@ toQuery model =
            )
 
 
-fromQuery : List Example -> Query -> Model -> Model
-fromQuery customs q model =
+fromQuery : List Example -> List SetFunctor -> Query -> Model -> Model
+fromQuery customs yours q model =
     let
         category key current msg md =
             case Query.string key q |> Maybe.andThen (Categories.byNameWith customs) of
@@ -1394,7 +1396,7 @@ fromQuery customs q model =
                     md
 
         withSetExample md =
-            case Query.string "set" q |> Maybe.andThen (\name -> ListUtil.find (\f -> f.name == name) SetFunctor.all) of
+            case Query.string "set" q |> Maybe.andThen (\name -> ListUtil.find (\f -> f.name == name) (SetFunctor.all ++ yours)) of
                 Just ex ->
                     if ex.name == md.setExample.name then
                         md

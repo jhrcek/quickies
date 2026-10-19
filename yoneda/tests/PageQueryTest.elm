@@ -2,6 +2,10 @@ module PageQueryTest exposing (suite)
 
 import Dict
 import Expect
+import Math.Categories as Categories
+import Math.CustomFunctor as Custom
+import Math.SetFunctor as SetFunctor
+import Math.Setting as Setting
 import Page.Categories
 import Page.Cayley
 import Page.Functors
@@ -45,10 +49,10 @@ suite =
             , stable "groups" Page.Groups.toQuery Page.Groups.fromQuery Page.Groups.init (Page.Groups.toQuery Page.Groups.init)
             , stable "cayley" Page.Cayley.toQuery Page.Cayley.fromQuery Page.Cayley.init (Page.Cayley.toQuery Page.Cayley.init)
             , stable "categories" Page.Categories.toQuery (Page.Categories.fromQuery []) Page.Categories.init (Page.Categories.toQuery Page.Categories.init)
-            , stable "functors" Page.Functors.toQuery (Page.Functors.fromQuery []) Page.Functors.init (Page.Functors.toQuery Page.Functors.init)
+            , stable "functors" Page.Functors.toQuery (Page.Functors.fromQuery [] []) Page.Functors.init (Page.Functors.toQuery Page.Functors.init)
             , stable "hom functors" Page.HomFunctors.toQuery (Page.HomFunctors.fromQuery []) Page.HomFunctors.init (Page.HomFunctors.toQuery Page.HomFunctors.init)
-            , stable "natural transformations" Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery []) Page.NaturalTransformations.init (Page.NaturalTransformations.toQuery Page.NaturalTransformations.init)
-            , stable "yoneda lemma" Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery []) Page.YonedaLemma.init (Page.YonedaLemma.toQuery Page.YonedaLemma.init)
+            , stable "natural transformations" Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery [] []) Page.NaturalTransformations.init (Page.NaturalTransformations.toQuery Page.NaturalTransformations.init)
+            , stable "yoneda lemma" Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery [] []) Page.YonedaLemma.init (Page.YonedaLemma.toQuery Page.YonedaLemma.init)
             , stable "yoneda embedding" Page.YonedaEmbedding.toQuery (Page.YonedaEmbedding.fromQuery []) Page.YonedaEmbedding.init (Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.init)
             , stable "functor playground" Page.Playground.Functor.toQuery (Page.Playground.Functor.fromQuery [] []) Page.Playground.Functor.init (Page.Playground.Functor.toQuery Page.Playground.Functor.init)
             ]
@@ -81,7 +85,7 @@ suite =
             [ test "chapter 8, contravariant lemma on the diamond" <|
                 \_ ->
                     roundTrip Page.YonedaLemma.toQuery
-                        (Page.YonedaLemma.fromQuery [])
+                        (Page.YonedaLemma.fromQuery [] [])
                         Page.YonedaLemma.init
                         [ ( "c", "Diamond poset" ), ( "v", "contra" ), ( "a", "3" ), ( "F", "Hom(−, a)" ), ( "x", "0" ) ]
                         |> Dict.fromList
@@ -100,7 +104,7 @@ suite =
                     , [ ( "set", "S3 acting on itself" ), ( "arrow", "2" ) ]
                     ]
                         |> List.map
-                            (roundTrip Page.Functors.toQuery (Page.Functors.fromQuery []) Page.Functors.init
+                            (roundTrip Page.Functors.toQuery (Page.Functors.fromQuery [] []) Page.Functors.init
                                 >> Dict.fromList
                                 >> (\q -> List.map (\k -> Dict.get k q) [ "set", "arrow", "setview" ])
                             )
@@ -108,6 +112,24 @@ suite =
                             [ [ Just "S3 acting on itself", Just "2", Just "one" ]
                             , [ Just "S3 acting on itself", Just "2", Nothing ]
                             ]
+            , test "chapters 5, 7 and 8 pick a saved functor by name" <|
+                \_ ->
+                    let
+                        draft =
+                            Custom.fromSetFunctor Categories.mixed (SetFunctor.homFunctor Categories.mixed.category 0)
+
+                        yours =
+                            Setting.resolveFunctors [] [ Custom.toSaved { draft | name = "Mine" } ]
+
+                        get key =
+                            Dict.fromList >> Dict.get key
+                    in
+                    [ roundTrip Page.Functors.toQuery (Page.Functors.fromQuery [] yours) Page.Functors.init [ ( "set", "Mine" ) ] |> get "set"
+                    , roundTrip Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery [] yours) Page.NaturalTransformations.init [ ( "c", "Mixed" ), ( "F", "Mine" ), ( "G", "Mine" ) ] |> get "G"
+                    , roundTrip Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery [] yours) Page.YonedaLemma.init [ ( "c", "Mixed" ), ( "F", "Mine" ) ] |> get "F"
+                    , roundTrip Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery [] []) Page.YonedaLemma.init [ ( "c", "Mixed" ), ( "F", "Mine" ) ] |> get "F"
+                    ]
+                        |> Expect.equal [ Just "Mine", Just "Mine", Just "Mine", Just "Hom(B, −)" ]
             , test "groups: the hovered cell is not part of the link" <|
                 \_ ->
                     Page.Groups.toQuery Page.Groups.init

@@ -10,6 +10,7 @@ import Math.CustomFunctor as Custom exposing (Completion(..), Draft, Reason(..))
 import Math.FinFunction as FinFunction
 import Math.Group as Group
 import Math.SetFunctor as SetFunctor exposing (SetFunctor)
+import Math.Setting as Setting
 import Test exposing (Test, describe, test)
 
 
@@ -249,9 +250,41 @@ suite =
                     |> Decode.decodeValue Custom.decoder
                     |> Result.map List.length
                     |> Expect.equal (Ok 1)
-        , test "names: required, no TeX specials, not a built-in one" <|
+        , test "names: required, no TeX specials, not a built-in one, not a hom functor's" <|
             \_ ->
-                [ "", "a_b", "Two composable functions", "Mine" ]
+                [ "", "a_b", "Two composable functions", "Hom(A, −)", "Mine" ]
                     |> List.map (Custom.nameProblem [ "Two composable functions" ] >> (/=) Nothing)
-                    |> Expect.equal [ True, True, True, False ]
+                    |> Expect.equal [ True, True, True, True, False ]
+        , describe "saved functors are offered on their category"
+            (let
+                mine name =
+                    let
+                        d =
+                            Custom.fromSetFunctor Categories.mixed (SetFunctor.homFunctor Categories.mixed.category 0)
+                    in
+                    Custom.toSaved { d | name = name }
+
+                yours =
+                    Setting.resolveFunctors [] [ mine "Mine", mine "Hom(A, −)" ]
+
+                names =
+                    List.map .name
+             in
+             [ test "on Mixed, after the built-in ones; a hom functor's name is not taken over" <|
+                \_ ->
+                    Setting.byNameWith [] yours "Mixed"
+                        |> Maybe.map (\s -> ( names s.yours, List.reverse (names s.functors) |> List.head ))
+                        |> Expect.equal (Just ( [ "Mine" ], Just "Mine" ))
+             , test "not on other categories" <|
+                \_ ->
+                    Setting.allWith [] yours
+                        |> List.filter (\s -> s.example.category.name /= "Mixed")
+                        |> List.concatMap .yours
+                        |> Expect.equal []
+             , test "not when the category is gone" <|
+                \_ ->
+                    Setting.resolveFunctors [] [ { name = "Lost", category = "Deleted", sets = [], functions = [] } ]
+                        |> Expect.equal []
+             ]
+            )
         ]

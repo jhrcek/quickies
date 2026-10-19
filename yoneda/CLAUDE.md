@@ -50,11 +50,16 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   and arrows by label; kept even when they no longer fit), built in the functor playground
   (`Page/Playground/Functor.elm`, pure logic in `Math/CustomFunctor.elm`: drafts by index,
   propagation of the composition law with reasons, backtracking auto-fill, JSON codec).
+  `Main.yourFunctors` resolves the ones that still fit (`Setting.resolveFunctors`); chapters 5,
+  7 and 8 take them in `view` and `fromQuery` and offer them through `View/FunctorPicker`
+  (grouped as "Yours:", with links into the functor playground). After a functor or category
+  is saved/deleted, `Main.reloadIfShowing` re-applies the deep link of every page naming it.
 - `Math/*` - pure, UI-free math: `FinSet`, `FinFunction` (functions as `Array Int` of
   target indices), `Group` (finite group as Cayley table + curated examples).
 - `View/Notation.elm` - the ONLY place composition-order dependent TeX/prose is produced.
   Chapters must not hand-build composition formulas.
-- `Math/Setting.elm` - a category plus the Set-valued functors chapters 7 and 8 offer on it.
+- `Math/Setting.elm` - a category plus the Set-valued functors chapters 7 and 8 offer on it
+  (curated, hom functors, then the reader's own: `allWith customs yours`).
 - `ListUtil.elm` - `find`, `findIndex`, `indexOf`, `allDistinct`.
 - `View/FunctionEditor.elm` - reusable SVG widget: define a function between finite sets
   by clicking a source then a target element; also used read-only.

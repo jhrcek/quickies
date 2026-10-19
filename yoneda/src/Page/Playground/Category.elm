@@ -83,7 +83,7 @@ builtinNames =
 -}
 templates : List Example -> List Example
 templates customs =
-    List.map .example (Setting.allWith customs)
+    Setting.examplesWith customs
 
 
 isSaved : List Example -> String -> Bool

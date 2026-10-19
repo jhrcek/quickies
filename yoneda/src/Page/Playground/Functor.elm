@@ -97,7 +97,7 @@ fresh draft =
 -}
 examples : List Example -> List Example
 examples customs =
-    List.map .example (Setting.allWith customs)
+    Setting.examplesWith customs
 
 
 exampleNamed : List Example -> String -> Maybe Example
@@ -127,7 +127,7 @@ templates customs saved draft =
             draft.example
 
         builtin =
-            Setting.byNameWith customs ex.category.name
+            Setting.byNameWith customs [] ex.category.name
                 |> Maybe.map .functors
                 |> Maybe.withDefault []
                 |> List.map (\fun -> ( "b:" ++ fun.name, fun.name, copy (Custom.fromSetFunctor ex fun) ))

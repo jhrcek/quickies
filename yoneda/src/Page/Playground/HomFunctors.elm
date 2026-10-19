@@ -70,7 +70,7 @@ init =
 -}
 examples : List Example -> List Example
 examples customs =
-    List.map .example (Setting.allWith customs)
+    Setting.examplesWith customs
 
 
 update : List Example -> Msg -> Model -> Model

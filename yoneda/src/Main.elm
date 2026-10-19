@@ -29,6 +29,8 @@ import Json.Encode as Encode
 import Math.Categories as Categories exposing (Example)
 import Math.CustomCategory as CustomCategory
 import Math.CustomFunctor as CustomFunctor
+import Math.SetFunctor exposing (SetFunctor)
+import Math.Setting as Setting
 import Page.Categories
 import Page.Cayley
 import Page.Functors
@@ -159,8 +161,9 @@ storeCustoms customs =
 
 
 {-| Apply a change to the saved custom categories: store them, and re-apply its own deep
-link to every page showing the category of that name, so that it picks up the new
-version (or falls back to its default when the category was deleted).
+link to every page showing the category of that name or one of the reader's functors on
+it, so that it picks up the new version (or falls back to its default when the category
+was deleted).
 -}
 applyEffect : Page.Playground.Category.Effect -> Model -> ( Model, Cmd Msg )
 applyEffect effect model =
@@ -191,41 +194,39 @@ applyEffect effect model =
                 Page.Playground.Category.Delete n ->
                     ( List.filter (\c -> c.category.name /= n) model.customs, n )
 
-        reload toQuery fromQuery initial page =
-            let
-                params =
-                    toQuery page
-            in
-            if List.any (\( _, v ) -> v == name) params then
-                fromQuery customs (Query.fromString (Query.toString params)) initial
+        updated =
+            { model | customs = customs }
 
-            else
-                page
+        names =
+            name :: (model.customFunctors |> List.filter (\s -> s.category == name) |> List.map .name)
+
+        reload =
+            reloadIfShowing names
+
+        withFunctors =
+            reloadFunctorPages names updated
     in
-    ( { model
-        | customs = customs
-        , categories = reload Page.Categories.toQuery Page.Categories.fromQuery Page.Categories.init model.categories
-        , functors = reload Page.Functors.toQuery Page.Functors.fromQuery Page.Functors.init model.functors
-        , homFunctors = reload Page.HomFunctors.toQuery Page.HomFunctors.fromQuery Page.HomFunctors.init model.homFunctors
-        , naturalTransformations = reload Page.NaturalTransformations.toQuery Page.NaturalTransformations.fromQuery Page.NaturalTransformations.init model.naturalTransformations
-        , yonedaLemma = reload Page.YonedaLemma.toQuery Page.YonedaLemma.fromQuery Page.YonedaLemma.init model.yonedaLemma
-        , yonedaEmbedding = reload Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.fromQuery Page.YonedaEmbedding.init model.yonedaEmbedding
-        , homFunctorsPlayground = reload Page.Playground.HomFunctors.toQuery Page.Playground.HomFunctors.fromQuery Page.Playground.HomFunctors.init model.homFunctorsPlayground
+    ( { withFunctors
+        | categories = reload Page.Categories.toQuery (Page.Categories.fromQuery customs) Page.Categories.init model.categories
+        , homFunctors = reload Page.HomFunctors.toQuery (Page.HomFunctors.fromQuery customs) Page.HomFunctors.init model.homFunctors
+        , yonedaEmbedding = reload Page.YonedaEmbedding.toQuery (Page.YonedaEmbedding.fromQuery customs) Page.YonedaEmbedding.init model.yonedaEmbedding
+        , homFunctorsPlayground = reload Page.Playground.HomFunctors.toQuery (Page.Playground.HomFunctors.fromQuery customs) Page.Playground.HomFunctors.init model.homFunctorsPlayground
         , functorPlayground = Page.Playground.Functor.categoryChanged customs name model.functorPlayground
       }
     , storeCustoms customs
     )
 
 
-{-| Apply a change to the saved custom functors, and store them.
+{-| Apply a change to the saved custom functors: store them, and re-apply its own deep link
+to every page that offers the reader's functors and shows that functor or its category.
 -}
 applyFunctorEffect : Page.Playground.Functor.Effect -> Model -> ( Model, Cmd Msg )
 applyFunctorEffect effect model =
     let
-        customFunctors =
+        ( customFunctors, names ) =
             case effect of
                 Page.Playground.Functor.Store saved ->
-                    if List.any (\s -> s.name == saved.name) model.customFunctors then
+                    ( if List.any (\s -> s.name == saved.name) model.customFunctors then
                         List.map
                             (\s ->
                                 if s.name == saved.name then
@@ -236,18 +237,67 @@ applyFunctorEffect effect model =
                             )
                             model.customFunctors
 
-                    else
+                      else
                         model.customFunctors ++ [ saved ]
+                    , saved.name :: saved.category :: categoryOf saved.name
+                    )
 
                 Page.Playground.Functor.Delete name ->
-                    List.filter (\s -> s.name /= name) model.customFunctors
+                    ( List.filter (\s -> s.name /= name) model.customFunctors
+                    , name :: categoryOf name
+                    )
+
+        categoryOf name =
+            -- the category the functor was on before the change
+            model.customFunctors |> List.filter (\s -> s.name == name) |> List.map .category
     in
-    ( { model | customFunctors = customFunctors }
+    ( reloadFunctorPages names { model | customFunctors = customFunctors }
     , customFunctors
         |> CustomFunctor.encode
         |> Encode.encode 0
         |> Ports.storeCustomFunctors
     )
+
+
+{-| Re-apply its own deep link to a page whose deep link mentions one of the names.
+-}
+reloadIfShowing : List String -> (page -> List ( String, String )) -> (Query -> page -> page) -> page -> page -> page
+reloadIfShowing names toQuery fromQuery initial page =
+    let
+        params =
+            toQuery page
+    in
+    if List.any (\( _, v ) -> List.member v names) params then
+        fromQuery (Query.fromString (Query.toString params)) initial
+
+    else
+        page
+
+
+{-| `reloadIfShowing` for the pages offering the reader's functors, with the custom
+categories and functors of the given model.
+-}
+reloadFunctorPages : List String -> Model -> Model
+reloadFunctorPages names model =
+    let
+        reload =
+            reloadIfShowing names
+
+        yours =
+            yourFunctors model
+    in
+    { model
+        | functors = reload Page.Functors.toQuery (Page.Functors.fromQuery model.customs yours) Page.Functors.init model.functors
+        , naturalTransformations = reload Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery model.customs yours) Page.NaturalTransformations.init model.naturalTransformations
+        , yonedaLemma = reload Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery model.customs yours) Page.YonedaLemma.init model.yonedaLemma
+    }
+
+
+{-| The reader's saved functors that still are functors on their category.
+-}
+yourFunctors : Model -> List SetFunctor
+yourFunctors model =
+    Setting.resolveFunctors model.customs model.customFunctors
 
 
 {-| Remember the current chapter as the place a playground's close button returns to.
@@ -295,16 +345,16 @@ applyQuery query model =
             { model | categories = Page.Categories.fromQuery model.customs query model.categories }
 
         Functors ->
-            { model | functors = Page.Functors.fromQuery model.customs query model.functors }
+            { model | functors = Page.Functors.fromQuery model.customs (yourFunctors model) query model.functors }
 
         HomFunctors ->
             { model | homFunctors = Page.HomFunctors.fromQuery model.customs query model.homFunctors }
 
         NaturalTransformations ->
-            { model | naturalTransformations = Page.NaturalTransformations.fromQuery model.customs query model.naturalTransformations }
+            { model | naturalTransformations = Page.NaturalTransformations.fromQuery model.customs (yourFunctors model) query model.naturalTransformations }
 
         YonedaLemma ->
-            { model | yonedaLemma = Page.YonedaLemma.fromQuery model.customs query model.yonedaLemma }
+            { model | yonedaLemma = Page.YonedaLemma.fromQuery model.customs (yourFunctors model) query model.yonedaLemma }
 
         YonedaEmbedding ->
             { model | yonedaEmbedding = Page.YonedaEmbedding.fromQuery model.customs query model.yonedaEmbedding }
@@ -653,16 +703,16 @@ viewChapter model =
             Html.map CategoriesMsg (Page.Categories.view model.order model.customs model.categories)
 
         Functors ->
-            Html.map FunctorsMsg (Page.Functors.view model.order model.customs model.functors)
+            Html.map FunctorsMsg (Page.Functors.view model.order model.customs (yourFunctors model) model.functors)
 
         HomFunctors ->
             Html.map HomFunctorsMsg (Page.HomFunctors.view model.order model.customs model.homFunctors)
 
         NaturalTransformations ->
-            Html.map NaturalTransformationsMsg (Page.NaturalTransformations.view model.order model.customs model.naturalTransformations)
+            Html.map NaturalTransformationsMsg (Page.NaturalTransformations.view model.order model.customs (yourFunctors model) model.naturalTransformations)
 
         YonedaLemma ->
-            Html.map YonedaLemmaMsg (Page.YonedaLemma.view model.order model.customs model.yonedaLemma)
+            Html.map YonedaLemmaMsg (Page.YonedaLemma.view model.order model.customs (yourFunctors model) model.yonedaLemma)
 
         YonedaEmbedding ->
             Html.map YonedaEmbeddingMsg (Page.YonedaEmbedding.view model.order model.customs model.yonedaEmbedding)

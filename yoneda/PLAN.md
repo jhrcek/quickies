@@ -23,9 +23,9 @@ functor laws, enumerating *all* natural transformations, the Yoneda bijection)
 can be computed by brute force in pure Elm and tested with elm-test.
 
 
-## Status (updated 2026-09-23)
+## Status (updated 2026-10-19)
 
-Done (compiles, `make check` passes, `make test` passes: 434 tests; `elm-test` 0.19.2 comes
+Done (compiles, `make check` passes, `make test` passes: 609 tests; `elm-test` 0.19.2 comes
 from the repo's nix devShell):
 - [x] 0. Scaffold, routing, shell, KaTeX, composition-order toggle (model state only, NOT in URL)
 - [x] 1. Sets and functions (`Page/Sets.elm`, `View/FunctionEditor.elm`, `Math/FinSet`, `Math/FinFunction`)
@@ -130,11 +130,24 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
         broken ones (so a functor survives its category being deleted and saved again);
         `Main.applyEffect` carries the playground's draft over when its category is edited.
       - `SetPicture.colors` (moved from chapter 5) gives the shared object/arrow colors.
-- [ ] 16. Playground integration of custom functors: `Setting.allWith` offers saved functors on
-      their category, so chapters 5, 7 and 8 (and the hom functors playground where it makes
-      sense) can pick them, grouped as "Yours:" with "Edit (a copy)" / "Build your own" links;
-      `Main.applyEffect` re-applies deep links after a functor is saved/deleted and when its
-      category changes.
+- [x] 16. Playground integration of custom functors (2026-10-19): `Setting.resolveFunctors`
+      turns the saved functors that still fit into `SetFunctor`s (`Main.yourFunctors`, computed
+      on demand); `Setting.allWith customs yours` offers them on their category (field `yours`,
+      also appended to `functors`; one whose name a built-in functor on that category already
+      has is dropped, and `CustomFunctor.nameProblem` now rejects names starting with `Hom(`).
+      `View/FunctorPicker.elm` is the functor button row of chapters 5 (all curated + all of
+      yours), 7 and 8: built-in ones, "Yours:", then "✎ Edit" (`?from=<name>`) / "✎ Edit a copy"
+      (`?from=<name>&c=<category>`) / "+ Build your own" (`?c=<category>`, a blank draft on that
+      category) links into the functor playground (hidden for chapter 8's contravariant
+      functors). Chapters 5, 7, 8 take `yours` in `view` and `fromQuery`; 7 and 8 refresh their
+      cached `Setting` when the link names the category they already show.
+      `Main.reloadIfShowing` re-applies a page's deep link when it mentions a given name: after
+      a functor is saved/deleted for the functor's name and its category (chapters 5, 7, 8),
+      after a category is saved/deleted for the category's name and the names of the saved
+      functors on it (all category pages). The hom functors playground is about hom functors
+      only, so it does not offer custom functors. Tests in `tests/CustomFunctorTest.elm`
+      (offered on their category only, name clashes, deleted category) and
+      `tests/PageQueryTest.elm` (deep links naming a saved functor in chapters 5, 7, 8).
 - [ ] 17. Yoneda playground (`#/playground/yoneda`): pick C, A and F (curated, hom or custom).
       Fill in α : Hom(A,−) ⇒ F as a table (one row per object X, one cell per f ∈ Hom(A,X)) in any
       order. A propagation engine (fixpoint of "assigned α_X(f), arrow g : X → Y ⇒

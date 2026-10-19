@@ -18,6 +18,7 @@ import View.CategoryPicker as CategoryPicker
 import View.Common exposing (countBadge)
 import View.Diagram as Diagram exposing (Highlight(..))
 import View.FunctionEditor as FunctionEditor exposing (Interaction(..))
+import View.FunctorPicker as FunctorPicker
 import View.Notation as Notation exposing (CompositionOrder)
 import View.Square as Square
 
@@ -276,8 +277,8 @@ onIdentity order variance idA g =
 -- VIEW
 
 
-view : CompositionOrder -> List Example -> Model -> Html Msg
-view order customs model =
+view : CompositionOrder -> List Example -> List SetFunctor -> Model -> Html Msg
+view order customs yours model =
     let
         cat =
             model.setting.example.category
@@ -361,7 +362,7 @@ view order customs model =
             ]
         , CategoryPicker.view
             { label = "Category 𝒞:"
-            , items = Setting.allWith customs
+            , items = Setting.allWith customs yours
             , category = .example >> .category
             , customs = customs
             , selected = cat.name
@@ -380,14 +381,14 @@ view order customs model =
                     )
                     (Category.objectIndices cat)
             )
-        , div [ class "controls" ]
-            (span [ class "muted" ] [ text "Functor F:" ]
-                :: List.map
-                    (\f ->
-                        button [ classList [ ( "active", f.name == model.functor.name ) ], onClick (SelectFunctor f) ] [ KaTeX.inline f.texName ]
-                    )
-                    (functorsFor model.variance model.setting)
-            )
+        , FunctorPicker.view
+            { label = "Functor F:"
+            , functors = functorsFor model.variance model.setting
+            , yours = model.setting.yours
+            , selected = model.functor
+            , onSelect = SelectFunctor
+            , links = model.variance == Covariant
+            }
         , bijectionCard model
         , h3 [] [ text "Why one element determines everything" ]
         , chaseCard order model
@@ -916,14 +917,15 @@ toQuery model =
     ]
 
 
-fromQuery : List Example -> Query -> Model -> Model
-fromQuery customs q model =
+fromQuery : List Example -> List SetFunctor -> Query -> Model -> Model
+fromQuery customs yours q model =
     let
         withSetting md =
-            case Query.string "c" q |> Maybe.andThen (Setting.byNameWith customs) of
+            case Query.string "c" q |> Maybe.andThen (Setting.byNameWith customs yours) of
                 Just s ->
                     if s.example.category.name == md.setting.example.category.name then
-                        md
+                        -- the same category, but the reader's functors on it may have changed
+                        { md | setting = s }
 
                     else
                         update (SelectSetting s) md

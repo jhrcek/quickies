@@ -844,7 +844,7 @@ resolve examples saved =
 
 
 {-| A name is required, must not contain TeX special characters (it is shown as
-`\text{…}`) and must not be one of `taken`.
+`\text{…}`), must not be one of `taken` and must not look like the name of a hom functor.
 -}
 nameProblem : List String -> String -> Maybe String
 nameProblem taken name =
@@ -863,6 +863,9 @@ nameProblem taken name =
 
     else if List.member trimmed taken then
         Just "A built-in functor already has this name."
+
+    else if String.startsWith "Hom(" trimmed then
+        Just "Names starting with “Hom(” are kept for the hom functors."
 
     else
         Nothing
