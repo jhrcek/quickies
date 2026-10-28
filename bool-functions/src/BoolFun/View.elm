@@ -11,11 +11,10 @@ module BoolFun.View exposing
 {-| Html rendering of Boolean functions: truth tables, cells and implicants.
 -}
 
-import BoolFun exposing (ArityConfig, BF, Implicant, Literal(..), Restriction, arityOf, eval, funIndexOf, implicantToFunction, implicantToLiterals, inputBits, varNames)
+import BoolFun exposing (BF, Implicant, Literal(..), Restriction, arityOf, eval, implicantToFunction, implicantToLiterals, inputBits, varNames)
 import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
-import Natural as N
 import Settings exposing (Settings)
 
 
@@ -28,8 +27,8 @@ genericName n =
     "f(" ++ String.join "," (varNames n) ++ ")"
 
 
-truthTable : (Int -> msg) -> Settings -> ArityConfig -> Maybe Restriction -> List Implicant -> BF -> Html msg
-truthTable flipBitInFunctionIndex settings { getName } maybeRestriction implicants bf =
+truthTable : (Int -> msg) -> Settings -> Maybe Restriction -> List Implicant -> BF -> Html msg
+truthTable flipBitInFunctionIndex settings maybeRestriction implicants bf =
     let
         arity =
             arityOf bf
@@ -103,13 +102,7 @@ truthTable flipBitInFunctionIndex settings { getName } maybeRestriction implican
                     ++ implicantHeaderCells
                     ++ [ Html.th [ doubleBorder ]
                             [ Settings.viewTerm settings
-                                (case getName of
-                                    Just toName ->
-                                        toName (N.toInt (funIndexOf bf))
-
-                                    Nothing ->
-                                        genericName arity
-                                )
+                                (BoolFun.name bf |> Maybe.withDefault (genericName arity))
                             ]
                        ]
                 )

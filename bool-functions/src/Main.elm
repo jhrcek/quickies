@@ -679,25 +679,16 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                                     BoolFun.cofactors bf
                             in
                             Html.div []
-                                [ case BoolFun.configForArity arity of
-                                    Just config ->
-                                        let
-                                            implicantsForTable =
-                                                if showImplicantsInTable && propSubroute == PropertiesSummary then
-                                                    BoolFun.primeImplicants bf
+                                [ BoolFun.View.truthTable FlipBitInFunctionIndex
+                                    settings
+                                    (effectiveRestriction pinnedRestriction hoveredRestriction)
+                                    (if showImplicantsInTable && propSubroute == PropertiesSummary then
+                                        BoolFun.primeImplicants bf
 
-                                                else
-                                                    []
-                                        in
-                                        BoolFun.View.truthTable FlipBitInFunctionIndex
-                                            settings
-                                            config
-                                            (effectiveRestriction pinnedRestriction hoveredRestriction)
-                                            implicantsForTable
-                                            bf
-
-                                    Nothing ->
-                                        unsupportedArity
+                                     else
+                                        []
+                                    )
+                                    bf
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
                                 , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors
                                 , viewProperty arity functionIndex propSubroute cofactors bf
@@ -1390,17 +1381,6 @@ viewMonotone bf =
         ]
 
 
-unsupportedArity : Html msg
-unsupportedArity =
-    Html.text
-        ("Unsupported function arity (must be between "
-            ++ String.fromInt BoolFun.minArity
-            ++ " and "
-            ++ String.fromInt BoolFun.maxArity
-            ++ " inclusive)"
-        )
-
-
 viewAllFunctions : Settings -> Int -> Natural -> Html Msg
 viewAllFunctions settings arity page =
     let
@@ -1416,28 +1396,23 @@ viewAllFunctions settings arity page =
         endExclusive =
             N.min (N.add offset BoolFun.pageSize) total
 
-        maybeGetName =
-            BoolFun.configForArity arity
-                |> Maybe.andThen .getName
-
         rows =
             naturalRange offset endExclusive
                 |> List.filterMap
                     (\index ->
                         BoolFun.mkBF arity index
-                            |> Maybe.map (functionRow settings arity maybeGetName index)
+                            |> Maybe.map (functionRow settings arity index)
                     )
 
         header =
             Html.thead []
                 [ Html.tr []
                     (Html.th [] [ Html.text "Index" ]
-                        :: (case maybeGetName of
-                                Just _ ->
-                                    [ Html.th [] [ Html.text "Function Name" ] ]
+                        :: (if BoolFun.hasNames arity then
+                                [ Html.th [] [ Html.text "Function Name" ] ]
 
-                                Nothing ->
-                                    []
+                            else
+                                []
                            )
                         ++ [ Html.th [] [ Html.text "Falsity-preserving" ]
                            , Html.th [] [ Html.text "Truth-preserving" ]
@@ -1475,17 +1450,17 @@ viewAllFunctions settings arity page =
         ]
 
 
-functionRow : Settings -> Int -> Maybe (Int -> String) -> Natural -> BoolFun.BF -> Html Msg
-functionRow settings arity maybeGetName index bf =
+functionRow : Settings -> Int -> Natural -> BoolFun.BF -> Html Msg
+functionRow settings arity index bf =
     Html.tr []
         (Html.td []
             [ Html.a
                 [ Route.href (Arity arity (Function index PropertiesSummary)) ]
                 [ Html.text (N.toDecimalString index) ]
             ]
-            :: (case maybeGetName of
-                    Just getName ->
-                        [ Html.td [] [ Settings.viewTerm settings (getName (N.toInt index)) ] ]
+            :: (case BoolFun.name bf of
+                    Just name ->
+                        [ Html.td [] [ Settings.viewTerm settings name ] ]
 
                     Nothing ->
                         []

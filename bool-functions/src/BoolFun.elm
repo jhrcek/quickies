@@ -1,6 +1,5 @@
 module BoolFun exposing
-    ( ArityConfig
-    , -- Opaque
+    ( -- Opaque
       BF
     , Cofactors
     , Implicant
@@ -12,7 +11,6 @@ module BoolFun exposing
     , cofactor
     , cofactorPolarity
     , cofactors
-    , configForArity
     , disjunction
     , dualOf
     , eval
@@ -20,6 +18,7 @@ module BoolFun exposing
     , fromRows
     , funCount
     , funIndexOf
+    , hasNames
     , implicantFromLiterals
     , implicantToFunction
     , implicantToLiterals
@@ -34,6 +33,7 @@ module BoolFun exposing
     , maxFunctionIndex
     , minArity
     , mkBF
+    , name
     , pageCount
     , pageSize
     , primeImplicants
@@ -170,36 +170,37 @@ f2Names =
         ]
 
 
-type alias ArityConfig =
-    { getName : Maybe (Int -> String)
-    }
-
-
-{-| The `ArityConfig` for an arity, or `Nothing` when the arity is out of range.
-Only arities 0, 1 and 2 have meaningful per-function names; for higher arities
-`getName` is `Nothing`.
+{-| The conventional name of a function (FALSE, NOT, XOR, a → b, …).
+Only functions of arity 0, 1 and 2 have names.
 -}
-configForArity : Int -> Maybe ArityConfig
-configForArity arity =
-    if arity < minArity || arity > maxArity then
-        Nothing
+name : BF -> Maybe String
+name (BF { arity, funIndex }) =
+    -- `N.toInt` is only reached for arities with names, whose indices are small.
+    namesForArity arity
+        |> Maybe.andThen (Array.get (N.toInt funIndex))
 
-    else
-        Just
-            { getName =
-                case arity of
-                    0 ->
-                        Just (\i -> Array.get i f0Names |> Maybe.withDefault "f()")
 
-                    1 ->
-                        Just (\i -> Array.get i f1Names |> Maybe.withDefault "f(a)")
+{-| Whether functions of this arity have names (see `name`).
+-}
+hasNames : Int -> Bool
+hasNames arity =
+    namesForArity arity /= Nothing
 
-                    2 ->
-                        Just (\i -> Array.get i f2Names |> Maybe.withDefault "f(a, b)")
 
-                    _ ->
-                        Nothing
-            }
+namesForArity : Int -> Maybe (Array String)
+namesForArity arity =
+    case arity of
+        0 ->
+            Just f0Names
+
+        1 ->
+            Just f1Names
+
+        2 ->
+            Just f2Names
+
+        _ ->
+            Nothing
 
 
 varNames : Int -> List String

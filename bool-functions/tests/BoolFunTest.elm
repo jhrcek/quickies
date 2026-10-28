@@ -311,32 +311,18 @@ namedExamplesTests =
 namesTests : Test
 namesTests =
     let
-        nameOf f =
-            B.configForArity (B.arityOf f)
-                |> Maybe.andThen .getName
-                |> Maybe.map (\getName -> getName (N.toInt (B.funIndexOf f)))
-
         -- Each name matches its definition, and the definitions cover every
         -- function of the arity exactly once.
         expectNames =
             Expect.all
                 [ \defs ->
-                    List.map (Tuple.second >> nameOf) defs
+                    List.map (Tuple.second >> B.name) defs
                         |> Expect.equalLists (List.map (Tuple.first >> Just) defs)
                 , \defs ->
                     List.map (Tuple.second >> B.funIndexOf >> N.toInt) defs
                         |> List.sort
                         |> Expect.equalLists (List.range 0 (List.length defs - 1))
                 ]
-
-        -- Not `(/=) Nothing`: these Maybes hold functions, which `==` can't compare.
-        isJust m =
-            case m of
-                Just _ ->
-                    True
-
-                Nothing ->
-                    False
     in
     describe "names"
         [ test "varNames n is the first n letters of the alphabet" <|
@@ -348,17 +334,12 @@ namesTests =
                         , [ "a", "b", "c" ]
                         , [ "a", "b", "c", "d", "e", "f" ]
                         ]
-        , test "configForArity is Nothing outside minArity..maxArity" <|
-            \_ ->
-                [ B.minArity - 1, B.maxArity + 1 ]
-                    |> List.map (B.configForArity >> isJust)
-                    |> Expect.equalLists [ False, False ]
         , test "only arities 0, 1 and 2 have function names" <|
             \_ ->
                 allArities
-                    |> List.map (\n -> B.configForArity n |> Maybe.map (.getName >> isJust))
+                    |> List.map B.hasNames
                     |> Expect.equalLists
-                        (List.map (\n -> Just (n <= 2)) allArities)
+                        (List.map (\n -> n <= 2) allArities)
         , test "arity-0 names" <|
             \_ ->
                 expectNames
