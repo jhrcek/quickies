@@ -25,8 +25,6 @@
 </head>
 
 <body>
-    <div id="elm"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.30/dist/viz-global.js"></script>
 
     <script>
@@ -72,11 +70,12 @@
                     svgElement.style.height = 'auto';
                 } catch (error) {
                     console.error('Graphviz render error:', error);
-                    this.shadowRoot.innerHTML = `
-                        <div style="color: #c00; padding: 10px; background: #fee; border-radius: 4px;">
-                            <strong>Render Error:</strong> ${error.message}
-                        </div>
-                    `;
+                    const errorBox = document.createElement('div');
+                    errorBox.style.cssText = 'color: #c00; padding: 10px; background: #fee; border-radius: 4px;';
+                    const label = document.createElement('strong');
+                    label.textContent = 'Render Error:';
+                    errorBox.append(label, ' ', error.message);
+                    this.shadowRoot.replaceChildren(errorBox);
                 }
             }
         }
@@ -85,11 +84,7 @@
     </script>
 
     <script src="elm.min.js"></script>
-    <script>
-        Elm.Main.init({
-            node: document.getElementById('elm')
-        });
-    </script>
+    <script>Elm.Main.init();</script>
 </body>
 
 </html>

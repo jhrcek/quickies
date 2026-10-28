@@ -391,7 +391,7 @@ subscriptions _ =
 
 view : Model -> Browser.Document Msg
 view model =
-    { title = "Function Explorer"
+    { title = "Boolean Function Explorer"
     , body = [ viewBody model ]
     }
 
