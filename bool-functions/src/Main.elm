@@ -12,7 +12,7 @@ import Json.Decode as Decode
 import Natural as N exposing (Natural)
 import PostProperties
 import Random
-import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..), RouteError(..))
+import Route exposing (ArityRoute(..), PropertyRoute(..), Route(..), RouteError)
 import Settings exposing (Settings)
 import Url
 
@@ -669,17 +669,17 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                             Html.text "Invalid function index"
 
                         Just bf ->
-                            let
-                                implicantsForTable =
-                                    if showImplicantsInTable && propSubroute == PropertiesSummary then
-                                        BoolFun.primeImplicants bf
-
-                                    else
-                                        []
-                            in
                             Html.div []
                                 [ case BoolFun.configForArity arity of
                                     Just config ->
+                                        let
+                                            implicantsForTable =
+                                                if showImplicantsInTable && propSubroute == PropertiesSummary then
+                                                    BoolFun.primeImplicants bf
+
+                                                else
+                                                    []
+                                        in
                                         BoolFun.View.truthTable FlipBitInFunctionIndex
                                             settings
                                             config
@@ -1049,15 +1049,16 @@ viewRestrictionSummary arity highlight bf =
                 restr =
                     { varIndex = highlight.varIndex, value = value }
 
-                -- The row whose value matches the highlighted restriction gets
-                -- the same vivid-background + outline treatment as the matching
-                -- cells in the main truth table.
-                isHighlightedRow =
-                    value == highlight.value
-
                 outputCells =
                     case BoolFun.restriction restr bf of
                         Just cofactor ->
+                            let
+                                -- The row whose value matches the highlighted restriction gets
+                                -- the same vivid-background + outline treatment as the matching
+                                -- cells in the main truth table.
+                                isHighlightedRow =
+                                    value == highlight.value
+                            in
                             List.map
                                 (\i ->
                                     let
@@ -1242,7 +1243,7 @@ viewChowParameters arity bf =
 
         legendItem term explanation =
             Html.p [ HA.style "margin" "0.15em 0" ]
-                (Html.b [] term :: [ Html.text explanation ])
+                [ Html.b [] term, Html.text explanation ]
     in
     Html.div []
         [ Html.table [ HA.class "functions-table" ]
@@ -1272,12 +1273,6 @@ viewChowParameters arity bf =
 viewSelfDual : Int -> BoolFun.BF -> Html Msg
 viewSelfDual arity bf =
     let
-        dual =
-            BoolFun.dualOf bf
-
-        dualIndex =
-            BoolFun.funIndexOf dual
-
         verdict =
             if BoolFun.isSelfDual bf then
                 Html.p []
@@ -1287,6 +1282,10 @@ viewSelfDual arity bf =
                     ]
 
             else
+                let
+                    dualIndex =
+                        BoolFun.funIndexOf (BoolFun.dualOf bf)
+                in
                 Html.p []
                     [ Html.text "❌ This function "
                     , Html.strong [] [ Html.text "is not self-dual" ]
@@ -1492,15 +1491,26 @@ functionRow settings arity maybeGetName index bf =
 
 
 {-| The natural numbers in the half-open interval [start, end).
-Used to build at most `BoolFun.pageSize` rows, so recursion depth is bounded.
 -}
 naturalRange : Natural -> Natural -> List Natural
 naturalRange start end =
+    naturalRangeHelp start end []
+
+
+{-| Count down from `end`, consing onto the accumulator so the result comes out
+in increasing order without a final reverse.
+-}
+naturalRangeHelp : Natural -> Natural -> List Natural -> List Natural
+naturalRangeHelp start end acc =
     if N.isLessThan end start then
-        start :: naturalRange (N.add start N.one) end
+        let
+            prev =
+                N.sub end N.one
+        in
+        naturalRangeHelp start prev (prev :: acc)
 
     else
-        []
+        acc
 
 
 viewPager : Int -> Natural -> Natural -> Html Msg

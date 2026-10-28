@@ -7,7 +7,6 @@ module Helpers exposing
     , fnAndRestrictionFuzzer
     , fnAndRowFuzzer
     , fnFuzzer
-    , fnOfArity
     , forAllFunctions
     , fromFn1
     , fromFn2
@@ -17,7 +16,6 @@ module Helpers exposing
     , literalsFuzzer
     , rowOfBits
     , rowsFuzzer
-    , rowsOfArity
     , sameArityListFuzzer
     , sameArityPairFuzzer
     , sameArityTripleFuzzer

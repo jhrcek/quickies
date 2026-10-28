@@ -158,13 +158,9 @@ rowsTests =
                             List.range 0 (2 ^ n - 1)
                                 |> List.filterMap
                                     (\i ->
-                                        let
-                                            expected =
-                                                List.map ((==) i) (List.range 0 (2 ^ n - 1))
-                                        in
                                         case B.mkBF n (N.exp N.two (N.fromSafeInt i)) of
                                             Just f ->
-                                                if B.toRows f == expected then
+                                                if B.toRows f == List.map ((==) i) (List.range 0 (2 ^ n - 1)) then
                                                     Nothing
 
                                                 else
