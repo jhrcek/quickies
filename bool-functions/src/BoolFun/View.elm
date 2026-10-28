@@ -1,13 +1,17 @@
 module BoolFun.View exposing
-    ( boolCell
+    ( algebraicNormalFormTex
+    , boolCell
     , boolCellWith
     , boolColor
+    , functionLabelTex
     , highlightCellAttrs
+    , implicantTex
+    , monomialTex
     , showBool
     , truthTable
     , viewAlgebraicNormalForm
     , viewImplicant
-    , viewMonomial
+    , viewVarName
     )
 
 {-| Html rendering of Boolean functions: truth tables, cells, implicants and
@@ -19,16 +23,24 @@ import BoolFun exposing (BF, Implicant, Literal(..), Monomial, Restriction, arit
 import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
+import KaTeX
 import Settings exposing (Settings)
 
 
-{-| Generic, name-free label for a function of the given arity, e.g. `f(a,b,c)`.
-Used as the truth-table output-column header for arities that have no meaningful
-per-function names.
+{-| TeX for the generic, name-free label of a function of the given arity, e.g.
+`f(a,b,c)`. Used as the truth-table output-column header for arities that have
+no meaningful per-function names.
 -}
-genericName : Int -> String
-genericName n =
+functionLabelTex : Int -> String
+functionLabelTex n =
     "f(" ++ String.join "," (varNames n) ++ ")"
+
+
+{-| A typeset variable name, e.g. in a table header.
+-}
+viewVarName : String -> Html msg
+viewVarName =
+    KaTeX.inline
 
 
 truthTable : (Int -> msg) -> Settings -> Maybe Restriction -> List Implicant -> BF -> Html msg
@@ -102,11 +114,15 @@ truthTable flipBitInFunctionIndex settings maybeRestriction implicants bf =
     Html.table [ A.class "truth-table" ]
         [ Html.thead []
             [ Html.tr []
-                (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
+                (List.map (\l -> Html.th [] [ viewVarName l ]) (varNames arity)
                     ++ implicantHeaderCells
                     ++ [ Html.th [ doubleBorder ]
-                            [ Settings.viewTerm settings
-                                (BoolFun.name bf |> Maybe.withDefault (genericName arity))
+                            [ case BoolFun.name bf of
+                                Just name ->
+                                    Settings.viewFunctionName settings name
+
+                                Nothing ->
+                                    KaTeX.inline (functionLabelTex arity)
                             ]
                        ]
                 )
@@ -194,11 +210,16 @@ showBool b =
         "False"
 
 
-{-| Human-readable form of an implicant: a conjunction of literals using the
-variable names from `varNames`, or `⊤` for the empty implicant.
+{-| Typeset form of an implicant: a conjunction of literals using the variable
+names from `varNames`, or `⊤` for the empty implicant.
 -}
 viewImplicant : Settings -> Implicant -> Html msg
 viewImplicant settings implicant =
+    KaTeX.inline (implicantTex settings implicant)
+
+
+implicantTex : Settings -> Implicant -> String
+implicantTex settings implicant =
     let
         literals =
             implicantToLiterals implicant
@@ -208,10 +229,10 @@ viewImplicant settings implicant =
                 (\name lit ->
                     case lit of
                         Positive ->
-                            Just (Html.text name)
+                            Just name
 
                         Negative ->
-                            Just (Settings.viewNegation settings name)
+                            Just (Settings.negationTex settings name)
 
                         DontCare ->
                             Nothing
@@ -221,42 +242,48 @@ viewImplicant settings implicant =
                 |> List.filterMap identity
     in
     if List.isEmpty parts then
-        Html.text "⊤"
+        "\\top"
 
     else
-        Html.span [] (Settings.joinConjuncts settings parts)
+        Settings.conjunctionTex settings parts
+
+
+{-| Typeset algebraic normal form, see `algebraicNormalFormTex`.
+-}
+viewAlgebraicNormalForm : Settings -> Int -> List Monomial -> Html msg
+viewAlgebraicNormalForm settings arity monomials =
+    KaTeX.inline (algebraicNormalFormTex settings arity monomials)
 
 
 {-| An algebraic normal form as an XOR of monomials, e.g. `1 ⊕ a ⊕ b∧c`
 (or `1 ⊕ a ⊕ bc` in the compact style). The empty polynomial is `0`.
 -}
-viewAlgebraicNormalForm : Settings -> Int -> List Monomial -> Html msg
-viewAlgebraicNormalForm settings arity monomials =
+algebraicNormalFormTex : Settings -> Int -> List Monomial -> String
+algebraicNormalFormTex settings arity monomials =
     if List.isEmpty monomials then
-        Html.text "0"
+        "0"
 
     else
         monomials
-            |> List.map (viewMonomial settings arity)
-            |> List.intersperse (Html.text " ⊕ ")
-            |> Html.span []
+            |> List.map (monomialTex settings arity)
+            |> String.join " \\oplus "
 
 
 {-| A single ANF monomial: the conjunction of its variables, or `1` for the
 empty monomial.
 -}
-viewMonomial : Settings -> Int -> Monomial -> Html msg
-viewMonomial settings arity monomial =
+monomialTex : Settings -> Int -> Monomial -> String
+monomialTex settings arity monomial =
     let
         names =
             varNames arity
                 |> List.indexedMap Tuple.pair
                 |> List.filter
                     (\( i, _ ) -> Bitwise.and monomial (Bitwise.shiftLeftBy (arity - 1 - i) 1) /= 0)
-                |> List.map (\( _, name ) -> Html.text name)
+                |> List.map Tuple.second
     in
     if List.isEmpty names then
-        Html.text "1"
+        "1"
 
     else
-        Html.span [] (Settings.joinConjuncts settings names)
+        Settings.conjunctionTex settings names

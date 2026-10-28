@@ -1,15 +1,14 @@
 module Settings exposing
     ( FormulaStyle(..)
     , Settings
+    , conjunctionTex
     , default
-    , joinConjuncts
-    , overbar
-    , viewNegation
-    , viewTerm
+    , negationTex
+    , viewFunctionName
     )
 
 import Html exposing (Html)
-import Html.Attributes as HA
+import KaTeX
 
 
 type FormulaStyle
@@ -31,74 +30,78 @@ default =
     { formula = Symbols }
 
 
-{-| A string drawn with a CSS overline. Unlike a combining macron, the bar is
-positioned by the line box, so it stays at a constant height regardless of the
-glyph beneath it.
--}
-overbar : String -> Html msg
-overbar s =
-    Html.span [ HA.style "text-decoration" "overline" ] [ Html.text s ]
-
-
-{-| Render the negation of a (single-character) variable name according to the
+{-| TeX for the negation of a (single-character) variable name according to the
 chosen style: `¬x` or an overlined `x`.
 -}
-viewNegation : Settings -> String -> Html msg
-viewNegation settings name =
+negationTex : Settings -> String -> String
+negationTex settings name =
     case settings.formula of
         Symbols ->
-            Html.text ("¬" ++ name)
+            "\\neg " ++ name
 
         Compact ->
-            overbar name
+            "\\overline{" ++ name ++ "}"
 
 
-{-| Combine already-rendered conjuncts using the chosen style: `x∧y` or `xy`.
+{-| Combine TeX conjuncts using the chosen style: `x∧y` or `xy`.
 -}
-joinConjuncts : Settings -> List (Html msg) -> List (Html msg)
-joinConjuncts settings parts =
+conjunctionTex : Settings -> List String -> String
+conjunctionTex settings parts =
     case settings.formula of
         Symbols ->
-            List.intersperse (Html.text "∧") parts
+            String.join " \\land " parts
 
         Compact ->
-            parts
+            String.concat parts
 
 
-{-| Re-render a static label that may contain negation/conjunction notation
-(`¬` and/or `∧`) so it respects the current settings. Labels without either
-symbol render verbatim, as do labels whose `∧`-split yields any empty operand
-(e.g. the standalone `∧` function name).
+{-| Render a conventional function name (see `BoolFun.name`). Word names like
+`XOR` stay plain text; symbolic names like `¬a ∧ b` or `a → b` are typeset,
+respecting the current settings for negation and conjunction.
 -}
-viewTerm : Settings -> String -> Html msg
-viewTerm settings s =
-    if String.contains "∧" s || String.contains "¬" s then
-        let
-            operands =
-                String.split "∧" s
-                    |> List.map String.trim
-        in
-        if List.all (not << String.isEmpty) operands then
-            operands
-                |> List.map (viewOperand settings)
-                |> joinConjuncts settings
-                |> Html.span []
-
-        else
-            Html.text s
-
-    else
+viewFunctionName : Settings -> String -> Html msg
+viewFunctionName settings s =
+    if String.all Char.isUpper s then
         Html.text s
 
+    else
+        KaTeX.inline (functionNameTex settings s)
 
-{-| Render a single operand, applying the negation style when it starts with a
-leading `¬`.
+
+{-| Names whose `∧`-split yields any empty operand (e.g. the standalone `∧`
+function name) are translated symbol by symbol instead.
 -}
-viewOperand : Settings -> String -> Html msg
-viewOperand settings operand =
+functionNameTex : Settings -> String -> String
+functionNameTex settings s =
+    let
+        operands =
+            String.split "∧" s
+                |> List.map String.trim
+    in
+    if List.all (not << String.isEmpty) operands then
+        operands
+            |> List.map (operandTex settings)
+            |> conjunctionTex settings
+
+    else
+        symbolsTex s
+
+
+{-| A single operand, applying the negation style when it starts with a leading `¬`.
+-}
+operandTex : Settings -> String -> String
+operandTex settings operand =
     case String.uncons operand of
         Just ( '¬', rest ) ->
-            viewNegation settings rest
+            negationTex settings rest
 
         _ ->
-            Html.text operand
+            symbolsTex operand
+
+
+symbolsTex : String -> String
+symbolsTex =
+    String.replace "→" "\\to"
+        >> String.replace "∨" "\\lor"
+        >> String.replace "∧" "\\land"
+        >> String.replace "¬" "\\neg "

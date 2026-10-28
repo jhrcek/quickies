@@ -9,6 +9,7 @@ import Html exposing (Html)
 import Html.Attributes as HA
 import Html.Events as Events
 import Json.Decode as Decode
+import KaTeX
 import Natural as N exposing (Natural)
 import PostProperties
 import Random
@@ -500,11 +501,11 @@ viewSettings isOpen settings =
                         , radio "formula"
                             (settings.formula == Settings.Symbols)
                             (SetFormulaStyle Settings.Symbols)
-                            (Html.text "symbols (x∧¬y)")
+                            (Html.span [] [ Html.text "symbols (", KaTeX.inline "x \\land \\neg y", Html.text ")" ])
                         , radio "formula"
                             (settings.formula == Settings.Compact)
                             (SetFormulaStyle Settings.Compact)
-                            (Html.span [] [ Html.text "compact (x", Settings.overbar "y", Html.text ")" ])
+                            (Html.span [] [ Html.text "compact (", KaTeX.inline "x\\overline{y}", Html.text ")" ])
                         ]
                     ]
 
@@ -777,13 +778,13 @@ viewLiteralChip settings termIndex varIndex name lit =
         ( content, dimmed ) =
             case lit of
                 BoolFun.Positive ->
-                    ( Html.text name, False )
+                    ( KaTeX.inline name, False )
 
                 BoolFun.Negative ->
-                    ( Settings.viewNegation settings name, False )
+                    ( KaTeX.inline (Settings.negationTex settings name), False )
 
                 BoolFun.DontCare ->
-                    ( Html.text name, True )
+                    ( KaTeX.inline name, True )
     in
     Html.button
         [ Events.onClick (SopToggleLiteral termIndex varIndex)
@@ -853,17 +854,14 @@ viewSopTruthTableFor settings arity implicants termFns sopFn =
             List.indexedMap
                 (\idx fn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval fn i))
                 termFns
-
-        resultLabel =
-            "f(" ++ String.join "," (BoolFun.varNames arity) ++ ")"
     in
     Html.div []
         [ Html.table [ HA.class "truth-table" ]
             [ Html.thead []
                 [ Html.tr []
-                    (List.map (\l -> Html.th [] [ Html.text l ]) (BoolFun.varNames arity)
+                    (List.map (\l -> Html.th [] [ BoolFun.View.viewVarName l ]) (BoolFun.varNames arity)
                         ++ termHeaderCells
-                        ++ [ Html.th [ doubleBorder ] [ Html.text resultLabel ] ]
+                        ++ [ Html.th [ doubleBorder ] [ KaTeX.inline (BoolFun.View.functionLabelTex arity) ] ]
                     )
                 ]
             , Html.tbody []
@@ -973,7 +971,7 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofacto
                         [ Html.tr []
                             (Html.th [] []
                                 :: List.map
-                                    (\letter -> Html.th [] [ Html.text letter ])
+                                    (\letter -> Html.th [] [ BoolFun.View.viewVarName letter ])
                                     (BoolFun.varNames arity)
                             )
                         ]
@@ -1033,7 +1031,7 @@ viewRestrictionSummary arity highlight highlightedCofactors =
                     (List.indexedMap
                         (\i name ->
                             if i == highlight.varIndex - 1 then
-                                BoolFun.View.showBool value
+                                "\\text{" ++ BoolFun.View.showBool value ++ "}"
 
                             else
                                 name
@@ -1080,7 +1078,7 @@ viewRestrictionSummary arity highlight highlightedCofactors =
                         columns
             in
             Html.tr []
-                (Html.th [] [ Html.text (rowHeaderLabel value) ]
+                (Html.th [] [ KaTeX.inline (rowHeaderLabel value) ]
                     :: outputCells
                 )
     in
@@ -1172,7 +1170,7 @@ viewProperty settings arity functionIndex propSubroute cofactors bf =
                                                 BoolFun.cofactorPolarity varCofactors
                                         in
                                         Html.tr []
-                                            [ Html.td [] [ Html.text letter ]
+                                            [ Html.td [] [ BoolFun.View.viewVarName letter ]
                                             , yesNoCell (BoolFun.isEssential polarity)
                                             , Html.td [] [ Html.text (BoolFun.showPolarity polarity) ]
                                             ]
@@ -1184,14 +1182,17 @@ viewProperty settings arity functionIndex propSubroute cofactors bf =
                         , let
                             legendItem term explanation =
                                 Html.p [ HA.style "margin" "0.15em 0" ]
-                                    [ Html.b [] [ Html.text term ], Html.text explanation ]
+                                    (Html.b [] [ Html.text term ] :: explanation)
+
+                            zeroToOne =
+                                KaTeX.inline "0 \\to 1"
                           in
                           Html.div
                             [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
-                            [ legendItem "Essential" " — the function genuinely depends on the variable; flipping it changes the output for at least one input. Non-essential means it never affects the output."
-                            , legendItem "Positive" " — raising the variable (0→1) never decreases the output (the function is monotone increasing in it)."
-                            , legendItem "Negative" " — raising the variable (0→1) never increases the output (monotone decreasing)."
-                            , legendItem "Binate" " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)."
+                            [ legendItem "Essential" [ Html.text " — the function genuinely depends on the variable; flipping it changes the output for at least one input. Non-essential means it never affects the output." ]
+                            , legendItem "Positive" [ Html.text " — raising the variable (", zeroToOne, Html.text ") never decreases the output (the function is monotone increasing in it)." ]
+                            , legendItem "Negative" [ Html.text " — raising the variable (", zeroToOne, Html.text ") never increases the output (monotone decreasing)." ]
+                            , legendItem "Binate" [ Html.text " — raising the variable increases the output for some inputs and decreases it for others (neither monotone direction)." ]
                             ]
                         ]
                 , Html.h4 [] [ Html.text "Chow parameters" ]
@@ -1201,14 +1202,14 @@ viewProperty settings arity functionIndex propSubroute cofactors bf =
         FalsePreserving ->
             Html.div [ HA.class "property-page" ]
                 [ Html.h3 [] [ Html.text "0-preserving (Falsity-preserving)" ]
-                , Html.p [] [ Html.text "A function f is 0-preserving iff f(0, 0, …, 0) = 0." ]
+                , Html.p [] [ Html.text "A function ", KaTeX.inline "f", Html.text " is 0-preserving iff ", KaTeX.inline "f(0, 0, \\dots, 0) = 0", Html.text "." ]
                 , Html.p [] [ Html.text "Result: ", yesNo (BoolFun.isFalsityPreserving bf) ]
                 ]
 
         TruePreserving ->
             Html.div [ HA.class "property-page" ]
                 [ Html.h3 [] [ Html.text "1-preserving (Truth-preserving)" ]
-                , Html.p [] [ Html.text "A function f is 1-preserving iff f(1, 1, …, 1) = 1." ]
+                , Html.p [] [ Html.text "A function ", KaTeX.inline "f", Html.text " is 1-preserving iff ", KaTeX.inline "f(1, 1, \\dots, 1) = 1", Html.text "." ]
                 , Html.p [] [ Html.text "Result: ", yesNo (BoolFun.isTruthPreserving bf) ]
                 ]
 
@@ -1229,7 +1230,7 @@ viewChowParameters arity bf =
             BoolFun.chowParameters bf
 
         chowName sub =
-            [ Html.text "m", Html.sub [] [ Html.text sub ] ]
+            [ KaTeX.inline ("m_" ++ sub) ]
 
         paramRow label value =
             Html.tr []
@@ -1260,8 +1261,18 @@ viewChowParameters arity bf =
         , Html.div
             [ HA.style "font-size" "0.85em", HA.style "color" "gray" ]
             [ legendItem (chowName "0") " — the number of inputs on which the function is true (the function's weight)."
-            , legendItem (chowName "x") " — the number of true rows in which variable x is 1."
-            , legendItem [ Html.text "Chow's theorem" ] " — a threshold function is uniquely determined among all Boolean functions by these n+1 numbers."
+            , Html.p [ HA.style "margin" "0.15em 0" ]
+                [ Html.b [] (chowName "x")
+                , Html.text " — the number of true rows in which variable "
+                , KaTeX.inline "x"
+                , Html.text " is 1."
+                ]
+            , Html.p [ HA.style "margin" "0.15em 0" ]
+                [ Html.b [] [ Html.text "Chow's theorem" ]
+                , Html.text " — a threshold function is uniquely determined among all Boolean functions by these "
+                , KaTeX.inline "n+1"
+                , Html.text " numbers."
+                ]
             ]
         ]
 
@@ -1297,9 +1308,25 @@ viewSelfDual arity bf =
         , Html.p []
             [ Html.text "The "
             , Html.em [] [ Html.text "dual" ]
-            , Html.text " of a Boolean function f is the function f* defined by f*(x₁, …, xₙ) = ¬f(¬x₁, …, ¬xₙ). A function is "
+            , Html.text " of a Boolean function "
+            , KaTeX.inline "f"
+            , Html.text " is the function "
+            , KaTeX.inline "f^*"
+            , Html.text " defined by "
+            , KaTeX.inline "f^*(x_1, \\dots, x_n) = \\neg f(\\neg x_1, \\dots, \\neg x_n)"
+            , Html.text ". A function is "
             , Html.em [] [ Html.text "self-dual" ]
-            , Html.text " iff f = f*, equivalently f(¬x) = ¬f(x) for every input x. In the truth table, this means the output at row i and the output at the complementary row (2ⁿ − 1 − i) always differ."
+            , Html.text " iff "
+            , KaTeX.inline "f = f^*"
+            , Html.text ", equivalently "
+            , KaTeX.inline "f(\\neg x) = \\neg f(x)"
+            , Html.text " for every input "
+            , KaTeX.inline "x"
+            , Html.text ". In the truth table, this means the output at row "
+            , KaTeX.inline "i"
+            , Html.text " and the output at the complementary row "
+            , KaTeX.inline "2^n - 1 - i"
+            , Html.text " always differ."
             ]
         , verdict
         ]
@@ -1310,9 +1337,6 @@ viewAffine settings arity functionIndex bf =
     let
         anf =
             BoolFun.algebraicNormalForm bf
-
-        functionLabel =
-            "f(" ++ String.join "," (BoolFun.varNames arity) ++ ")"
 
         propLink target label =
             Html.a [ Route.href (Arity arity (Function functionIndex target)) ]
@@ -1339,7 +1363,7 @@ viewAffine settings arity functionIndex bf =
                             [ Html.text "❌ This function "
                             , Html.strong [] [ Html.text "is not affine" ]
                             , Html.text ": its algebraic normal form contains the term "
-                            , Html.code [] [ BoolFun.View.viewMonomial settings arity w.nonlinearMonomial ]
+                            , KaTeX.inline (BoolFun.View.monomialTex settings arity w.nonlinearMonomial)
                             , Html.text (" of degree " ++ String.fromInt (BoolFun.popCount w.nonlinearMonomial) ++ ".")
                             ]
                         , case affinePart of
@@ -1350,11 +1374,9 @@ viewAffine settings arity functionIndex bf =
                                 in
                                 Html.p []
                                     [ Html.text "Dropping the nonlinear terms gives the affine function "
-                                    , Html.code []
-                                        [ BoolFun.View.viewAlgebraicNormalForm settings
-                                            arity
-                                            (BoolFun.algebraicNormalForm part)
-                                        ]
+                                    , BoolFun.View.viewAlgebraicNormalForm settings
+                                        arity
+                                        (BoolFun.algebraicNormalForm part)
                                     , Html.text ", which is function "
                                     , Html.a
                                         [ Route.href (Arity arity (Function partIndex Affine)) ]
@@ -1370,25 +1392,44 @@ viewAffine settings arity functionIndex bf =
     Html.div [ HA.class "property-page" ]
         [ Html.h3 [] [ Html.text "Affine" ]
         , Html.p []
-            [ Html.text "A Boolean function f is "
+            [ Html.text "A Boolean function "
+            , KaTeX.inline "f"
+            , Html.text " is "
             , Html.em [] [ Html.text "affine" ]
             , Html.text " (also called "
             , Html.em [] [ Html.text "linear" ]
-            , Html.text ") iff it is an XOR of some of its variables, possibly negated: f(x₁, …, xₙ) = c₀ ⊕ c₁x₁ ⊕ … ⊕ cₙxₙ for constants c₀, …, cₙ ∈ {0, 1}. Equivalently, every variable either never affects the output or always flips it. There are 2ⁿ⁺¹ affine functions of arity n."
+            , Html.text ") iff it is an XOR of some of its variables, possibly negated: "
+            , KaTeX.inline "f(x_1, \\dots, x_n) = c_0 \\oplus c_1 x_1 \\oplus \\dots \\oplus c_n x_n"
+            , Html.text " for constants "
+            , KaTeX.inline "c_0, \\dots, c_n \\in \\{0, 1\\}"
+            , Html.text ". Equivalently, every variable either never affects the output or always flips it. There are "
+            , KaTeX.inline "2^{n+1}"
+            , Html.text " affine functions of arity "
+            , KaTeX.inline "n"
+            , Html.text "."
             ]
         , Html.p []
             [ Html.text "Every Boolean function can be written in exactly one way as an XOR of conjunctions of its variables — its "
             , externalLink "https://en.wikipedia.org/wiki/Algebraic_normal_form" "algebraic normal form"
             , Html.text " (ANF), also known as its "
             , externalLink "https://en.wikipedia.org/wiki/Zhegalkin_polynomial" "Zhegalkin polynomial"
-            , Html.text ". The coefficient of a conjunction of variables S is the XOR of f(x) over all inputs x whose 1-bits lie within S. A function is affine iff its ANF contains no conjunction of two or more variables."
+            , Html.text ". The coefficient of a conjunction of variables "
+            , KaTeX.inline "S"
+            , Html.text " is the XOR of "
+            , KaTeX.inline "f(x)"
+            , Html.text " over all inputs "
+            , KaTeX.inline "x"
+            , Html.text " whose 1-bits lie within "
+            , KaTeX.inline "S"
+            , Html.text ". A function is affine iff its ANF contains no conjunction of two or more variables."
             ]
         , Html.p []
             [ Html.text "Algebraic normal form of this function: "
-            , Html.code []
-                [ Html.text (functionLabel ++ " = ")
-                , BoolFun.View.viewAlgebraicNormalForm settings arity anf
-                ]
+            , KaTeX.inline
+                (BoolFun.View.functionLabelTex arity
+                    ++ " = "
+                    ++ BoolFun.View.algebraicNormalFormTex settings arity anf
+                )
             ]
         , verdict
         , Html.p []
@@ -1447,14 +1488,12 @@ viewMonotone bf =
                             , Html.text "."
                             ]
                         , Html.p []
-                            [ Html.text "Witness: f("
-                            , Html.code [] [ Html.text (bitsOf w.smaller) ]
-                            , Html.text ") = 1, but f("
-                            , Html.code [] [ Html.text (bitsOf w.bigger) ]
-                            , Html.text ") = 0, even though "
-                            , Html.code [] [ Html.text (bitsOf w.smaller) ]
-                            , Html.text " ≤ "
-                            , Html.code [] [ Html.text (bitsOf w.bigger) ]
+                            [ Html.text "Witness: "
+                            , KaTeX.inline ("f(" ++ bitsOf w.smaller ++ ") = 1")
+                            , Html.text ", but "
+                            , KaTeX.inline ("f(" ++ bitsOf w.bigger ++ ") = 0")
+                            , Html.text ", even though "
+                            , KaTeX.inline (bitsOf w.smaller ++ " \\le " ++ bitsOf w.bigger)
                             , Html.text " bitwise."
                             ]
                         ]
@@ -1462,18 +1501,28 @@ viewMonotone bf =
     Html.div [ HA.class "property-page" ]
         [ Html.h3 [] [ Html.text "Monotone" ]
         , Html.p []
-            [ Html.text
-                "A Boolean function f is "
+            [ Html.text "A Boolean function "
+            , KaTeX.inline "f"
+            , Html.text " is "
             , Html.em [] [ Html.text "monotone" ]
-            , Html.text
-                " iff it is order-preserving on the Boolean cube: whenever x ≤ y bitwise (every 1-bit of x is also a 1-bit of y), f(x) ≤ f(y). Equivalently: flipping any input bit from 0 to 1 can only flip the output from 0 to 1, never from 1 to 0."
+            , Html.text " iff it is order-preserving on the Boolean cube: whenever "
+            , KaTeX.inline "x \\le y"
+            , Html.text " bitwise (every 1-bit of "
+            , KaTeX.inline "x"
+            , Html.text " is also a 1-bit of "
+            , KaTeX.inline "y"
+            , Html.text "), "
+            , KaTeX.inline "f(x) \\le f(y)"
+            , Html.text ". Equivalently: flipping any input bit from 0 to 1 can only flip the output from 0 to 1, never from 1 to 0."
             ]
         , verdict
         , if BoolFun.arityOf bf <= HasseDiagram.maxRenderableArity then
             Html.div []
                 [ Html.p []
-                    [ Html.text
-                        "Below is the Hasse diagram of {0,1}ⁿ ordered bitwise: edges connect inputs differing in exactly one bit, with the larger input above. Nodes are colored by the function's output (green = 1, red = 0). Edges that "
+                    [ Html.text "Below is the Hasse diagram of "
+                    , KaTeX.inline "\\{0,1\\}^n"
+                    , Html.text
+                        " ordered bitwise: edges connect inputs differing in exactly one bit, with the larger input above. Nodes are colored by the function's output (green = 1, red = 0). Edges that "
                     , Html.strong [] [ Html.text "violate monotonicity" ]
                     , Html.text " (1 below, 0 above) are highlighted in red."
                     ]
@@ -1565,7 +1614,7 @@ functionRow settings arity index bf =
             ]
             :: (case BoolFun.name bf of
                     Just name ->
-                        [ Html.td [] [ Settings.viewTerm settings name ] ]
+                        [ Html.td [] [ Settings.viewFunctionName settings name ] ]
 
                     Nothing ->
                         []

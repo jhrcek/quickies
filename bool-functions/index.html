@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Boolean Function Explorer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.js"></script>
     <style>
         graphviz-graph:not(:defined) {
             display: block;
@@ -81,6 +83,19 @@
         }
 
         customElements.define('graphviz-graph', GraphvizGraph);
+
+        class MathTex extends HTMLElement {
+            static get observedAttributes() { return ['formula', 'display-mode']; }
+            connectedCallback() { this._render(); }
+            attributeChangedCallback() { this._render(); }
+            _render() {
+                const tex = this.getAttribute('formula') || '';
+                const displayMode = this.getAttribute('display-mode') !== 'false';
+                try { katex.render(tex, this, { displayMode, throwOnError: false }); }
+                catch (e) { this.textContent = tex; }
+            }
+        }
+        customElements.define('math-tex', MathTex);
     </script>
 
     <script src="elm.min.js"></script>
