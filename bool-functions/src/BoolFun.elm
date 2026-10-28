@@ -1,15 +1,12 @@
 module BoolFun exposing
-    ( -- Opaque
+    ( ArityConfig
+    , -- Opaque
       BF
     , Implicant
     , Literal(..)
     , Polarity(..)
     , Restriction
     , arityOf
-    , bitwiseLeq
-    , boolCell
-    , boolCellWith
-    , boolColor
     , chowParameters
     , configForArity
     , disjunction
@@ -20,7 +17,6 @@ module BoolFun exposing
     , fromRows
     , funCount
     , funIndexOf
-    , highlightCellAttrs
     , implicantFromLiterals
     , implicantToFunction
     , implicantToLiterals
@@ -39,23 +35,16 @@ module BoolFun exposing
     , primeImplicants
     , restriction
     , restrictionRowIndex
-    , showBool
     , showPolarity
     , toRows
-    , truthTable
     , varNames
     , variablePolarities
-    , viewImplicant
     )
 
 import Array exposing (Array)
 import Bitwise
-import Html exposing (Attribute, Html)
-import Html.Attributes as A
-import Html.Events as Events
 import Natural as N exposing (Natural)
 import Set
-import Settings exposing (Settings)
 
 
 
@@ -69,6 +58,11 @@ type BF
 type alias BfInternal =
     { arity : Int
     , funIndex : Natural
+    , -- rows` caches the truth table decoded from `funIndex` (row 0 first), so that
+      -- evaluating the function is an array lookup instead of Natural arithmetic.
+      -- The two fields always describe the same function: only `mkBF` and
+      -- `unsafeFromRows` construct a `BF`, and each derives one field from the other.
+      rows : Array Bool
     }
 
 
@@ -129,7 +123,7 @@ mkBF arity funIndex =
         Nothing
 
     else
-        Just (BF { arity = arity, funIndex = funIndex })
+        Just (BF { arity = arity, funIndex = funIndex, rows = decodeRows arity funIndex })
 
 
 f0Names : Array String
@@ -204,122 +198,6 @@ configForArity arity =
             }
 
 
-{-| Generic, name-free label for a function of the given arity, e.g. `f(a,b,c)`.
-Used as the truth-table output-column header for arities that have no meaningful
-per-function names.
--}
-genericName : Int -> String
-genericName n =
-    "f(" ++ String.join "," (varNames n) ++ ")"
-
-
-truthTable : (Int -> msg) -> Settings -> ArityConfig -> Maybe Restriction -> List Implicant -> BF -> Html msg
-truthTable flipBitInFunctionIndex settings { getName } maybeRestriction implicants ((BF { arity, funIndex }) as bf) =
-    let
-        rowCount =
-            2 ^ arity
-
-        doubleBorder =
-            A.style "border-left" "3px double #333"
-
-        -- A row belongs to the restriction f|xᵥ=value when variable v's bit
-        -- (bit position arity - v of the row index) equals the fixed value.
-        rowInRestriction i =
-            case maybeRestriction of
-                Just { varIndex, value } ->
-                    getBit (arity - varIndex) i == value
-
-                Nothing ->
-                    False
-
-        -- Variable columns are 0-based; column c shows variable (c + 1). We
-        -- highlight the free variables and the result, but leave the restricted
-        -- variable's own column untouched (its value is constant on those rows).
-        highlightVarCell c i =
-            case maybeRestriction of
-                Just { varIndex } ->
-                    rowInRestriction i && c + 1 /= varIndex
-
-                Nothing ->
-                    False
-
-        highlightIf cond b =
-            if cond then
-                highlightCellAttrs b
-
-            else
-                []
-
-        implicantFns =
-            List.map implicantToFunction implicants
-
-        firstImplicantBorder idx =
-            if idx == 0 then
-                [ doubleBorder ]
-
-            else
-                []
-
-        implicantHeaderCells =
-            List.indexedMap
-                (\idx impl ->
-                    Html.th
-                        (firstImplicantBorder idx)
-                        [ viewImplicant settings impl ]
-                )
-                implicants
-
-        implicantBodyCells i =
-            List.indexedMap
-                (\idx implFn ->
-                    boolCellWith
-                        (firstImplicantBorder idx)
-                        (eval_internal implFn i)
-                )
-                implicantFns
-    in
-    Html.table [ A.class "truth-table" ]
-        [ Html.thead []
-            [ Html.tr []
-                (List.map (\l -> Html.th [] [ Html.text l ]) (varNames arity)
-                    ++ implicantHeaderCells
-                    ++ [ Html.th [ doubleBorder ]
-                            [ Settings.viewTerm settings
-                                (case getName of
-                                    Just toName ->
-                                        toName (N.toInt funIndex)
-
-                                    Nothing ->
-                                        genericName arity
-                                )
-                            ]
-                       ]
-                )
-            ]
-        , Html.tbody []
-            (List.range 0 (rowCount - 1)
-                |> List.map
-                    (\i ->
-                        Html.tr []
-                            (List.indexedMap
-                                (\c b -> boolCellWith (highlightIf (highlightVarCell c i) b) b)
-                                (lastNBits arity i)
-                                ++ implicantBodyCells i
-                                ++ [ boolCellWith
-                                        -- TODO fix width/height to prevent jumping when changing to different functions
-                                        ([ Events.onClick (flipBitInFunctionIndex i)
-                                         , doubleBorder
-                                         ]
-                                            ++ highlightIf (rowInRestriction i) (eval_internal bf i)
-                                        )
-                                        (eval_internal bf i)
-                                   ]
-                            )
-                    )
-            )
-        ]
-
-
 varNames : Int -> List String
 varNames n =
     List.range 0 (n - 1)
@@ -327,73 +205,10 @@ varNames n =
         |> List.map String.fromChar
 
 
-boolCell : Bool -> Html a
-boolCell b =
-    boolCellWith [] b
-
-
-boolCellWith : List (Attribute a) -> Bool -> Html a
-boolCellWith attrs b =
-    Html.td
-        (A.style "background-color" (boolColor b) :: attrs)
-        [ Html.text (showBool b) ]
-
-
-boolColor : Bool -> String
-boolColor b =
-    if b then
-        -- mint
-        "#A8DF9E"
-
-    else
-        -- rose
-        "#F2A69E"
-
-
-{-| A more vivid version of `boolColor`, used to highlight the cells of a
-restricted sub-function in the truth table.
--}
-highlightColor : Bool -> String
-highlightColor b =
-    if b then
-        -- vivid green
-        "#49C754"
-
-    else
-        -- vivid coral
-        "#FF5A4E"
-
-
-{-| Attributes giving a cell the restriction-highlight look: a vivid background
-plus an inset outline (an outline, not a thicker border, so it never changes the
-cell's size and can't cause layout flicker). Shared by the truth table and the
-restriction-summary table so both highlight identically.
--}
-highlightCellAttrs : Bool -> List (Attribute a)
-highlightCellAttrs b =
-    [ A.style "background-color" (highlightColor b)
-    , A.style "outline" "2px solid #000"
-    , A.style "outline-offset" "-2px"
-    ]
-
-
-showBool : Bool -> String
-showBool b =
-    if b then
-        "True"
-
-    else
-        "False"
-
-
-eval_internal : BF -> Int -> Bool
-eval_internal (BF { funIndex }) inputRowIndex =
-    getBit2 inputRowIndex funIndex
-
-
 eval : BF -> Int -> Bool
-eval =
-    eval_internal
+eval (BF { rows }) inputRowIndex =
+    Array.get inputRowIndex rows
+        |> Maybe.withDefault False
 
 
 arityOf : BF -> Int
@@ -406,13 +221,17 @@ funIndexOf (BF { funIndex }) =
     funIndex
 
 
-{-| The function's truth table as a binary string: the bit for row 2^n−1 first
-down to row 0, zero-padded to the full 2^n width (`N.toBinaryString` itself drops
-leading zeros).
+{-| Decode a function index into its truth table, row 0 first. The binary
+string has the bit for row 2^n−1 first down to row 0, zero-padded to the full
+2^n width (`N.toBinaryString` itself drops leading zeros).
 -}
-toBitString : BF -> String
-toBitString (BF { arity, funIndex }) =
+decodeRows : Int -> Natural -> Array Bool
+decodeRows arity funIndex =
     String.padLeft (2 ^ arity) '0' (N.toBinaryString funIndex)
+        |> String.toList
+        |> List.reverse
+        |> List.map ((==) '1')
+        |> Array.fromList
 
 
 {-| The function's truth table as a list of 2^n output values, row 0 first.
@@ -421,18 +240,28 @@ combines whole truth tables (dual, disjunction, implication, …) should go
 through `toRows`/`fromRows` rather than poking at `funIndex` bits directly.
 -}
 toRows : BF -> List Bool
-toRows bf =
-    toBitString bf
-        |> String.toList
-        |> List.reverse
-        |> List.map ((==) '1')
+toRows (BF { rows }) =
+    Array.toList rows
 
 
 {-| Build a function of the given arity from its truth table, row 0 first.
-Inverse of `toRows`; the list is expected to have 2^arity elements.
+Inverse of `toRows`. `Nothing` unless the arity is in `minArity..maxArity` and
+the list has exactly 2^arity elements.
 -}
-fromRows : Int -> List Bool -> BF
+fromRows : Int -> List Bool -> Maybe BF
 fromRows arity rows =
+    if arity < minArity || maxArity < arity || List.length rows /= 2 ^ arity then
+        Nothing
+
+    else
+        Just (unsafeFromRows arity rows)
+
+
+{-| `fromRows` without validation, for internal callers whose list has
+2^arity elements (and whose arity is in range) by construction.
+-}
+unsafeFromRows : Int -> List Bool -> BF
+unsafeFromRows arity rows =
     let
         funIndex =
             rows
@@ -451,7 +280,7 @@ fromRows arity rows =
                 |> N.fromBinaryString
                 |> Maybe.withDefault N.zero
     in
-    BF { arity = arity, funIndex = funIndex }
+    BF { arity = arity, funIndex = funIndex, rows = Array.fromList rows }
 
 
 {-| True iff `f` implies `g`: at every input where `f` is True, `g` is also True
@@ -475,7 +304,7 @@ dualOf ((BF { arity }) as bf) =
     toRows bf
         |> List.reverse
         |> List.map not
-        |> fromRows arity
+        |> unsafeFromRows arity
 
 
 {-| A function f is self-dual iff f(¬x) = ¬f(x) for every input x — equivalently,
@@ -499,11 +328,6 @@ inputs arity =
 inputBits : Int -> Int -> List Bool
 inputBits arity i =
     lastNBits arity i
-
-
-bitwiseLeq : Int -> Int -> Bool
-bitwiseLeq x y =
-    Bitwise.and x y == x
 
 
 lastNBits : Int -> Int -> List Bool
@@ -571,33 +395,12 @@ restriction r ((BF { arity }) as bf) =
         Nothing
 
     else
-        let
-            mask =
-                Bitwise.shiftLeftBy (arity - r.varIndex) 1
-
-            bBit =
-                if r.value then
-                    mask
-
-                else
-                    0
-
-            ( newFunIndex, _ ) =
-                List.range 0 (2 ^ arity - 1)
-                    |> List.foldl
-                        (\k ( acc, j ) ->
-                            if Bitwise.and k mask /= bBit then
-                                ( acc, j )
-
-                            else if eval_internal bf k then
-                                ( flipBit j acc, j + 1 )
-
-                            else
-                                ( acc, j + 1 )
-                        )
-                        ( N.zero, 0 )
-        in
-        mkBF (arity - 1) newFunIndex
+        -- The cofactor's rows are the original rows whose restricted variable
+        -- equals the fixed value, kept in increasing order.
+        inputs arity
+            |> List.filter (\k -> getBit (arity - r.varIndex) k == r.value)
+            |> List.map (eval bf)
+            |> fromRows (arity - 1)
 
 
 {-| The row index of the _original_ `arity`-ary function that a given input `i`
@@ -664,7 +467,7 @@ isEssentialAtBit ((BF { arity }) as bf) bitPos =
         |> List.any
             (\x ->
                 (Bitwise.and x mask == 0)
-                    && (eval_internal bf x /= eval_internal bf (Bitwise.or x mask))
+                    && (eval bf x /= eval bf (Bitwise.or x mask))
             )
 
 
@@ -779,49 +582,23 @@ implicantToFunction : Implicant -> BF
 implicantToFunction (Implicant impl) =
     inputs impl.arity
         |> List.map (\i -> Bitwise.and i impl.mask == Bitwise.and impl.value impl.mask)
-        |> fromRows impl.arity
+        |> unsafeFromRows impl.arity
 
 
 {-| The disjunction (OR) of a list of functions: true at a row exactly when at
 least one of them is. The arity is an explicit argument so the empty list (the
-constant-false function) isn't ambiguous; the given functions are assumed to
-have that arity.
+constant-false function) isn't ambiguous. `Nothing` when any of the functions
+has a different arity, or the arity is out of range.
 -}
-disjunction : Int -> List BF -> BF
+disjunction : Int -> List BF -> Maybe BF
 disjunction arity fns =
-    List.map toRows fns
-        |> List.foldl (List.map2 (||)) (List.repeat (2 ^ arity) False)
-        |> fromRows arity
-
-
-{-| Human-readable form of an implicant: a conjunction of literals using the
-variable names from `varNames`, or `⊤` for the empty implicant.
--}
-viewImplicant : Settings -> Implicant -> Html msg
-viewImplicant settings ((Implicant impl) as implicant) =
-    let
-        parts =
-            List.map2
-                (\name lit ->
-                    case lit of
-                        Positive ->
-                            Just (Html.text name)
-
-                        Negative ->
-                            Just (Settings.viewNegation settings name)
-
-                        DontCare ->
-                            Nothing
-                )
-                (varNames impl.arity)
-                (implicantToLiterals implicant)
-                |> List.filterMap identity
-    in
-    if List.isEmpty parts then
-        Html.text "⊤"
+    if List.all (\f -> arityOf f == arity) fns then
+        List.map toRows fns
+            |> List.foldl (List.map2 (||)) (List.repeat (2 ^ arity) False)
+            |> fromRows arity
 
     else
-        Html.span [] (Settings.joinConjuncts settings parts)
+        Nothing
 
 
 {-| Decompose an implicant into a list of literals, one per variable, in the
@@ -899,7 +676,7 @@ primeImplicants ((BF { arity }) as bf) =
 
         minterms =
             List.range 0 (rowCount - 1)
-                |> List.filter (eval_internal bf)
+                |> List.filter (eval bf)
                 |> List.map (\i -> { mask = fullMask, value = i })
     in
     collectPrimes [] minterms
@@ -1024,7 +801,7 @@ chowParameters : BF -> List Int
 chowParameters ((BF { arity }) as bf) =
     let
         trueRows =
-            List.filter (eval_internal bf) (inputs arity)
+            List.filter (eval bf) (inputs arity)
 
         mi v =
             List.length (List.filter (getBit (arity - v)) trueRows)
@@ -1038,9 +815,5 @@ isFalsityPreserving (BF { funIndex }) =
 
 
 isTruthPreserving : BF -> Bool
-isTruthPreserving (BF { arity, funIndex }) =
-    let
-        rowCount =
-            2 ^ arity
-    in
-    getBit2 (rowCount - 1) funIndex
+isTruthPreserving ((BF { arity }) as bf) =
+    eval bf (2 ^ arity - 1)

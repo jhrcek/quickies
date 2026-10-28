@@ -6,7 +6,15 @@ live:
 check:
 	elm make src/Main.elm --output=/dev/null
 
+.PHONY: test
+test:
+	elm-test
+
 .PHONY: format
 format:
-	elm-format . --yes
+	elm-format src/ tests/ --yes
+
+.PHONY: review
+review:
+	elm-review
 
