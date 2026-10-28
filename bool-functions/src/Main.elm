@@ -27,7 +27,9 @@ import Url
 
    - Add mention of https://en.wikipedia.org/wiki/Dedekind_number somewhere to monotone property page
 
-   - Add SOP / POS editor page(s?) nested under functions/ARITY/editor
+   - Add a POS editor page, analogous to the SOP editor at functions/ARITY/sop-editor
+
+   - Extend the SOP editor:
        - show implication relationships among terms that user adds (showing redundancy)
        - show CDNF / CCNF for of the current function,
        - show blake canonical form (prime implicants with subsumption relationships)
@@ -667,7 +669,7 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                 Function functionIndex propSubroute ->
                     case BoolFun.mkBF arity functionIndex of
                         Nothing ->
-                            -- TODO nicer error
+                            -- Unreachable: Route.validateRoute already rejects out-of-range indices.
                             Html.text "Invalid function index"
 
                         Just bf ->
@@ -1587,7 +1589,6 @@ styles =
 .truth-table th, .truth-table td {
     border: 1px solid black;
     padding: 2px;
-
 }
 
 .settings-cog {

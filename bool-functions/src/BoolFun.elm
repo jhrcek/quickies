@@ -58,7 +58,7 @@ type BF
 type alias BfInternal =
     { arity : Int
     , funIndex : Natural
-    , -- rows` caches the truth table decoded from `funIndex` (row 0 first), so that
+    , -- rows caches the truth table decoded from `funIndex` (row 0 first), so that
       -- evaluating the function is an array lookup instead of Natural arithmetic.
       -- The two fields always describe the same function: only `mkBF` and
       -- `unsafeFromRows` construct a `BF`, and each derives one field from the other.
