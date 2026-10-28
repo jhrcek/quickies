@@ -28,6 +28,7 @@ suite =
         , implicantTests
         , primeImplicantTests
         , chowTests
+        , anfTests
         ]
 
 
@@ -1249,4 +1250,95 @@ chowTests =
                 [ fromFn3 (\a b c -> a && b && c), majority3 ]
                     |> List.map B.chowParameters
                     |> Expect.equalLists [ [ 1, 1, 1, 1 ], [ 4, 3, 3, 3 ] ]
+        ]
+
+
+
+-- ALGEBRAIC NORMAL FORM
+
+
+{-| Evaluate an ANF straight from the definition: the XOR of the monomials
+whose variables are all 1 in the input.
+-}
+evalAnf : Int -> List B.Monomial -> Int -> Bool
+evalAnf n monomials x =
+    let
+        coversMonomial m =
+            List.map2 (\mb xb -> not mb || xb) (bitsOf n m) (bitsOf n x)
+                |> List.all identity
+    in
+    modBy 2 (count coversMonomial monomials) == 1
+
+
+anfTests : Test
+anfTests =
+    describe "algebraicNormalForm / fromAlgebraicNormalForm"
+        [ fuzz fnFuzzer "evaluating the ANF reproduces the truth table" <|
+            \f ->
+                let
+                    n =
+                        B.arityOf f
+                in
+                List.range 0 (2 ^ n - 1)
+                    |> List.map (evalAnf n (B.algebraicNormalForm f))
+                    |> Expect.equalLists (B.toRows f)
+        , fuzz fnFuzzer "fromAlgebraicNormalForm inverts algebraicNormalForm" <|
+            \f ->
+                B.fromAlgebraicNormalForm (B.arityOf f) (B.algebraicNormalForm f)
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction f))
+        , fuzz
+            (arityFuzzer
+                |> Fuzz.andThen
+                    (\n -> Fuzz.map (Tuple.pair n) (Fuzz.list (Fuzz.intRange 0 (2 ^ n - 1))))
+            )
+            "the ANF of a built function keeps exactly the monomials listed an odd number of times"
+          <|
+            \( n, monomials ) ->
+                B.fromAlgebraicNormalForm n monomials
+                    |> Maybe.map (B.algebraicNormalForm >> List.sort)
+                    |> Expect.equal
+                        (monomials
+                            |> List.filter (\m -> modBy 2 (count ((==) m) monomials) == 1)
+                            |> List.sort
+                            |> List.foldr
+                                (\m acc ->
+                                    if List.head acc == Just m then
+                                        acc
+
+                                    else
+                                        m :: acc
+                                )
+                                []
+                            |> Just
+                        )
+        , test "named examples, sorted by degree then variable order" <|
+            \_ ->
+                [ constFalse 2, constTrue 0, constTrue 2, fromFn1 identity, fromFn1 not, xor2, and2, or2, xnor2, xor3, majority3 ]
+                    |> List.map B.algebraicNormalForm
+                    |> Expect.equalLists
+                        [ []
+                        , [ 0 ]
+                        , [ 0 ]
+                        , [ 1 ]
+                        , [ 0, 1 ]
+                        , [ 2, 1 ]
+                        , [ 3 ]
+                        , [ 2, 1, 3 ]
+                        , [ 0, 2, 1 ]
+                        , [ 4, 2, 1 ]
+                        , [ 6, 5, 3 ]
+                        ]
+        , test "rejects an out-of-range arity or a monomial the arity doesn't have" <|
+            \_ ->
+                [ B.fromAlgebraicNormalForm (B.maxArity + 1) []
+                , B.fromAlgebraicNormalForm 2 [ 4 ]
+                , B.fromAlgebraicNormalForm 2 [ -1 ]
+                ]
+                    |> List.map (Maybe.map describeFunction)
+                    |> Expect.equalLists [ Nothing, Nothing, Nothing ]
+        , test "popCount counts 1-bits" <|
+            \_ ->
+                List.map B.popCount [ 0, 1, 2, 3, 7, 8, 63 ]
+                    |> Expect.equalLists [ 0, 1, 1, 2, 3, 1, 6 ]
         ]
