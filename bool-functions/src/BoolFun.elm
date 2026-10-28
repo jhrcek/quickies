@@ -2,16 +2,19 @@ module BoolFun exposing
     ( ArityConfig
     , -- Opaque
       BF
+    , Cofactors
     , Implicant
     , Literal(..)
     , Polarity(..)
     , Restriction
     , arityOf
     , chowParameters
+    , cofactor
+    , cofactorPolarity
+    , cofactors
     , configForArity
     , disjunction
     , dualOf
-    , essentialVariables
     , eval
     , flipBit
     , fromRows
@@ -23,6 +26,7 @@ module BoolFun exposing
     , implies
     , inputBits
     , inputs
+    , isEssential
     , isFalsityPreserving
     , isSelfDual
     , isTruthPreserving
@@ -395,12 +399,55 @@ restriction r ((BF { arity }) as bf) =
         Nothing
 
     else
-        -- The cofactor's rows are the original rows whose restricted variable
-        -- equals the fixed value, kept in increasing order.
-        inputs arity
-            |> List.filter (\k -> getBit (arity - r.varIndex) k == r.value)
-            |> List.map (eval bf)
-            |> fromRows (arity - 1)
+        Just (unsafeRestriction r bf)
+
+
+{-| `restriction` without the range check, for internal callers whose
+`varIndex` is in `[1, arity]` by construction.
+-}
+unsafeRestriction : Restriction -> BF -> BF
+unsafeRestriction r ((BF { arity }) as bf) =
+    -- The cofactor's rows are the original rows whose restricted variable
+    -- equals the fixed value, kept in increasing order.
+    inputs arity
+        |> List.filter (\k -> getBit (arity - r.varIndex) k == r.value)
+        |> List.map (eval bf)
+        |> unsafeFromRows (arity - 1)
+
+
+{-| The two cofactors of a single variable: the function with that variable
+fixed to False and fixed to True.
+-}
+type alias Cofactors =
+    { whenFalse : BF
+    , whenTrue : BF
+    }
+
+
+{-| The cofactors of every variable, in the same 1-based order as `varNames`
+(element 0 is variable `a`). Pages showing restrictions, polarities and
+essential variables compute these once and derive everything else from them.
+-}
+cofactors : BF -> List Cofactors
+cofactors ((BF { arity }) as bf) =
+    List.range 1 arity
+        |> List.map
+            (\varIdx ->
+                { whenFalse = unsafeRestriction { varIndex = varIdx, value = False } bf
+                , whenTrue = unsafeRestriction { varIndex = varIdx, value = True } bf
+                }
+            )
+
+
+{-| The cofactor for the given fixed value.
+-}
+cofactor : Bool -> Cofactors -> BF
+cofactor value { whenTrue, whenFalse } =
+    if value then
+        whenTrue
+
+    else
+        whenFalse
 
 
 {-| The row index of the _original_ `arity`-ary function that a given input `i`
@@ -436,41 +483,6 @@ restrictionRowIndex arity r i =
     Bitwise.or (Bitwise.shiftLeftBy (p + 1) high) (Bitwise.or valueBit low)
 
 
-{-| For a function f of arity N, returns a list of N booleans describing
-which arguments f genuinely depends on. The element at position i is `True`
-iff the i-th argument of f is _essential_ — there exists some assignment
-of the remaining N−1 arguments under which flipping this argument changes
-f's output:
-
-    ∃ x₀ … x_{i−1} x_{i+1} … x_{N−1}.
-        f(x₀,…,0,…,x_{N−1}) ≠ f(x₀,…,1,…,x_{N−1})
-
-A `False` means the argument is _fictitious_: f does not depend on it.
-
--}
-essentialVariables : BF -> List Bool
-essentialVariables ((BF { arity }) as bf) =
-    List.range 1 arity
-        |> List.map (\i -> isEssentialAtBit bf (arity - i))
-
-
-isEssentialAtBit : BF -> Int -> Bool
-isEssentialAtBit ((BF { arity }) as bf) bitPos =
-    let
-        rowCount =
-            2 ^ arity
-
-        mask =
-            Bitwise.shiftLeftBy bitPos 1
-    in
-    List.range 0 (rowCount - 1)
-        |> List.any
-            (\x ->
-                (Bitwise.and x mask == 0)
-                    && (eval bf x /= eval bf (Bitwise.or x mask))
-            )
-
-
 {-| A variable's polarity (its _unateness_), describing how raising that
 variable from 0 to 1 affects the function's output.
 -}
@@ -481,48 +493,49 @@ type Polarity
     | Independent -- it never changes the output (the function is non-essential in this variable)
 
 
-{-| Polarity of each variable, in the same 1-based order as `varNames`
-(and lined up row-by-row with `essentialVariables`).
+{-| Polarity of each variable, in the same 1-based order as `varNames`.
 -}
 variablePolarities : BF -> List Polarity
-variablePolarities ((BF { arity }) as bf) =
-    List.range 1 arity
-        |> List.map (\varIdx -> variablePolarity varIdx bf)
+variablePolarities bf =
+    List.map cofactorPolarity (cofactors bf)
 
 
-{-| Polarity of the variable at 1-based index `varIdx` (the convention used by
-`restriction` and `varNames`). A variable is positive unate when fixing it to 0
-yields a function that implies the one from fixing it to 1 (raising the variable
-never switches the output off), negative unate in the mirror case, binate when
-neither implication holds, and independent when both do (the two cofactors are
-equal, so the function ignores the variable).
+{-| Polarity of a variable, given its cofactors. A variable is positive unate
+when fixing it to 0 yields a function that implies the one from fixing it to 1
+(raising the variable never switches the output off), negative unate in the
+mirror case, binate when neither implication holds, and independent when both
+do (the two cofactors are equal, so the function ignores the variable).
 -}
-variablePolarity : Int -> BF -> Polarity
-variablePolarity varIdx bf =
-    case
-        ( restriction { varIndex = varIdx, value = False } bf
-        , restriction { varIndex = varIdx, value = True } bf
-        )
-    of
-        ( Just f0, Just f1 ) ->
-            case ( implies f0 f1, implies f1 f0 ) of
-                ( True, True ) ->
-                    Independent
-
-                ( True, False ) ->
-                    PositiveUnate
-
-                ( False, True ) ->
-                    NegativeUnate
-
-                ( False, False ) ->
-                    Binate
-
-        _ ->
-            -- Unreachable: `varIdx` is always in [1, arity] (see `variablePolarities`),
-            -- and `restriction` now succeeds for every variable, even when the
-            -- cofactors are arity-0 constants.
+cofactorPolarity : Cofactors -> Polarity
+cofactorPolarity { whenFalse, whenTrue } =
+    case ( implies whenFalse whenTrue, implies whenTrue whenFalse ) of
+        ( True, True ) ->
             Independent
+
+        ( True, False ) ->
+            PositiveUnate
+
+        ( False, True ) ->
+            NegativeUnate
+
+        ( False, False ) ->
+            Binate
+
+
+{-| Whether a variable with this polarity is _essential_: there exists some
+assignment of the remaining variables under which flipping this one changes
+f's output:
+
+    ∃ x₀ … x_{i−1} x_{i+1} … x_{N−1}.
+        f(x₀,…,0,…,x_{N−1}) ≠ f(x₀,…,1,…,x_{N−1})
+
+That is exactly when its two cofactors differ, i.e. its polarity isn't
+`Independent`. A non-essential variable is _fictitious_: f does not depend on it.
+
+-}
+isEssential : Polarity -> Bool
+isEssential polarity =
+    polarity /= Independent
 
 
 showPolarity : Polarity -> String

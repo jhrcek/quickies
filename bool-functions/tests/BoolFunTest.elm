@@ -850,6 +850,11 @@ essentialVariablesOracle =
     raisingEffects >> List.map (\( turnsOn, turnsOff ) -> turnsOn || turnsOff)
 
 
+essentialVariables : B.BF -> List Bool
+essentialVariables =
+    B.variablePolarities >> List.map B.isEssential
+
+
 variablePolaritiesOracle : B.BF -> List B.Polarity
 variablePolaritiesOracle =
     raisingEffects
@@ -887,19 +892,27 @@ variablesTests : Test
 variablesTests =
     describe "essentialVariables / variablePolarities"
         [ fuzz fnFuzzer "essentialVariables matches the brute-force oracle" <|
-            \f -> B.essentialVariables f |> Expect.equalLists (essentialVariablesOracle f)
+            \f -> essentialVariables f |> Expect.equalLists (essentialVariablesOracle f)
         , fuzz fnFuzzer "variablePolarities matches the brute-force oracle" <|
             \f -> B.variablePolarities f |> Expect.equalLists (variablePolaritiesOracle f)
-        , fuzz fnFuzzer "a variable is essential iff its polarity is not Independent" <|
+        , fuzz fnFuzzer "cofactors agree with restriction for every variable" <|
             \f ->
-                B.variablePolarities f
-                    |> List.map ((/=) B.Independent)
-                    |> Expect.equalLists (B.essentialVariables f)
+                B.cofactors f
+                    |> List.map (\c -> Just ( c.whenFalse, c.whenTrue ))
+                    |> Expect.equalLists
+                        (List.range 1 (B.arityOf f)
+                            |> List.map
+                                (\v ->
+                                    Maybe.map2 Tuple.pair
+                                        (B.restriction { varIndex = v, value = False } f)
+                                        (B.restriction { varIndex = v, value = True } f)
+                                )
+                        )
         , test "constants have no essential variables" <|
             \_ ->
                 allArities
                     |> List.concatMap (\n -> [ constFalse n, constTrue n ])
-                    |> List.map (\f -> ( B.essentialVariables f, B.variablePolarities f ))
+                    |> List.map (\f -> ( essentialVariables f, B.variablePolarities f ))
                     |> Expect.equalLists
                         (allArities
                             |> List.concatMap
@@ -910,7 +923,7 @@ variablesTests =
         , test "projection a of arity 3 depends only on a, positively" <|
             \_ ->
                 fromFn3 (\a _ _ -> a)
-                    |> (\f -> ( B.essentialVariables f, B.variablePolarities f ))
+                    |> (\f -> ( essentialVariables f, B.variablePolarities f ))
                     |> Expect.equal
                         ( [ True, False, False ]
                         , [ B.PositiveUnate, B.Independent, B.Independent ]

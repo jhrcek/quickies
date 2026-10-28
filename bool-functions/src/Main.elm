@@ -673,6 +673,11 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                             Html.text "Invalid function index"
 
                         Just bf ->
+                            let
+                                -- Shared by the restrictions table and the variable polarities.
+                                cofactors =
+                                    BoolFun.cofactors bf
+                            in
                             Html.div []
                                 [ case BoolFun.configForArity arity of
                                     Just config ->
@@ -694,8 +699,8 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                                     Nothing ->
                                         unsupportedArity
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
-                                , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf
-                                , viewProperty arity functionIndex propSubroute bf
+                                , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors
+                                , viewProperty arity functionIndex propSubroute cofactors bf
                                 ]
 
 
@@ -905,75 +910,68 @@ effectiveRestriction pinnedRestriction hoveredRestriction =
             hoveredRestriction
 
 
-viewRestrictions : Int -> PropertyRoute -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> BoolFun.BF -> Html Msg
-viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
+viewRestrictions : Int -> PropertyRoute -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List BoolFun.Cofactors -> Html Msg
+viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors =
     if arity <= 1 then
         Html.text ""
 
     else
         let
-            varIndices =
-                List.range 1 arity
+            cell value varIdx varCofactors =
+                let
+                    newIndex =
+                        BoolFun.funIndexOf (BoolFun.cofactor value varCofactors)
 
-            cell varIdx value =
-                case BoolFun.restriction { varIndex = varIdx, value = value } bf of
-                    Nothing ->
-                        Html.td [] []
+                    r =
+                        { varIndex = varIdx, value = value }
 
-                    Just restricted ->
-                        let
-                            newIndex =
-                                BoolFun.funIndexOf restricted
+                    isPinned =
+                        pinnedRestriction == Just r
 
-                            r =
-                                { varIndex = varIdx, value = value }
+                    -- The pin glyph shows on hover (affordance) and stays while pinned.
+                    showPin =
+                        isPinned || hoveredRestriction == Just r
+                in
+                Html.td
+                    [ Events.onMouseEnter (HoverRestriction (Just r))
+                    , Events.onMouseLeave (HoverRestriction Nothing)
+                    ]
+                    [ Html.a
+                        [ Route.href
+                            (Arity (arity - 1)
+                                (Function newIndex propSubroute)
+                            )
+                        ]
+                        [ Html.text (N.toDecimalString newIndex) ]
+                    , Html.span
+                        [ HA.class "pin-slot"
+                        , Events.onClick
+                            (PinRestriction
+                                (if isPinned then
+                                    Nothing
 
-                            isPinned =
-                                pinnedRestriction == Just r
+                                 else
+                                    Just r
+                                )
+                            )
+                        ]
+                        [ Html.text
+                            (if showPin then
+                                "📌"
 
-                            -- The pin glyph shows on hover (affordance) and stays while pinned.
-                            showPin =
-                                isPinned || hoveredRestriction == Just r
-                        in
-                        Html.td
-                            [ Events.onMouseEnter (HoverRestriction (Just r))
-                            , Events.onMouseLeave (HoverRestriction Nothing)
-                            ]
-                            [ Html.a
-                                [ Route.href
-                                    (Arity (arity - 1)
-                                        (Function newIndex propSubroute)
-                                    )
-                                ]
-                                [ Html.text (N.toDecimalString newIndex) ]
-                            , Html.span
-                                [ HA.class "pin-slot"
-                                , Events.onClick
-                                    (PinRestriction
-                                        (if isPinned then
-                                            Nothing
-
-                                         else
-                                            Just r
-                                        )
-                                    )
-                                ]
-                                [ Html.text
-                                    (if showPin then
-                                        "📌"
-
-                                     else
-                                        ""
-                                    )
-                                ]
-                            ]
+                             else
+                                ""
+                            )
+                        ]
+                    ]
 
             valueRow value =
                 Html.tr []
                     (Html.th
                         [ HA.style "background-color" (BoolFun.View.boolColor value) ]
                         [ Html.text (BoolFun.View.showBool value) ]
-                        :: List.map (\varIdx -> cell varIdx value) varIndices
+                        -- cofactors are 0-based, variable indices 1-based
+                        :: List.indexedMap (\i -> cell value (i + 1)) cofactors
                     )
         in
         Html.div []
@@ -995,7 +993,12 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
                     ]
                 , case effectiveRestriction pinnedRestriction hoveredRestriction of
                     Just highlight ->
-                        viewRestrictionSummary arity highlight bf
+                        case List.head (List.drop (highlight.varIndex - 1) cofactors) of
+                            Just highlightedCofactors ->
+                                viewRestrictionSummary arity highlight highlightedCofactors
+
+                            Nothing ->
+                                Html.text ""
 
                     Nothing ->
                         Html.text ""
@@ -1027,8 +1030,8 @@ whole, instead of as rows interleaved through the main truth table. Like the mai
 truth table, clicking a body cell edits the function by toggling the corresponding
 bit of its index.
 -}
-viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.BF -> Html Msg
-viewRestrictionSummary arity highlight bf =
+viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.Cofactors -> Html Msg
+viewRestrictionSummary arity highlight highlightedCofactors =
     let
         columns =
             List.range 0 (2 ^ (arity - 1) - 1)
@@ -1053,40 +1056,37 @@ viewRestrictionSummary arity highlight bf =
                 restr =
                     { varIndex = highlight.varIndex, value = value }
 
+                cofactor =
+                    BoolFun.cofactor value highlightedCofactors
+
+                -- The row whose value matches the highlighted restriction gets
+                -- the same vivid-background + outline treatment as the matching
+                -- cells in the main truth table.
+                isHighlightedRow =
+                    value == highlight.value
+
                 outputCells =
-                    case BoolFun.restriction restr bf of
-                        Just cofactor ->
+                    List.map
+                        (\i ->
                             let
-                                -- The row whose value matches the highlighted restriction gets
-                                -- the same vivid-background + outline treatment as the matching
-                                -- cells in the main truth table.
-                                isHighlightedRow =
-                                    value == highlight.value
+                                -- Clicking edits the underlying function: toggle the
+                                -- original-function bit this cofactor cell stands for.
+                                clickAttr =
+                                    Events.onClick
+                                        (FlipBitInFunctionIndex
+                                            (BoolFun.restrictionRowIndex arity restr i)
+                                        )
+
+                                highlightAttrs =
+                                    if isHighlightedRow then
+                                        BoolFun.View.highlightCellAttrs (BoolFun.eval cofactor i)
+
+                                    else
+                                        []
                             in
-                            List.map
-                                (\i ->
-                                    let
-                                        -- Clicking edits the underlying function: toggle the
-                                        -- original-function bit this cofactor cell stands for.
-                                        clickAttr =
-                                            Events.onClick
-                                                (FlipBitInFunctionIndex
-                                                    (BoolFun.restrictionRowIndex arity restr i)
-                                                )
-
-                                        highlightAttrs =
-                                            if isHighlightedRow then
-                                                BoolFun.View.highlightCellAttrs (BoolFun.eval cofactor i)
-
-                                            else
-                                                []
-                                    in
-                                    BoolFun.View.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
-                                )
-                                columns
-
-                        Nothing ->
-                            List.map (\_ -> Html.td [] []) columns
+                            BoolFun.View.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
+                        )
+                        columns
             in
             Html.tr []
                 (Html.th [] [ Html.text (rowHeaderLabel value) ]
@@ -1109,7 +1109,8 @@ viewRestrictionSummary arity highlight bf =
 
 viewImplicantsToggle : Bool -> PropertyRoute -> BoolFun.BF -> Html Msg
 viewImplicantsToggle showImplicantsInTable propSubroute bf =
-    if propSubroute == PropertiesSummary && not (List.isEmpty (BoolFun.primeImplicants bf)) then
+    -- Only the constant-false function (index 0) has no prime implicants.
+    if propSubroute == PropertiesSummary && not (N.isZero (BoolFun.funIndexOf bf)) then
         Html.label []
             [ Html.input
                 [ HA.type_ "checkbox"
@@ -1124,8 +1125,8 @@ viewImplicantsToggle showImplicantsInTable propSubroute bf =
         Html.text ""
 
 
-viewProperty : Int -> Natural -> PropertyRoute -> BoolFun.BF -> Html Msg
-viewProperty arity functionIndex propSubroute bf =
+viewProperty : Int -> Natural -> PropertyRoute -> List BoolFun.Cofactors -> BoolFun.BF -> Html Msg
+viewProperty arity functionIndex propSubroute cofactors bf =
     let
         propLink : PropertyRoute -> String -> Html Msg
         propLink target label =
@@ -1173,17 +1174,20 @@ viewProperty arity functionIndex propSubroute bf =
                                     ]
                                 ]
                             , Html.tbody []
-                                (List.map3
-                                    (\letter isEssential polarity ->
+                                (List.map2
+                                    (\letter varCofactors ->
+                                        let
+                                            polarity =
+                                                BoolFun.cofactorPolarity varCofactors
+                                        in
                                         Html.tr []
                                             [ Html.td [] [ Html.text letter ]
-                                            , yesNoCell isEssential
+                                            , yesNoCell (BoolFun.isEssential polarity)
                                             , Html.td [] [ Html.text (BoolFun.showPolarity polarity) ]
                                             ]
                                     )
                                     (BoolFun.varNames arity)
-                                    (BoolFun.essentialVariables bf)
-                                    (BoolFun.variablePolarities bf)
+                                    cofactors
                                 )
                             ]
                         , let
