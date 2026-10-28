@@ -10,9 +10,11 @@ module BoolFun exposing
     , algebraicNormalForm
     , arityOf
     , chowParameters
+    , clauseToFunction
     , cofactor
     , cofactorPolarity
     , cofactors
+    , conjunction
     , disjunction
     , dualOf
     , eval
@@ -609,10 +611,28 @@ constant-false function) isn't ambiguous. `Nothing` when any of the functions
 has a different arity, or the arity is out of range.
 -}
 disjunction : Int -> List BF -> Maybe BF
-disjunction arity fns =
+disjunction =
+    combineRows (||) False
+
+
+{-| The conjunction (AND) of a list of functions: true at a row exactly when all
+of them are. Like `disjunction`, the arity is explicit so that the empty list
+(the constant-true function) isn't ambiguous. `Nothing` when any of the
+functions has a different arity, or the arity is out of range.
+-}
+conjunction : Int -> List BF -> Maybe BF
+conjunction =
+    combineRows (&&) True
+
+
+{-| Fold the truth tables of same-arity functions row-wise with `op`, starting
+from a table full of `unit`.
+-}
+combineRows : (Bool -> Bool -> Bool) -> Bool -> Int -> List BF -> Maybe BF
+combineRows op unit arity fns =
     if List.all (\f -> arityOf f == arity) fns then
         List.map toRows fns
-            |> List.foldl (List.map2 (||)) (List.repeat (2 ^ arity) False)
+            |> List.foldl (List.map2 op) (List.repeat (2 ^ arity) unit)
             |> fromRows arity
 
     else
@@ -671,6 +691,34 @@ implicantFromLiterals arity lits =
                     ( 0, 0 )
     in
     Implicant { arity = arity, mask = mask, value = value }
+
+
+{-| Build the Boolean function that a clause (sum term) represents: the
+disjunction of its fixed literals, given one per variable in the same order as
+`varNames`. By De Morgan, it is false exactly on the inputs covered by the
+implicant with every literal negated. A clause with no fixed literals (the empty
+disjunction) is constant false.
+-}
+clauseToFunction : Int -> List Literal -> BF
+clauseToFunction arity lits =
+    implicantFromLiterals arity (List.map negateLiteral lits)
+        |> implicantToFunction
+        |> toRows
+        |> List.map not
+        |> unsafeFromRows arity
+
+
+negateLiteral : Literal -> Literal
+negateLiteral lit =
+    case lit of
+        Positive ->
+            Negative
+
+        Negative ->
+            Positive
+
+        DontCare ->
+            DontCare
 
 
 {-| Find every prime implicant of a Boolean function using the

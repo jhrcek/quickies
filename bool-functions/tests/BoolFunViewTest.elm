@@ -11,6 +11,7 @@ suite : Test
 suite =
     describe "BoolFun.View"
         [ viewImplicantTests
+        , viewClauseTests
         , boolHelpersTests
         , viewAlgebraicNormalFormTests
         ]
@@ -41,6 +42,29 @@ viewImplicantTests =
                 [ Settings.default, { formula = Settings.Compact } ]
                     |> List.map (\settings -> implicantTex settings [ B.DontCare, B.DontCare ])
                     |> Expect.equalLists [ "\\top", "\\top" ]
+        ]
+
+
+viewClauseTests : Test
+viewClauseTests =
+    describe "clauseTex"
+        [ test "symbols style: a ∨ ¬b" <|
+            \_ ->
+                V.clauseTex Settings.default [ B.Positive, B.Negative, B.DontCare ]
+                    |> Expect.equal "a \\lor \\neg b"
+        , test "compact style: a + b̄" <|
+            \_ ->
+                V.clauseTex { formula = Settings.Compact } [ B.Positive, B.Negative, B.DontCare ]
+                    |> Expect.equal "a + \\overline{b}"
+        , test "don't-cares are left out" <|
+            \_ ->
+                V.clauseTex Settings.default [ B.DontCare, B.Negative, B.DontCare, B.Positive ]
+                    |> Expect.equal "\\neg b \\lor d"
+        , test "the empty clause is ⊥ in both styles" <|
+            \_ ->
+                [ Settings.default, { formula = Settings.Compact } ]
+                    |> List.map (\settings -> V.clauseTex settings [ B.DontCare, B.DontCare ])
+                    |> Expect.equalLists [ "\\bot", "\\bot" ]
         ]
 
 

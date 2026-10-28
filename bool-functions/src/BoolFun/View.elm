@@ -3,6 +3,7 @@ module BoolFun.View exposing
     , boolCell
     , boolCellWith
     , boolColor
+    , clauseTex
     , functionLabelTex
     , highlightCellAttrs
     , implicantTex
@@ -10,6 +11,7 @@ module BoolFun.View exposing
     , showBool
     , truthTable
     , viewAlgebraicNormalForm
+    , viewClause
     , viewImplicant
     , viewVarName
     )
@@ -220,32 +222,53 @@ viewImplicant settings implicant =
 
 implicantTex : Settings -> Implicant -> String
 implicantTex settings implicant =
-    let
-        literals =
-            implicantToLiterals implicant
+    case literalTexParts settings (implicantToLiterals implicant) of
+        [] ->
+            "\\top"
 
-        parts =
-            List.map2
-                (\name lit ->
-                    case lit of
-                        Positive ->
-                            Just name
+        parts ->
+            Settings.conjunctionTex settings parts
 
-                        Negative ->
-                            Just (Settings.negationTex settings name)
 
-                        DontCare ->
-                            Nothing
-                )
-                (varNames (List.length literals))
-                literals
-                |> List.filterMap identity
-    in
-    if List.isEmpty parts then
-        "\\top"
+{-| Typeset form of a clause (sum term), given one literal per variable: a
+disjunction of literals using the variable names from `varNames`, or `⊥` for
+the empty clause.
+-}
+viewClause : Settings -> List Literal -> Html msg
+viewClause settings literals =
+    KaTeX.inline (clauseTex settings literals)
 
-    else
-        Settings.conjunctionTex settings parts
+
+clauseTex : Settings -> List Literal -> String
+clauseTex settings literals =
+    case literalTexParts settings literals of
+        [] ->
+            "\\bot"
+
+        parts ->
+            Settings.disjunctionTex settings parts
+
+
+{-| TeX for each fixed literal (one literal per variable, in `varNames` order),
+leaving out the don't-cares.
+-}
+literalTexParts : Settings -> List Literal -> List String
+literalTexParts settings literals =
+    List.map2
+        (\name lit ->
+            case lit of
+                Positive ->
+                    Just name
+
+                Negative ->
+                    Just (Settings.negationTex settings name)
+
+                DontCare ->
+                    Nothing
+        )
+        (varNames (List.length literals))
+        literals
+        |> List.filterMap identity
 
 
 {-| Typeset algebraic normal form, see `algebraicNormalFormTex`.

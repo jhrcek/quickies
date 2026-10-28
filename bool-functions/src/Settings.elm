@@ -3,6 +3,7 @@ module Settings exposing
     , Settings
     , conjunctionTex
     , default
+    , disjunctionTex
     , negationTex
     , viewFunctionName
     )
@@ -53,6 +54,18 @@ conjunctionTex settings parts =
 
         Compact ->
             String.concat parts
+
+
+{-| Combine TeX disjuncts using the chosen style: `x∨y` or `x+y`.
+-}
+disjunctionTex : Settings -> List String -> String
+disjunctionTex settings parts =
+    case settings.formula of
+        Symbols ->
+            String.join " \\lor " parts
+
+        Compact ->
+            String.join " + " parts
 
 
 {-| Render a conventional function name (see `BoolFun.name`). Word names like

@@ -29,6 +29,7 @@ type ArityRoute
     = AllFunctions Natural
     | Function Natural PropertyRoute
     | SopEditor
+    | PosEditor
 
 
 type PropertyRoute
@@ -83,6 +84,7 @@ arityRouteParser =
                 </> propertyRouteParser
             )
         , map SopEditor (s "sop-editor")
+        , map PosEditor (s "pos-editor")
         ]
 
 
@@ -98,6 +100,9 @@ renderArityRoute route =
 
             SopEditor ->
                 [ "sop-editor" ]
+
+            PosEditor ->
+                [ "pos-editor" ]
         )
 
 
@@ -170,6 +175,9 @@ updateFunIndex f route =
         Arity _ SopEditor ->
             route
 
+        Arity _ PosEditor ->
+            route
+
 
 naturalClamp : Natural -> Natural -> Natural -> Natural
 naturalClamp min max value =
@@ -202,6 +210,9 @@ updateArity f route =
         Arity arity SopEditor ->
             Arity (clamp minArity maxArity (f arity)) SopEditor
 
+        Arity arity PosEditor ->
+            Arity (clamp minArity maxArity (f arity)) PosEditor
+
 
 {-| Apply a function to the (1-based) page number of an AllFunctions route,
 clamping the result into the valid range `1..pageCount`. Used by in-app page
@@ -220,6 +231,9 @@ updatePageNumber f route =
             Arity arity (Function funIndex propertyRoute)
 
         Arity _ SopEditor ->
+            route
+
+        Arity _ PosEditor ->
             route
 
 
@@ -260,6 +274,9 @@ validateRoute route =
                             Ok route
 
                     SopEditor ->
+                        Ok route
+
+                    PosEditor ->
                         Ok route
 
         Home ->

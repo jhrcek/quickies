@@ -28,8 +28,6 @@ import Url
 
    - Add mention of https://en.wikipedia.org/wiki/Dedekind_number somewhere to monotone property page
 
-   - Add a POS editor page, analogous to the SOP editor at functions/ARITY/sop-editor
-
    - Extend the SOP editor:
        - show implication relationships among terms that user adds (showing redundancy)
        - show CDNF / CCNF for of the current function,
@@ -64,27 +62,58 @@ type alias Model =
     , pinnedRestriction : Maybe BoolFun.Restriction
     , hoveredRestriction : Maybe BoolFun.Restriction
 
-    -- SOP editor state: the product terms currently being edited. Each term is a
-    -- list of literals, one per variable (so its length matches the arity). It is
-    -- normalized to the current arity whenever the SOP editor route is entered.
-    , sopTerms : List SopTerm
+    -- Term editor state: the terms currently being edited in the SOP editor
+    -- (product terms) and in the POS editor (clauses). Each term is a list of
+    -- literals, one per variable (so its length matches the arity). Each list is
+    -- normalized to the current arity whenever its editor route is entered.
+    , sopTerms : List Term
+    , posTerms : List Term
     }
 
 
-{-| A product term in the SOP editor: one literal per variable, in the same
-MSB-first order as `BoolFun.varNames` (index 0 = variable `a`). Its length
-always matches the arity it was normalized for.
+{-| Which normal form a term editor builds: a sum of products (the OR of
+product terms) or a product of sums (the AND of clauses).
 -}
-type alias SopTerm =
+type NormalForm
+    = Sop
+    | Pos
+
+
+{-| A term in a term editor: one literal per variable, in the same MSB-first
+order as `BoolFun.varNames` (index 0 = variable `a`). In the SOP editor it is a
+product term (the AND of its literals), in the POS editor a clause (their OR).
+Its length always matches the arity it was normalized for.
+-}
+type alias Term =
     List BoolFun.Literal
+
+
+getTerms : NormalForm -> Model -> List Term
+getTerms normalForm model =
+    case normalForm of
+        Sop ->
+            model.sopTerms
+
+        Pos ->
+            model.posTerms
+
+
+setTerms : NormalForm -> List Term -> Model -> Model
+setTerms normalForm terms model =
+    case normalForm of
+        Sop ->
+            { model | sopTerms = terms }
+
+        Pos ->
+            { model | posTerms = terms }
 
 
 {-| Resize a term to `arity` literals: drop trailing literals (the last
 variables) when shrinking, pad with `DontCare` when growing. Preserves as much
 of the existing term as possible across arity changes.
 -}
-resizeSopTerm : Int -> SopTerm -> SopTerm
-resizeSopTerm arity term =
+resizeTerm : Int -> Term -> Term
+resizeTerm arity term =
     let
         kept =
             List.take arity term
@@ -93,26 +122,27 @@ resizeSopTerm arity term =
 
 
 {-| The default term for a given arity: variable `a` positive, the rest
-don't-care (e.g. arity 3 → `a`). For arity 0 this is the empty term (`⊤`).
+don't-care (e.g. arity 3 → `a`). For arity 0 this is the empty term (`⊤` as a
+product term, `⊥` as a clause).
 -}
-defaultSopTerm : Int -> SopTerm
-defaultSopTerm arity =
-    resizeSopTerm arity [ BoolFun.Positive ]
+defaultTerm : Int -> Term
+defaultTerm arity =
+    resizeTerm arity [ BoolFun.Positive ]
 
 
-{-| The initial SOP-editor state for an arity: a single default term.
+{-| The initial term-editor state for an arity: a single default term.
 -}
-defaultSop : Int -> List SopTerm
-defaultSop arity =
-    [ defaultSopTerm arity ]
+defaultTerms : Int -> List Term
+defaultTerms arity =
+    [ defaultTerm arity ]
 
 
-{-| Normalize every term to the given arity (see `resizeSopTerm`). An empty
-list of terms (constant-false SOP) stays empty.
+{-| Normalize every term to the given arity (see `resizeTerm`). An empty list
+of terms (constant-false SOP, constant-true POS) stays empty.
 -}
-normalizeSop : Int -> List SopTerm -> List SopTerm
-normalizeSop arity terms =
-    List.map (resizeSopTerm arity) terms
+normalizeTerms : Int -> List Term -> List Term
+normalizeTerms arity terms =
+    List.map (resizeTerm arity) terms
 
 
 {-| Advance a literal one step through the click cycle:
@@ -134,8 +164,8 @@ cycleLiteral lit =
 {-| The arity the model's route points at, defaulting to `minArity` for routes
 (like `Home`) that have none.
 -}
-sopArity : Model -> Int
-sopArity model =
+routeArity : Model -> Int
+routeArity model =
     model.route
         |> Result.toMaybe
         |> Maybe.andThen Route.getArity
@@ -162,7 +192,8 @@ init _ url key =
       , settingsOpen = False
       , pinnedRestriction = Nothing
       , hoveredRestriction = Nothing
-      , sopTerms = defaultSop arity
+      , sopTerms = defaultTerms arity
+      , posTerms = defaultTerms arity
       }
     , Cmd.none
     )
@@ -182,10 +213,10 @@ type Msg
     | SetFormulaStyle Settings.FormulaStyle
     | HoverRestriction (Maybe BoolFun.Restriction)
     | PinRestriction (Maybe BoolFun.Restriction)
-    | SopAddTerm
-    | SopRemoveTerm Int -- term index
-    | SopToggleLiteral Int Int -- term index, variable index
-    | SopResetTerms
+    | AddTerm NormalForm
+    | RemoveTerm NormalForm Int -- term index
+    | ToggleLiteral NormalForm Int Int -- term index, variable index
+    | ResetTerms NormalForm
 
 
 type Delta
@@ -231,16 +262,23 @@ update msg model =
                         Nothing
                 , hoveredRestriction = Nothing
 
-                -- Keep the SOP terms consistent with the arity of the editor we
-                -- land on (resizing them), regardless of how we got here: deep
-                -- link, arity bump, or the "Open SOP editor" link.
+                -- Keep the terms consistent with the arity of the editor we land
+                -- on (resizing them), regardless of how we got here: deep link,
+                -- arity bump, or a link to the editor.
                 , sopTerms =
                     case newRoute of
                         Ok (Arity arity SopEditor) ->
-                            normalizeSop arity model.sopTerms
+                            normalizeTerms arity model.sopTerms
 
                         _ ->
                             model.sopTerms
+                , posTerms =
+                    case newRoute of
+                        Ok (Arity arity PosEditor) ->
+                            normalizeTerms arity model.posTerms
+
+                        _ ->
+                            model.posTerms
               }
             , Cmd.none
             )
@@ -325,48 +363,48 @@ update msg model =
             , Cmd.none
             )
 
-        SopAddTerm ->
-            ( { model | sopTerms = model.sopTerms ++ [ defaultSopTerm (sopArity model) ] }
+        AddTerm normalForm ->
+            ( setTerms normalForm (getTerms normalForm model ++ [ defaultTerm (routeArity model) ]) model
             , Cmd.none
             )
 
-        SopRemoveTerm termIndex ->
-            ( { model
-                | sopTerms =
-                    model.sopTerms
-                        |> List.indexedMap Tuple.pair
-                        |> List.filter (\( i, _ ) -> i /= termIndex)
-                        |> List.map Tuple.second
-              }
+        RemoveTerm normalForm termIndex ->
+            ( setTerms normalForm
+                (getTerms normalForm model
+                    |> List.indexedMap Tuple.pair
+                    |> List.filter (\( i, _ ) -> i /= termIndex)
+                    |> List.map Tuple.second
+                )
+                model
             , Cmd.none
             )
 
-        SopToggleLiteral termIndex varIndex ->
-            ( { model
-                | sopTerms =
-                    List.indexedMap
-                        (\ti term ->
-                            if ti == termIndex then
-                                List.indexedMap
-                                    (\vi lit ->
-                                        if vi == varIndex then
-                                            cycleLiteral lit
+        ToggleLiteral normalForm termIndex varIndex ->
+            ( setTerms normalForm
+                (List.indexedMap
+                    (\ti term ->
+                        if ti == termIndex then
+                            List.indexedMap
+                                (\vi lit ->
+                                    if vi == varIndex then
+                                        cycleLiteral lit
 
-                                        else
-                                            lit
-                                    )
-                                    term
-
-                            else
+                                    else
+                                        lit
+                                )
                                 term
-                        )
-                        model.sopTerms
-              }
+
+                        else
+                            term
+                    )
+                    (getTerms normalForm model)
+                )
+                model
             , Cmd.none
             )
 
-        SopResetTerms ->
-            ( { model | sopTerms = defaultSop (sopArity model) }
+        ResetTerms normalForm ->
+            ( setTerms normalForm (defaultTerms (routeArity model)) model
             , Cmd.none
             )
 
@@ -411,6 +449,7 @@ viewBody model =
                         model.pinnedRestriction
                         model.hoveredRestriction
                         model.sopTerms
+                        model.posTerms
                         route
                     ]
 
@@ -591,6 +630,12 @@ buildBreadcrumbs route =
                     , Html.text "SOP Editor"
                     ]
 
+                PosEditor ->
+                    [ homeLink
+                    , arityControls True arity
+                    , Html.text "POS Editor"
+                    ]
+
 
 propertyName : PropertyRoute -> String
 propertyName p =
@@ -643,8 +688,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List SopTerm -> Route -> Html Msg
-viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction sopTerms route =
+viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List Term -> List Term -> Route -> Html Msg
+viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction sopTerms posTerms route =
     case route of
         Home ->
             Html.div []
@@ -665,7 +710,10 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                     viewAllFunctions settings arity page
 
                 SopEditor ->
-                    viewSopEditor settings arity sopTerms
+                    viewTermEditor settings Sop arity sopTerms
+
+                PosEditor ->
+                    viewTermEditor settings Pos arity posTerms
 
                 Function functionIndex propSubroute ->
                     case BoolFun.mkBF arity functionIndex of
@@ -697,65 +745,133 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
 
 
 
--- SOP EDITOR
+-- TERM EDITORS (SOP / POS)
 
 
-{-| The SOP editor page: an editable list of product terms on the left and a
-truth table of the function they define (the OR of all terms) on the right.
+{-| A term editor page: an editable list of terms on the left and a truth table
+of the function they define on the right. In the SOP editor that is the OR of
+product terms, in the POS editor the AND of clauses.
 -}
-viewSopEditor : Settings -> Int -> List SopTerm -> Html Msg
-viewSopEditor settings arity terms =
+viewTermEditor : Settings -> NormalForm -> Int -> List Term -> Html Msg
+viewTermEditor settings normalForm arity terms =
     Html.div
         [ HA.style "display" "flex"
         , HA.style "gap" "2em"
         , HA.style "align-items" "flex-start"
         ]
-        [ viewSopTermsEditor settings arity terms
-        , viewSopTruthTable settings arity terms
+        [ viewTermsList settings normalForm arity terms
+        , viewTermsTruthTable settings normalForm arity terms
         ]
+
+
+{-| The name of the normal form, as used in page text.
+-}
+normalFormName : NormalForm -> String
+normalFormName normalForm =
+    case normalForm of
+        Sop ->
+            "SOP"
+
+        Pos ->
+            "POS"
+
+
+{-| What a single term of the normal form is called in the UI.
+-}
+termNoun : NormalForm -> String
+termNoun normalForm =
+    case normalForm of
+        Sop ->
+            "term"
+
+        Pos ->
+            "clause"
+
+
+{-| The function a single term represents: the AND of its literals (product
+term) or their OR (clause).
+-}
+termFunction : NormalForm -> Int -> Term -> BoolFun.BF
+termFunction normalForm arity term =
+    case normalForm of
+        Sop ->
+            BoolFun.implicantToFunction (BoolFun.implicantFromLiterals arity term)
+
+        Pos ->
+            BoolFun.clauseToFunction arity term
+
+
+{-| Combine the terms' functions: OR for SOP, AND for POS.
+-}
+combineTerms : NormalForm -> Int -> List BoolFun.BF -> Maybe BoolFun.BF
+combineTerms normalForm =
+    case normalForm of
+        Sop ->
+            BoolFun.disjunction
+
+        Pos ->
+            BoolFun.conjunction
+
+
+viewTerm : Settings -> NormalForm -> Int -> Term -> Html msg
+viewTerm settings normalForm arity term =
+    case normalForm of
+        Sop ->
+            BoolFun.View.viewImplicant settings (BoolFun.implicantFromLiterals arity term)
+
+        Pos ->
+            BoolFun.View.viewClause settings term
 
 
 {-| Left column: one editable row per term, plus Add/Reset controls.
 -}
-viewSopTermsEditor : Settings -> Int -> List SopTerm -> Html Msg
-viewSopTermsEditor settings arity terms =
+viewTermsList : Settings -> NormalForm -> Int -> List Term -> Html Msg
+viewTermsList settings normalForm arity terms =
     let
         termRows =
             if List.isEmpty terms then
                 [ Html.div
                     [ HA.style "color" "#888", HA.style "font-style" "italic" ]
-                    [ Html.text "No terms — the function is constant-false." ]
+                    [ Html.text
+                        (case normalForm of
+                            Sop ->
+                                "No terms — the function is constant-false."
+
+                            Pos ->
+                                "No clauses — the function is constant-true."
+                        )
+                    ]
                 ]
 
             else
-                List.indexedMap (viewSopTermRow settings arity) terms
+                List.indexedMap (viewTermRow settings normalForm arity) terms
     in
     -- The 10px margin matches the .truth-table margin so both columns align.
     Html.div [ HA.style "margin" "10px" ]
         [ Html.div [] termRows
         , Html.div [ HA.style "margin-top" "0.5em" ]
-            [ Html.button [ Events.onClick SopAddTerm ] [ Html.text "Add term" ]
+            [ Html.button [ Events.onClick (AddTerm normalForm) ] [ Html.text ("Add " ++ termNoun normalForm) ]
             , Html.text " "
-            , Html.button [ Events.onClick SopResetTerms ] [ Html.text "Reset" ]
+            , Html.button [ Events.onClick (ResetTerms normalForm) ] [ Html.text "Reset" ]
             ]
         ]
 
 
-{-| One product term: a clickable literal chip per variable, then a remove button.
+{-| One term: a clickable literal chip per variable, then a remove button.
 -}
-viewSopTermRow : Settings -> Int -> Int -> SopTerm -> Html Msg
-viewSopTermRow settings arity termIndex term =
+viewTermRow : Settings -> NormalForm -> Int -> Int -> Term -> Html Msg
+viewTermRow settings normalForm arity termIndex term =
     let
         chips =
             List.map2
-                (\name ( varIndex, lit ) -> viewLiteralChip settings termIndex varIndex name lit)
+                (\name ( varIndex, lit ) -> viewLiteralChip settings normalForm termIndex varIndex name lit)
                 (BoolFun.varNames arity)
                 (List.indexedMap Tuple.pair term)
 
         removeButton =
             Html.button
-                [ Events.onClick (SopRemoveTerm termIndex)
-                , HA.title "Remove term"
+                [ Events.onClick (RemoveTerm normalForm termIndex)
+                , HA.title ("Remove " ++ termNoun normalForm)
                 , HA.style "margin-left" "0.5em"
                 ]
                 [ Html.text "✗" ]
@@ -772,8 +888,8 @@ viewSopTermRow settings arity termIndex term =
 {-| A single literal, clickable to cycle variable → negated → don't-care.
 Don't-care literals are dimmed to signal the variable is unconstrained.
 -}
-viewLiteralChip : Settings -> Int -> Int -> String -> BoolFun.Literal -> Html Msg
-viewLiteralChip settings termIndex varIndex name lit =
+viewLiteralChip : Settings -> NormalForm -> Int -> Int -> String -> BoolFun.Literal -> Html Msg
+viewLiteralChip settings normalForm termIndex varIndex name lit =
     let
         ( content, dimmed ) =
             case lit of
@@ -787,7 +903,7 @@ viewLiteralChip settings termIndex varIndex name lit =
                     ( KaTeX.inline name, True )
     in
     Html.button
-        [ Events.onClick (SopToggleLiteral termIndex varIndex)
+        [ Events.onClick (ToggleLiteral normalForm termIndex varIndex)
         , HA.title "Toggle: variable → negated → don't-care"
         , HA.style "min-width" "2.5em"
         , HA.style "cursor" "pointer"
@@ -802,38 +918,35 @@ viewLiteralChip settings termIndex varIndex name lit =
         [ content ]
 
 
-{-| Right column: a truth table with one column per variable, one per product
-term (showing where that term holds), and a final column for their OR. Mirrors
-the function-detail truth table; the result column is read-only here since the
-function is defined by the terms. Below the table, a link to the detail page
-of the function the expression represents.
+{-| Right column: a truth table with one column per variable, one per term
+(showing where that term holds), and a final column for their combination.
+Mirrors the function-detail truth table; the result column is read-only here
+since the function is defined by the terms. Below the table, a link to the
+detail page of the function the expression represents.
 -}
-viewSopTruthTable : Settings -> Int -> List SopTerm -> Html Msg
-viewSopTruthTable settings arity terms =
+viewTermsTruthTable : Settings -> NormalForm -> Int -> List Term -> Html Msg
+viewTermsTruthTable settings normalForm arity terms =
     let
-        implicants =
-            List.map (BoolFun.implicantFromLiterals arity) terms
-
         termFns =
-            List.map BoolFun.implicantToFunction implicants
+            List.map (termFunction normalForm arity) terms
     in
-    case BoolFun.disjunction arity termFns of
-        Just sopFn ->
-            viewSopTruthTableFor settings arity implicants termFns sopFn
+    case combineTerms normalForm arity termFns of
+        Just fn ->
+            viewTermsTruthTableFor settings normalForm arity terms termFns fn
 
         Nothing ->
             -- Unreachable: every term is normalized to the editor's arity.
-            Html.text "The SOP terms don't match the arity of the editor."
+            Html.text ("The " ++ normalFormName normalForm ++ " terms don't match the arity of the editor.")
 
 
-viewSopTruthTableFor : Settings -> Int -> List BoolFun.Implicant -> List BoolFun.BF -> BoolFun.BF -> Html Msg
-viewSopTruthTableFor settings arity implicants termFns sopFn =
+viewTermsTruthTableFor : Settings -> NormalForm -> Int -> List Term -> List BoolFun.BF -> BoolFun.BF -> Html Msg
+viewTermsTruthTableFor settings normalForm arity terms termFns fn =
     let
         rowCount =
             2 ^ arity
 
         funIndex =
-            BoolFun.funIndexOf sopFn
+            BoolFun.funIndexOf fn
 
         doubleBorder =
             HA.style "border-left" "3px double #333"
@@ -847,12 +960,12 @@ viewSopTruthTableFor settings arity implicants termFns sopFn =
 
         termHeaderCells =
             List.indexedMap
-                (\idx impl -> Html.th (firstTermBorder idx) [ BoolFun.View.viewImplicant settings impl ])
-                implicants
+                (\idx term -> Html.th (firstTermBorder idx) [ viewTerm settings normalForm arity term ])
+                terms
 
         termBodyCells i =
             List.indexedMap
-                (\idx fn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval fn i))
+                (\idx termFn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval termFn i))
                 termFns
     in
     Html.div []
@@ -871,13 +984,13 @@ viewSopTruthTableFor settings arity implicants termFns sopFn =
                             Html.tr []
                                 (List.map BoolFun.View.boolCell (BoolFun.inputBits arity i)
                                     ++ termBodyCells i
-                                    ++ [ BoolFun.View.boolCellWith [ doubleBorder ] (BoolFun.eval sopFn i) ]
+                                    ++ [ BoolFun.View.boolCellWith [ doubleBorder ] (BoolFun.eval fn i) ]
                                 )
                         )
                 )
             ]
         , Html.div [ HA.style "margin" "10px" ]
-            [ Html.text "This SOP expression represents function "
+            [ Html.text ("This " ++ normalFormName normalForm ++ " expression represents function ")
             , Html.a
                 [ Route.href (Arity arity (Function funIndex PropertiesSummary)) ]
                 [ Html.text (N.toDecimalString funIndex) ]
@@ -1596,6 +1709,10 @@ viewAllFunctions settings arity page =
             , Html.a
                 [ Route.href (Arity arity SopEditor) ]
                 [ Html.text "SOP editor" ]
+            , Html.text " or the "
+            , Html.a
+                [ Route.href (Arity arity PosEditor) ]
+                [ Html.text "POS editor" ]
             , Html.text "."
             ]
         , Html.table [ HA.class "functions-table" ] (header :: rows)

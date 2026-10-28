@@ -23,9 +23,11 @@ suite =
         , dualTests
         , impliesTests
         , disjunctionTests
+        , conjunctionTests
         , restrictionTests
         , variablesTests
         , implicantTests
+        , clauseTests
         , primeImplicantTests
         , chowTests
         , anfTests
@@ -692,6 +694,67 @@ restrictionOracle r f =
         |> fromRowsOrCrash (n - 1)
 
 
+conjunctionTests : Test
+conjunctionTests =
+    describe "conjunction"
+        [ test "of no functions is constant true (every arity)" <|
+            \_ ->
+                allArities
+                    |> List.map (\n -> B.conjunction n [] |> Maybe.map describeFunction)
+                    |> Expect.equalLists (List.map (constTrue >> describeFunction >> Just) allArities)
+        , fuzz fnFuzzer "of a single function is that function" <|
+            \f ->
+                B.conjunction (B.arityOf f) [ f ]
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction f))
+        , fuzz fnFuzzer "is idempotent" <|
+            \f ->
+                B.conjunction (B.arityOf f) [ f, f ]
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction f))
+        , fuzz sameArityListFuzzer "matches a pointwise-AND oracle" <|
+            \( n, fns ) ->
+                B.conjunction n fns
+                    |> Maybe.map describeFunction
+                    |> Expect.equal
+                        (Just
+                            (describeFunction
+                                (fromLambda n (\bits -> List.all (\f -> B.eval f (rowOfBits bits)) fns))
+                            )
+                        )
+        , fuzz sameArityListFuzzer "does not depend on the order of the functions" <|
+            \( n, fns ) ->
+                B.conjunction n (List.reverse fns)
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (B.conjunction n fns |> Maybe.map describeFunction)
+        , test "of OR and XNOR is AND" <|
+            \_ ->
+                B.conjunction 2 [ or2, xnor2 ]
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction and2))
+        , fuzz sameArityListFuzzer "is Nothing when any function has a different arity" <|
+            \( n, fns ) ->
+                let
+                    other =
+                        if n == B.minArity then
+                            n + 1
+
+                        else
+                            n - 1
+                in
+                [ B.conjunction n (constTrue other :: fns)
+                , B.conjunction n (fns ++ [ constFalse other ])
+                ]
+                    |> List.map (Maybe.map describeFunction)
+                    |> Expect.equalLists [ Nothing, Nothing ]
+        , test "is Nothing for an out-of-range arity" <|
+            \_ ->
+                [ B.conjunction (B.minArity - 1) [], B.conjunction (B.maxArity + 1) [] ]
+                    |> List.map (Maybe.map describeFunction)
+                    |> Expect.equalLists [ Nothing, Nothing ]
+        ]
+
+
 restrictionTests : Test
 restrictionTests =
     let
@@ -1086,6 +1149,52 @@ implicantTests =
                 B.implicantToFunction (B.implicantFromLiterals 2 [ B.Positive, B.Negative ])
                     |> B.toRows
                     |> Expect.equalLists [ False, False, True, False ]
+        ]
+
+
+{-| Whether at least one fixed literal of a clause holds for the given input bits.
+-}
+satisfiesClause : List B.Literal -> List Bool -> Bool
+satisfiesClause lits bits =
+    List.map2
+        (\lit bit ->
+            case lit of
+                B.Positive ->
+                    bit
+
+                B.Negative ->
+                    not bit
+
+                B.DontCare ->
+                    False
+        )
+        lits
+        bits
+        |> List.any identity
+
+
+clauseTests : Test
+clauseTests =
+    describe "clauseToFunction"
+        [ fuzz arityAndLiteralsFuzzer "matches the literal-by-literal oracle" <|
+            \( n, lits ) ->
+                B.clauseToFunction n lits
+                    |> expectSameFunction (fromLambda n (satisfiesClause lits))
+        , fuzz arityAndLiteralsFuzzer "is false on 2^(number of DontCare) rows" <|
+            \( n, lits ) ->
+                B.clauseToFunction n lits
+                    |> B.toRows
+                    |> count not
+                    |> Expect.equal (2 ^ count ((==) B.DontCare) lits)
+        , fuzz arityFuzzer "the empty clause is constant false" <|
+            \n ->
+                B.clauseToFunction n (List.repeat n B.DontCare)
+                    |> expectSameFunction (constFalse n)
+        , test "a ∨ ¬b at arity 2 is false only at row 1" <|
+            \_ ->
+                B.clauseToFunction 2 [ B.Positive, B.Negative ]
+                    |> B.toRows
+                    |> Expect.equalLists [ True, False, True, True ]
         ]
 
 
