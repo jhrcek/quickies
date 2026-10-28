@@ -5,6 +5,7 @@ module HasseDiagram exposing
 
 import Bitwise
 import BoolFun exposing (BF)
+import BoolFun.View
 import GraphViz exposing (Engine(..))
 import Html exposing (Html)
 import Html.Attributes
@@ -79,7 +80,7 @@ buildGraph highlightViolations bf =
                 [ ( "label", GraphViz.str (bitString i) )
                 , ( "style", GraphViz.str "filled" )
                 , ( "fillcolor"
-                  , GraphViz.str (BoolFun.boolColor (BoolFun.eval bf i))
+                  , GraphViz.str (BoolFun.View.boolColor (BoolFun.eval bf i))
                   )
                 , ( "shape", GraphViz.str "circle" )
                 , ( "fontname", GraphViz.str "monospace" )

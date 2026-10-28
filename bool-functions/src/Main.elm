@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import BoolFun
+import BoolFun.View
 import Browser
 import Browser.Navigation as Nav
 import HasseDiagram
@@ -246,8 +247,14 @@ update msg model =
 
         GoToRandomFunction arity ->
             ( model
-            , Random.list (2 ^ arity) (Random.uniform '0' [ '1' ])
-                |> Random.map (\bitChars -> N.fromBinaryString (String.fromList bitChars) |> Maybe.withDefault N.zero)
+            , Random.list (2 ^ arity) (Random.uniform False [ True ])
+                |> Random.map
+                    (\rows ->
+                        BoolFun.fromRows arity rows
+                            |> Maybe.map BoolFun.funIndexOf
+                            -- Unreachable: the list has 2^arity rows and the arity comes from a valid route.
+                            |> Maybe.withDefault N.zero
+                    )
                 |> Random.generate (\funIdx -> GoToRoute (Arity arity (Function funIdx PropertiesSummary)))
             )
 
@@ -673,7 +680,7 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                             Html.div []
                                 [ case BoolFun.configForArity arity of
                                     Just config ->
-                                        BoolFun.truthTable FlipBitInFunctionIndex
+                                        BoolFun.View.truthTable FlipBitInFunctionIndex
                                             settings
                                             config
                                             (effectiveRestriction pinnedRestriction hoveredRestriction)
@@ -808,12 +815,21 @@ viewSopTruthTable settings arity terms =
 
         termFns =
             List.map BoolFun.implicantToFunction implicants
+    in
+    case BoolFun.disjunction arity termFns of
+        Just sopFn ->
+            viewSopTruthTableFor settings arity implicants termFns sopFn
 
+        Nothing ->
+            -- Unreachable: every term is normalized to the editor's arity.
+            Html.text "The SOP terms don't match the arity of the editor."
+
+
+viewSopTruthTableFor : Settings -> Int -> List BoolFun.Implicant -> List BoolFun.BF -> BoolFun.BF -> Html Msg
+viewSopTruthTableFor settings arity implicants termFns sopFn =
+    let
         rowCount =
             2 ^ arity
-
-        sopFn =
-            BoolFun.disjunction arity termFns
 
         funIndex =
             BoolFun.funIndexOf sopFn
@@ -830,12 +846,12 @@ viewSopTruthTable settings arity terms =
 
         termHeaderCells =
             List.indexedMap
-                (\idx impl -> Html.th (firstTermBorder idx) [ BoolFun.viewImplicant settings impl ])
+                (\idx impl -> Html.th (firstTermBorder idx) [ BoolFun.View.viewImplicant settings impl ])
                 implicants
 
         termBodyCells i =
             List.indexedMap
-                (\idx fn -> BoolFun.boolCellWith (firstTermBorder idx) (BoolFun.eval fn i))
+                (\idx fn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval fn i))
                 termFns
 
         resultLabel =
@@ -855,9 +871,9 @@ viewSopTruthTable settings arity terms =
                     |> List.map
                         (\i ->
                             Html.tr []
-                                (List.map BoolFun.boolCell (BoolFun.inputBits arity i)
+                                (List.map BoolFun.View.boolCell (BoolFun.inputBits arity i)
                                     ++ termBodyCells i
-                                    ++ [ BoolFun.boolCellWith [ doubleBorder ] (BoolFun.eval sopFn i) ]
+                                    ++ [ BoolFun.View.boolCellWith [ doubleBorder ] (BoolFun.eval sopFn i) ]
                                 )
                         )
                 )
@@ -951,8 +967,8 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction bf =
             valueRow value =
                 Html.tr []
                     (Html.th
-                        [ HA.style "background-color" (BoolFun.boolColor value) ]
-                        [ Html.text (BoolFun.showBool value) ]
+                        [ HA.style "background-color" (BoolFun.View.boolColor value) ]
+                        [ Html.text (BoolFun.View.showBool value) ]
                         :: List.map (\varIdx -> cell varIdx value) varIndices
                     )
         in
@@ -1019,7 +1035,7 @@ viewRestrictionSummary arity highlight bf =
                     (List.indexedMap
                         (\i name ->
                             if i == highlight.varIndex - 1 then
-                                BoolFun.showBool value
+                                BoolFun.View.showBool value
 
                             else
                                 name
@@ -1055,12 +1071,12 @@ viewRestrictionSummary arity highlight bf =
 
                                         highlightAttrs =
                                             if isHighlightedRow then
-                                                BoolFun.highlightCellAttrs (BoolFun.eval cofactor i)
+                                                BoolFun.View.highlightCellAttrs (BoolFun.eval cofactor i)
 
                                             else
                                                 []
                                     in
-                                    BoolFun.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
+                                    BoolFun.View.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
                                 )
                                 columns
 
@@ -1467,10 +1483,10 @@ functionRow settings arity maybeGetName index bf =
                     Nothing ->
                         []
                )
-            ++ [ BoolFun.boolCell (BoolFun.isFalsityPreserving bf)
-               , BoolFun.boolCell (BoolFun.isTruthPreserving bf)
-               , BoolFun.boolCell (PostProperties.monotone bf).holds
-               , BoolFun.boolCell (BoolFun.isSelfDual bf)
+            ++ [ BoolFun.View.boolCell (BoolFun.isFalsityPreserving bf)
+               , BoolFun.View.boolCell (BoolFun.isTruthPreserving bf)
+               , BoolFun.View.boolCell (PostProperties.monotone bf).holds
+               , BoolFun.View.boolCell (BoolFun.isSelfDual bf)
                ]
         )
 
@@ -1535,7 +1551,7 @@ yesNo condition =
 
 yesNoCell : Bool -> Html msg
 yesNoCell b =
-    Html.td [ HA.style "background-color" (BoolFun.boolColor b) ] [ yesNo b ]
+    Html.td [ HA.style "background-color" (BoolFun.View.boolColor b) ] [ yesNo b ]
 
 
 styles : String
