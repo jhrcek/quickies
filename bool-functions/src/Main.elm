@@ -25,6 +25,8 @@ import Url
         - essential variables
         - monotonicity in each variable
 
+   - Add mention of https://en.wikipedia.org/wiki/Dedekind_number somewhere to monotone property page
+
    - Add SOP / POS editor page(s?) nested under functions/ARITY/editor
        - show implication relationships among terms that user adds (showing redundancy)
        - show CDNF / CCNF for of the current function,
