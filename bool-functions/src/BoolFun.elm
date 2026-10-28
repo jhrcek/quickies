@@ -516,7 +516,7 @@ lastNBits numBits n =
 
 getBit : Int -> Int -> Bool
 getBit bitIndex n =
-    if bitIndex < 0 || bitIndex > 32 then
+    if bitIndex < 0 || bitIndex >= 32 then
         False
 
     else
