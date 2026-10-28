@@ -4,8 +4,10 @@ module BoolFun exposing
     , Cofactors
     , Implicant
     , Literal(..)
+    , Monomial
     , Polarity(..)
     , Restriction
+    , algebraicNormalForm
     , arityOf
     , chowParameters
     , cofactor
@@ -15,6 +17,7 @@ module BoolFun exposing
     , dualOf
     , eval
     , flipBit
+    , fromAlgebraicNormalForm
     , fromRows
     , funCount
     , funIndexOf
@@ -36,6 +39,7 @@ module BoolFun exposing
     , name
     , pageCount
     , pageSize
+    , popCount
     , primeImplicants
     , restriction
     , restrictionRowIndex
@@ -831,3 +835,91 @@ isFalsityPreserving (BF { funIndex }) =
 isTruthPreserving : BF -> Bool
 isTruthPreserving ((BF { arity }) as bf) =
     eval bf (2 ^ arity - 1)
+
+
+{-| A monomial of the algebraic normal form: a conjunction of (positive)
+variables, stored as a bitmask in the same MSB-first convention as the row
+index (variable `a` is bit `arity - 1`). The empty monomial `0` is the
+constant 1.
+-}
+type alias Monomial =
+    Int
+
+
+{-| The algebraic normal form (Zhegalkin polynomial) of a function: the unique
+set of monomials whose XOR equals the function. Sorted by degree, then in
+variable order, e.g. `1 ⊕ a ⊕ b ⊕ ab`. The empty list is the constant 0.
+-}
+algebraicNormalForm : BF -> List Monomial
+algebraicNormalForm (BF { arity, rows }) =
+    moebius arity rows
+        |> Array.toIndexedList
+        |> List.filter Tuple.second
+        |> List.map Tuple.first
+        |> List.sortBy (\m -> ( popCount m, negate m ))
+
+
+{-| Build a function from its algebraic normal form, the inverse of
+`algebraicNormalForm`. Repeated monomials cancel out (`m ⊕ m = 0`).
+`Nothing` when the arity is out of range or a monomial mentions a variable
+the arity doesn't have.
+-}
+fromAlgebraicNormalForm : Int -> List Monomial -> Maybe BF
+fromAlgebraicNormalForm arity monomials =
+    let
+        size =
+            2 ^ arity
+    in
+    if List.any (\m -> m < 0 || m >= size) monomials then
+        Nothing
+
+    else
+        monomials
+            |> List.foldl (\m acc -> Array.set m (not (Array.get m acc |> Maybe.withDefault False)) acc)
+                (Array.repeat size False)
+            |> moebius arity
+            |> Array.toList
+            |> fromRows arity
+
+
+{-| The binary Möbius transform: the coefficient of monomial S is the XOR of
+the values at all inputs x ⊆ S. One butterfly pass per variable; the transform
+is its own inverse, so it maps truth tables to ANF coefficients and back.
+-}
+moebius : Int -> Array Bool -> Array Bool
+moebius arity values =
+    List.foldl
+        (\k prev ->
+            let
+                bit =
+                    Bitwise.shiftLeftBy k 1
+            in
+            Array.indexedMap
+                (\x v ->
+                    if Bitwise.and x bit == 0 then
+                        v
+
+                    else
+                        xor v (Array.get (x - bit) prev |> Maybe.withDefault False)
+                )
+                prev
+        )
+        values
+        (List.range 0 (arity - 1))
+
+
+{-| Number of 1-bits of a non-negative Int (the degree of a `Monomial`, or the
+Hamming weight of an input).
+-}
+popCount : Int -> Int
+popCount n =
+    popCountHelp n 0
+
+
+popCountHelp : Int -> Int -> Int
+popCountHelp n acc =
+    if n <= 0 then
+        acc
+
+    else
+        popCountHelp (Bitwise.shiftRightZfBy 1 n) (acc + Bitwise.and n 1)

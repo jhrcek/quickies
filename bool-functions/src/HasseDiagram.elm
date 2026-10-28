@@ -131,7 +131,7 @@ buildGraph highlightViolations bf =
             , graphAttributes = [ ( "rank", GraphViz.str "same" ) ]
             , nodes =
                 allInputs
-                    |> List.filter (\i -> popCount i == weight)
+                    |> List.filter (\i -> BoolFun.popCount i == weight)
                     |> List.map (\i -> { name = nodeName i, attributes = [] })
             }
     in
@@ -148,12 +148,3 @@ buildGraph highlightViolations bf =
     , edges = List.map edge coveringEdges
     , subgraphs = List.map rankSubgraph (List.range 0 arity)
     }
-
-
-popCount : Int -> Int
-popCount n =
-    if n <= 0 then
-        0
-
-    else
-        Bitwise.and n 1 + popCount (Bitwise.shiftRightZfBy 1 n)

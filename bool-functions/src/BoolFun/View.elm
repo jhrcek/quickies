@@ -5,13 +5,17 @@ module BoolFun.View exposing
     , highlightCellAttrs
     , showBool
     , truthTable
+    , viewAlgebraicNormalForm
     , viewImplicant
+    , viewMonomial
     )
 
-{-| Html rendering of Boolean functions: truth tables, cells and implicants.
+{-| Html rendering of Boolean functions: truth tables, cells, implicants and
+algebraic normal forms.
 -}
 
-import BoolFun exposing (BF, Implicant, Literal(..), Restriction, arityOf, eval, implicantToFunction, implicantToLiterals, inputBits, varNames)
+import Bitwise
+import BoolFun exposing (BF, Implicant, Literal(..), Monomial, Restriction, arityOf, eval, implicantToFunction, implicantToLiterals, inputBits, varNames)
 import Html exposing (Attribute, Html)
 import Html.Attributes as A
 import Html.Events as Events
@@ -221,3 +225,38 @@ viewImplicant settings implicant =
 
     else
         Html.span [] (Settings.joinConjuncts settings parts)
+
+
+{-| An algebraic normal form as an XOR of monomials, e.g. `1 ⊕ a ⊕ b∧c`
+(or `1 ⊕ a ⊕ bc` in the compact style). The empty polynomial is `0`.
+-}
+viewAlgebraicNormalForm : Settings -> Int -> List Monomial -> Html msg
+viewAlgebraicNormalForm settings arity monomials =
+    if List.isEmpty monomials then
+        Html.text "0"
+
+    else
+        monomials
+            |> List.map (viewMonomial settings arity)
+            |> List.intersperse (Html.text " ⊕ ")
+            |> Html.span []
+
+
+{-| A single ANF monomial: the conjunction of its variables, or `1` for the
+empty monomial.
+-}
+viewMonomial : Settings -> Int -> Monomial -> Html msg
+viewMonomial settings arity monomial =
+    let
+        names =
+            varNames arity
+                |> List.indexedMap Tuple.pair
+                |> List.filter
+                    (\( i, _ ) -> Bitwise.and monomial (Bitwise.shiftLeftBy (arity - 1 - i) 1) /= 0)
+                |> List.map (\( _, name ) -> Html.text name)
+    in
+    if List.isEmpty names then
+        Html.text "1"
+
+    else
+        Html.span [] (Settings.joinConjuncts settings names)

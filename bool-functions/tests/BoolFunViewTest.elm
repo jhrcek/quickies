@@ -15,6 +15,7 @@ suite =
     describe "BoolFun.View"
         [ viewImplicantTests
         , boolHelpersTests
+        , viewAlgebraicNormalFormTests
         ]
 
 
@@ -62,4 +63,44 @@ boolHelpersTests =
             \_ ->
                 V.boolColor True
                     |> Expect.notEqual (V.boolColor False)
+        ]
+
+
+renderAnf : Settings.Settings -> Int -> List B.Monomial -> Query.Single msg
+renderAnf settings arity monomials =
+    Html.div [] [ V.viewAlgebraicNormalForm settings arity monomials ]
+        |> Query.fromHtml
+
+
+viewAlgebraicNormalFormTests : Test
+viewAlgebraicNormalFormTests =
+    describe "viewAlgebraicNormalForm"
+        [ test "the empty polynomial is 0" <|
+            \_ ->
+                renderAnf Settings.default 2 []
+                    |> Query.has [ Selector.text "0" ]
+        , test "symbols style: 1 ⊕ a ⊕ b∧c" <|
+            \_ ->
+                renderAnf Settings.default 3 [ 0, 4, 3 ]
+                    |> Query.contains
+                        [ Html.span []
+                            [ Html.text "1"
+                            , Html.text " ⊕ "
+                            , Html.span [] [ Html.text "a" ]
+                            , Html.text " ⊕ "
+                            , Html.span [] [ Html.text "b", Html.text "∧", Html.text "c" ]
+                            ]
+                        ]
+        , test "compact style: 1 ⊕ a ⊕ bc" <|
+            \_ ->
+                renderAnf { formula = Settings.Compact } 3 [ 0, 4, 3 ]
+                    |> Query.contains
+                        [ Html.span []
+                            [ Html.text "1"
+                            , Html.text " ⊕ "
+                            , Html.span [] [ Html.text "a" ]
+                            , Html.text " ⊕ "
+                            , Html.span [] [ Html.text "b", Html.text "c" ]
+                            ]
+                        ]
         ]

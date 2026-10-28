@@ -691,7 +691,7 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                                     bf
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
                                 , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors
-                                , viewProperty arity functionIndex propSubroute cofactors bf
+                                , viewProperty settings arity functionIndex propSubroute cofactors bf
                                 ]
 
 
@@ -1116,8 +1116,8 @@ viewImplicantsToggle showImplicantsInTable propSubroute bf =
         Html.text ""
 
 
-viewProperty : Int -> Natural -> PropertyRoute -> List BoolFun.Cofactors -> BoolFun.BF -> Html Msg
-viewProperty arity functionIndex propSubroute cofactors bf =
+viewProperty : Settings -> Int -> Natural -> PropertyRoute -> List BoolFun.Cofactors -> BoolFun.BF -> Html Msg
+viewProperty settings arity functionIndex propSubroute cofactors bf =
     let
         propLink : PropertyRoute -> String -> Html Msg
         propLink target label =
@@ -1146,7 +1146,7 @@ viewProperty arity functionIndex propSubroute cofactors bf =
                         [ row (propLink FalsePreserving "0-preserving") (BoolFun.isFalsityPreserving bf)
                         , row (propLink TruePreserving "1-preserving") (BoolFun.isTruthPreserving bf)
                         , row (propLink Monotonic "Monotone") (PostProperties.monotone bf).holds
-                        , row (Html.text "Affine") False
+                        , row (propLink Affine "Affine") (PostProperties.affine bf).holds
                         , row (propLink SelfDual "Self-dual") (BoolFun.isSelfDual bf)
                         ]
                     ]
@@ -1216,10 +1216,7 @@ viewProperty arity functionIndex propSubroute cofactors bf =
             viewMonotone bf
 
         Affine ->
-            Html.div [ HA.class "property-page" ]
-                [ Html.h3 [] [ Html.text "Affine" ]
-                , Html.p [] [ Html.em [] [ Html.text "Coming soon." ] ]
-                ]
+            viewAffine settings arity functionIndex bf
 
         SelfDual ->
             viewSelfDual arity bf
@@ -1306,6 +1303,113 @@ viewSelfDual arity bf =
             ]
         , verdict
         ]
+
+
+viewAffine : Settings -> Int -> Natural -> BoolFun.BF -> Html Msg
+viewAffine settings arity functionIndex bf =
+    let
+        anf =
+            BoolFun.algebraicNormalForm bf
+
+        functionLabel =
+            "f(" ++ String.join "," (BoolFun.varNames arity) ++ ")"
+
+        propLink target label =
+            Html.a [ Route.href (Arity arity (Function functionIndex target)) ]
+                [ Html.text label ]
+
+        verdict =
+            case (PostProperties.affine bf).witness of
+                Nothing ->
+                    Html.p []
+                        [ Html.text "✅ This function "
+                        , Html.strong [] [ Html.text "is affine" ]
+                        , Html.text " — its algebraic normal form has degree at most 1."
+                        ]
+
+                Just w ->
+                    let
+                        -- The affine part: the ANF with every nonlinear term dropped.
+                        affinePart =
+                            BoolFun.fromAlgebraicNormalForm arity
+                                (List.filter (\m -> BoolFun.popCount m <= 1) anf)
+                    in
+                    Html.div []
+                        [ Html.p []
+                            [ Html.text "❌ This function "
+                            , Html.strong [] [ Html.text "is not affine" ]
+                            , Html.text ": its algebraic normal form contains the term "
+                            , Html.code [] [ BoolFun.View.viewMonomial settings arity w.nonlinearMonomial ]
+                            , Html.text (" of degree " ++ String.fromInt (BoolFun.popCount w.nonlinearMonomial) ++ ".")
+                            ]
+                        , case affinePart of
+                            Just part ->
+                                let
+                                    partIndex =
+                                        BoolFun.funIndexOf part
+                                in
+                                Html.p []
+                                    [ Html.text "Dropping the nonlinear terms gives the affine function "
+                                    , Html.code []
+                                        [ BoolFun.View.viewAlgebraicNormalForm settings
+                                            arity
+                                            (BoolFun.algebraicNormalForm part)
+                                        ]
+                                    , Html.text ", which is function "
+                                    , Html.a
+                                        [ Route.href (Arity arity (Function partIndex Affine)) ]
+                                        [ Html.text (N.toDecimalString partIndex) ]
+                                    , Html.text "."
+                                    ]
+
+                            Nothing ->
+                                -- Unreachable: the monomials come from a function of this arity.
+                                Html.text ""
+                        ]
+    in
+    Html.div [ HA.class "property-page" ]
+        [ Html.h3 [] [ Html.text "Affine" ]
+        , Html.p []
+            [ Html.text "A Boolean function f is "
+            , Html.em [] [ Html.text "affine" ]
+            , Html.text " (also called "
+            , Html.em [] [ Html.text "linear" ]
+            , Html.text ") iff it is an XOR of some of its variables, possibly negated: f(x₁, …, xₙ) = c₀ ⊕ c₁x₁ ⊕ … ⊕ cₙxₙ for constants c₀, …, cₙ ∈ {0, 1}. Equivalently, every variable either never affects the output or always flips it. There are 2ⁿ⁺¹ affine functions of arity n."
+            ]
+        , Html.p []
+            [ Html.text "Every Boolean function can be written in exactly one way as an XOR of conjunctions of its variables — its "
+            , externalLink "https://en.wikipedia.org/wiki/Algebraic_normal_form" "algebraic normal form"
+            , Html.text " (ANF), also known as its "
+            , externalLink "https://en.wikipedia.org/wiki/Zhegalkin_polynomial" "Zhegalkin polynomial"
+            , Html.text ". The coefficient of a conjunction of variables S is the XOR of f(x) over all inputs x whose 1-bits lie within S. A function is affine iff its ANF contains no conjunction of two or more variables."
+            ]
+        , Html.p []
+            [ Html.text "Algebraic normal form of this function: "
+            , Html.code []
+                [ Html.text (functionLabel ++ " = ")
+                , BoolFun.View.viewAlgebraicNormalForm settings arity anf
+                ]
+            ]
+        , verdict
+        , Html.p []
+            [ Html.text "Affine functions are one of the five classes in "
+            , externalLink "https://en.wikipedia.org/wiki/Functional_completeness" "Post's functional completeness theorem"
+            , Html.text ", together with "
+            , propLink FalsePreserving "0-preserving"
+            , Html.text ", "
+            , propLink TruePreserving "1-preserving"
+            , Html.text ", "
+            , propLink Monotonic "monotone"
+            , Html.text " and "
+            , propLink SelfDual "self-dual"
+            , Html.text " functions: a set of functions can express every Boolean function iff, for each of the five classes, it contains a function outside that class."
+            ]
+        ]
+
+
+externalLink : String -> String -> Html msg
+externalLink url label =
+    Html.a [ HA.href url, HA.target "_blank", HA.rel "noopener noreferrer" ] [ Html.text label ]
 
 
 viewMonotone : BoolFun.BF -> Html Msg
@@ -1417,6 +1521,7 @@ viewAllFunctions settings arity page =
                         ++ [ Html.th [] [ Html.text "Falsity-preserving" ]
                            , Html.th [] [ Html.text "Truth-preserving" ]
                            , Html.th [] [ Html.text "Monotone" ]
+                           , Html.th [] [ Html.text "Affine" ]
                            , Html.th [] [ Html.text "Self-dual" ]
                            ]
                     )
@@ -1468,6 +1573,7 @@ functionRow settings arity index bf =
             ++ [ BoolFun.View.boolCell (BoolFun.isFalsityPreserving bf)
                , BoolFun.View.boolCell (BoolFun.isTruthPreserving bf)
                , BoolFun.View.boolCell (PostProperties.monotone bf).holds
+               , BoolFun.View.boolCell (PostProperties.affine bf).holds
                , BoolFun.View.boolCell (BoolFun.isSelfDual bf)
                ]
         )

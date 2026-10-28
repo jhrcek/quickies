@@ -1,6 +1,8 @@
 module PostProperties exposing
-    ( MonotoneWitness
+    ( AffineWitness
+    , MonotoneWitness
     , PropertyResult
+    , affine
     , monotone
     )
 
@@ -11,6 +13,11 @@ import BoolFun exposing (BF)
 type alias PropertyResult a =
     { holds : Bool
     , witness : Maybe a
+    }
+
+
+type alias AffineWitness =
+    { nonlinearMonomial : BoolFun.Monomial
     }
 
 
@@ -65,6 +72,28 @@ monotone bf =
     case firstViolation of
         Just w ->
             { holds = False, witness = Just w }
+
+        Nothing ->
+            { holds = True, witness = Nothing }
+
+
+{-| A function f is affine iff it is an XOR of some of its variables, possibly
+negated: f(x₁, …, xₙ) = c₀ ⊕ c₁x₁ ⊕ … ⊕ cₙxₙ. Since the algebraic normal form
+is unique, that holds iff every monomial of f's ANF has degree ≤ 1.
+
+When the property fails, the witness is the first nonlinear monomial of the
+ANF (lowest degree, then in variable order).
+
+-}
+affine : BF -> PropertyResult AffineWitness
+affine bf =
+    case
+        BoolFun.algebraicNormalForm bf
+            |> List.filter (\m -> BoolFun.popCount m >= 2)
+            |> List.head
+    of
+        Just m ->
+            { holds = False, witness = Just { nonlinearMonomial = m } }
 
         Nothing ->
             { holds = True, witness = Nothing }

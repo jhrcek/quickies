@@ -11,6 +11,7 @@ suite : Test
 suite =
     describe "PostProperties"
         [ monotoneTests
+        , affineTests
         ]
 
 
@@ -86,4 +87,64 @@ monotoneTests =
                 List.range 0 4
                     |> List.map (\n -> allFunctions n |> List.filter (P.monotone >> .holds) |> List.length)
                     |> Expect.equalLists [ 2, 3, 6, 20, 168 ]
+        ]
+
+
+{-| Affinity straight from the definition: f is affine iff f ⊕ f(0) is linear,
+i.e. f(x ⊕ y) ⊕ f(0) = f(x) ⊕ f(y) for every pair of inputs.
+-}
+affineOracle : B.BF -> Bool
+affineOracle f =
+    let
+        n =
+            B.arityOf f
+
+        rows =
+            List.range 0 (2 ^ n - 1)
+
+        xorRows x y =
+            rowOfBits (List.map2 (/=) (bitsOf n x) (bitsOf n y))
+    in
+    rows
+        |> List.all
+            (\x ->
+                rows
+                    |> List.all (\y -> (B.eval f (xorRows x y) /= B.eval f 0) == (B.eval f x /= B.eval f y))
+            )
+
+
+affineTests : Test
+affineTests =
+    describe "affine"
+        [ fuzz fnFuzzer "matches the oracle f(x ⊕ y) ⊕ f(0) = f(x) ⊕ f(y)" <|
+            \f -> (P.affine f).holds |> Expect.equal (affineOracle f)
+        , fuzz fnFuzzer "a witness is present exactly when f is not affine" <|
+            \f ->
+                let
+                    result =
+                        P.affine f
+                in
+                result.witness
+                    |> Maybe.map (always ())
+                    |> Expect.equal
+                        (if result.holds then
+                            Nothing
+
+                         else
+                            Just ()
+                        )
+        , fuzz fnFuzzer "a witness is an ANF monomial of degree ≥ 2" <|
+            \f ->
+                case (P.affine f).witness of
+                    Just { nonlinearMonomial } ->
+                        ( B.popCount nonlinearMonomial >= 2, List.member nonlinearMonomial (B.algebraicNormalForm f) )
+                            |> Expect.equal ( True, True )
+
+                    Nothing ->
+                        Expect.pass
+        , test "there are 2^(n+1) affine functions of arity 0–4" <|
+            \_ ->
+                List.range 0 4
+                    |> List.map (\n -> allFunctions n |> List.filter (P.affine >> .holds) |> List.length)
+                    |> Expect.equalLists [ 2, 4, 8, 16, 32 ]
         ]
