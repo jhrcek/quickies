@@ -50,6 +50,13 @@ type SetId
     | SetC
 
 
+{-| The sets in the order of their index (`setIndex`).
+-}
+allSets : List SetId
+allSets =
+    [ SetA, SetB, SetC ]
+
+
 {-| How arrows are colored: by the function they belong to, or by the element of `C`
 their path ends at (the fibers over `C`).
 -}
@@ -58,9 +65,21 @@ type Coloring
     | ByFiber
 
 
+{-| Who decides the order the elements are drawn in: always `1, 2, 3, …`; the fewest
+crossings, recomputed whenever the picture changes wholesale (a function replaced, a set
+resized, a mode started); or the reader (dragging, or editing arrows by hand while the
+crossings were minimized, which leaves the elements where they are).
+-}
+type Ordering
+    = Natural
+    | FewestCrossings
+    | Manual
+
+
 type alias Model =
     { mode : Mode
     , coloring : Coloring
+    , ordering : Ordering
     , triangle : Triangle
     , selected : Maybe ( SetId, Int )
     , seed : Random.Seed
@@ -89,8 +108,7 @@ type Msg
     | Randomize Role Kind
     | Solve
     | ClearUnknown
-    | Untangle
-    | ResetOrder
+    | SetOrdering Ordering
     | SetColoring Coloring
     | DragStart SetId Int ( Float, Float )
     | DragMove ( Float, Float ) Float
@@ -113,6 +131,7 @@ init =
     in
     { mode = Composition
     , coloring = ByFunction
+    , ordering = Natural
     , triangle = { a = 3, b = 3, c = 2, f = f, g = g, h = Triangle.empty 3 }
     , selected = Nothing
     , seed = Random.initialSeed 0
@@ -163,20 +182,17 @@ update msg model =
                 cleared =
                     { model | mode = mode, selected = Nothing, triangle = List.foldl Triangle.clear t [ F, G, H ] }
             in
-            cleared |> randomize given1 AnyFunction |> randomize given2 AnyFunction
+            cleared |> randomize given1 AnyFunction |> randomize given2 AnyFunction |> arrange
 
         SetSize set n ->
             let
                 resized =
                     resizeTo set (clamp 0 maxSize n) t
             in
-            { model | selected = Nothing, triangle = resized, order = fitOrders resized model.order }
+            arrange { model | selected = Nothing, triangle = resized }
 
-        Untangle ->
-            { model | order = Crossings.minimize (layout model) model.order }
-
-        ResetOrder ->
-            { model | order = identityOrders t }
+        SetOrdering ordering ->
+            arrange { model | ordering = ordering }
 
         SetColoring coloring ->
             { model | coloring = coloring }
@@ -219,7 +235,20 @@ update msg model =
             case model.drag of
                 Just d ->
                     if d.moved then
-                        { model | drag = Nothing, order = draggedOrder model }
+                        let
+                            order =
+                                draggedOrder model
+                        in
+                        { model
+                            | drag = Nothing
+                            , order = order
+                            , ordering =
+                                if order == model.order then
+                                    model.ordering
+
+                                else
+                                    Manual
+                        }
 
                     else
                         clickElement d.set d.element { model | drag = Nothing }
@@ -228,7 +257,7 @@ update msg model =
                     model
 
         Randomize role kind ->
-            randomize role kind model
+            randomize role kind model |> arrange
 
         Solve ->
             let
@@ -238,7 +267,7 @@ update msg model =
             case Triangle.solutionOptions role t of
                 Just options ->
                     if Triangle.countSolutions options > 0 then
-                        draw role (Triangle.randomSolution options) model
+                        draw role (Triangle.randomSolution options) model |> arrange
 
                     else
                         model
@@ -247,7 +276,27 @@ update msg model =
                     model
 
         ClearUnknown ->
-            { model | selected = Nothing, triangle = Triangle.clear (unknown model.mode) t }
+            arrange { model | selected = Nothing, triangle = Triangle.clear (unknown model.mode) t }
+
+
+{-| Redraw the elements as the ordering says, after the picture changed wholesale (or the
+ordering did). A manual order only adapts to new set sizes.
+-}
+arrange : Model -> Model
+arrange model =
+    let
+        fitted =
+            fitOrders model.triangle model.order
+    in
+    case model.ordering of
+        Natural ->
+            { model | order = identityOrders model.triangle }
+
+        FewestCrossings ->
+            { model | order = Crossings.minimize (layout { model | order = fitted }) fitted }
+
+        Manual ->
+            { model | order = fitted }
 
 
 {-| Replace a function by a random one of the given kind, if the set sizes allow one.
@@ -327,31 +376,47 @@ clickElement set i model =
             { model
                 | selected = Nothing
                 , triangle = Triangle.set role (Array.set src (Just i) (Triangle.get role t)) t
-            }
-    in
-    case ( model.selected, set ) of
-        ( Just ( SetA, src ), SetB ) ->
-            assign F src
-
-        ( Just ( SetA, src ), SetC ) ->
-            assign H src
-
-        ( Just ( SetB, src ), SetC ) ->
-            assign G src
-
-        ( _, SetC ) ->
-            model
-
-        _ ->
-            let
-                toggle =
-                    if model.selected == Just ( set, i ) then
-                        { model | selected = Nothing }
+                , ordering =
+                    -- keep the elements where they are while the reader aims at them
+                    if model.ordering == FewestCrossings then
+                        Manual
 
                     else
-                        { model | selected = Just ( set, i ) }
-            in
-            toggle
+                        model.ordering
+            }
+    in
+    case imageRole model.selected set of
+        Just ( role, src ) ->
+            assign role src
+
+        Nothing ->
+            if set == SetC then
+                model
+
+            else if model.selected == Just ( set, i ) then
+                { model | selected = Nothing }
+
+            else
+                { model | selected = Just ( set, i ) }
+
+
+{-| The function a click on an element of `set` sets, given the selected element: its role
+and the source element.
+-}
+imageRole : Maybe ( SetId, Int ) -> SetId -> Maybe ( Role, Int )
+imageRole selected set =
+    case ( selected, set ) of
+        ( Just ( SetA, src ), SetB ) ->
+            Just ( F, src )
+
+        ( Just ( SetA, src ), SetC ) ->
+            Just ( H, src )
+
+        ( Just ( SetB, src ), SetC ) ->
+            Just ( G, src )
+
+        _ ->
+            Nothing
 
 
 
@@ -371,7 +436,9 @@ modeKey mode =
             "lifting"
 
 
-{-| `m` the mode, `a`, `b`, `c` the set sizes, `f`, `g`, `h` the mappings (-1 = unmapped).
+{-| `m` the mode, `a`, `b`, `c` the set sizes, `f`, `g`, `h` the mappings (-1 = unmapped),
+`o` the ordering (`natural` or `min`; a manual order cannot be written down, so it leaves `o`
+out: a fresh load draws it naturally, coming back to the playground keeps it).
 -}
 toQuery : Model -> List ( String, String )
 toQuery model =
@@ -390,6 +457,16 @@ toQuery model =
     , Query.intListParam "g" (mapping t.g)
     , Query.intListParam "h" (mapping t.h)
     ]
+        ++ (case model.ordering of
+                Natural ->
+                    [ Query.param "o" "natural" ]
+
+                FewestCrossings ->
+                    [ Query.param "o" "min" ]
+
+                Manual ->
+                    []
+           )
 
 
 fromQuery : Query -> Model -> Model
@@ -411,6 +488,17 @@ fromQuery q model =
 
                 _ ->
                     model.mode
+
+        ordering =
+            case Query.string "o" q of
+                Just "natural" ->
+                    Natural
+
+                Just "min" ->
+                    FewestCrossings
+
+                _ ->
+                    model.ordering
 
         size key default =
             Query.int key q |> Maybe.withDefault default |> clamp 0 maxSize
@@ -436,21 +524,21 @@ fromQuery q model =
                 Nothing ->
                     Triangle.resize n m old
     in
-    { mode = mode
-    , coloring = model.coloring
-    , selected = Nothing
-    , seed = model.seed
-    , order = fitOrders { a = a, b = b, c = c } model.order
-    , drag = Nothing
-    , triangle =
-        { a = a
-        , b = b
-        , c = c
-        , f = mapping "f" a b t.f
-        , g = mapping "g" b c t.g
-        , h = mapping "h" a c t.h
+    arrange
+        { model
+            | mode = mode
+            , ordering = ordering
+            , selected = Nothing
+            , drag = Nothing
+            , triangle =
+                { a = a
+                , b = b
+                , c = c
+                , f = mapping "f" a b t.f
+                , g = mapping "g" b c t.g
+                , h = mapping "h" a c t.h
+                }
         }
-    }
 
 
 
@@ -472,7 +560,7 @@ setIndex set =
 
 identityOrders : { r | a : Int, b : Int, c : Int } -> Array (List Int)
 identityOrders sizes =
-    Array.fromList [ List.range 0 (sizes.a - 1), List.range 0 (sizes.b - 1), List.range 0 (sizes.c - 1) ]
+    fitOrders sizes Array.empty
 
 
 {-| Adapt the element orders to new set sizes: removed elements leave their slots, new
@@ -512,7 +600,7 @@ elementPoint model set i =
     in
     case model.drag of
         Just d ->
-            if d.moved && d.set == set && d.element == i then
+            if d.moved && isDragged model set i then
                 onTrack set n d.point
 
             else
@@ -616,11 +704,8 @@ layout model =
         t =
             model.triangle
 
-        sets =
-            [ SetA, SetB, SetC ]
-
         slotPosition s slot =
-            case List.drop s sets of
+            case List.drop s allSets of
                 set :: _ ->
                     position set (sizeOf set t) slot
 
@@ -659,7 +744,8 @@ view committed =
         ]
 
 
-{-| Reordering the elements to untangle the arrows, and the click hint.
+{-| How the elements are ordered (with the crossings it leaves), how arrows are colored,
+and the click hint.
 -}
 toolbar : Model -> Html Msg
 toolbar model =
@@ -669,18 +755,12 @@ toolbar model =
     in
     div [ class "ct-section" ]
         [ div [ class "controls" ]
-            [ button
-                [ onClick Untangle
-                , disabled (crossings == 0)
-                , title "Reorder the elements within each set to reduce the number of crossing arrows"
+            [ span [ class "muted" ] [ text "Element order:" ]
+            , span [ class "segmented", attribute "role" "group", attribute "aria-label" "Element order" ]
+                [ orderingButton model Natural "natural" "Draw the elements of every set in the order 1, 2, 3, …"
+                , orderingButton model FewestCrossings "fewest crossings" "Reorder the elements to reduce the number of crossing arrows, again whenever a function is replaced or a set resized (editing arrows by hand switches to manual, so that nothing moves while you aim)"
+                , orderingButton model Manual "manual" "Keep the elements where they are; drag an element along its set to move it"
                 ]
-                [ text "Minimize crossings" ]
-            , button
-                [ onClick ResetOrder
-                , disabled (model.order == identityOrders model.triangle)
-                , title "Draw the elements of every set in the order 1, 2, 3, …"
-                ]
-                [ text "Reset element order" ]
             , span [ class "muted" ]
                 [ text
                     (if crossings == 1 then
@@ -716,13 +796,23 @@ roleName role =
 
 
 coloringButton : Model -> Coloring -> String -> String -> Html Msg
-coloringButton model coloring label tooltip =
+coloringButton model coloring =
+    segmentButton (model.coloring == coloring) (SetColoring coloring)
+
+
+orderingButton : Model -> Ordering -> String -> String -> Html Msg
+orderingButton model ordering =
+    segmentButton (model.ordering == ordering) (SetOrdering ordering)
+
+
+segmentButton : Bool -> Msg -> String -> String -> Html Msg
+segmentButton active msg label tooltip =
     button
         [ class "small"
-        , classList [ ( "active", model.coloring == coloring ) ]
-        , onClick (SetColoring coloring)
+        , classList [ ( "active", active ) ]
+        , onClick msg
         , attribute "aria-pressed"
-            (if model.coloring == coloring then
+            (if active then
                 "true"
 
              else
@@ -763,8 +853,7 @@ arrowColor model role j =
             case role of
                 F ->
                     -- the arrow lies on the path i ↦ j ↦ g(j)
-                    Array.get j model.triangle.g
-                        |> Maybe.andThen identity
+                    Triangle.apply model.triangle.g j
                         |> Maybe.map fiberColor
                         |> Maybe.withDefault "#999"
 
@@ -959,7 +1048,7 @@ noSolution : Role -> Triangle -> List (Html msg)
 noSolution role t =
     let
         at p i =
-            Array.get i p |> Maybe.andThen identity |> Maybe.withDefault 0
+            Triangle.apply p i |> Maybe.withDefault 0
     in
     case ( role, Triangle.conflict role t ) of
         ( G, Just ( i, k ) ) ->
@@ -1068,7 +1157,7 @@ statusLine model =
     in
     case Triangle.commutationFailures t of
         [] ->
-            if List.all (\role -> List.isEmpty (Triangle.unmapped (Triangle.get role t))) [ F, G, H ] then
+            if List.all (\role -> Triangle.total (Triangle.get role t) /= Nothing) [ F, G, H ] then
                 p [ class "ct-status ok" ] [ text "✓ The triangle commutes: ", tex (fn F ++ " ; " ++ fn G ++ " = " ++ fn H) ]
 
             else
@@ -1296,11 +1385,11 @@ stage model =
                )
         )
         (Svg.svg [ SA.viewBox ("0 0 " ++ String.fromFloat pictureWidth ++ " " ++ String.fromFloat pictureHeight) ]
-            (List.map (setShape model.triangle) [ SetA, SetB, SetC ]
+            (List.map (setShape model.triangle) allSets
                 ++ List.concatMap (arrows model) [ H, F, G ]
-                ++ List.concatMap (elements model) [ SetA, SetB, SetC ]
+                ++ List.concatMap (elements model) allSets
             )
-            :: List.map (setControl model.triangle) [ SetA, SetB, SetC ]
+            :: List.map (setControl model.triangle) allSets
             ++ List.map (functionControl model) [ F, G, H ]
         )
 
@@ -1442,18 +1531,7 @@ elements model set =
 
         -- the function an element of this set would be the image under, given the selection
         targetRole =
-            case ( model.selected, set ) of
-                ( Just ( SetA, _ ), SetB ) ->
-                    Just F
-
-                ( Just ( SetA, _ ), SetC ) ->
-                    Just H
-
-                ( Just ( SetB, _ ), SetC ) ->
-                    Just G
-
-                _ ->
-                    Nothing
+            imageRole model.selected set |> Maybe.map Tuple.first
 
         clickable =
             set /= SetC || targetRole /= Nothing
@@ -1470,7 +1548,7 @@ elements model set =
                     set == SetA && List.member i failing
 
                 dragged =
-                    Maybe.map (\d -> d.set == set && d.element == i) model.drag == Just True
+                    isDragged model set i
 
                 stroke =
                     if selected then
@@ -1545,17 +1623,25 @@ elements model set =
     in
     -- the dragged element last, so that it is drawn over its neighbours
     List.range 0 (n - 1)
-        |> List.sortBy (\i -> boolToInt (Maybe.map (\d -> d.set == set && d.element == i) model.drag == Just True))
+        |> List.sortBy
+            (\i ->
+                if isDragged model set i then
+                    1
+
+                else
+                    0
+            )
         |> List.map element
 
 
-boolToInt : Bool -> Int
-boolToInt b =
-    if b then
-        1
+isDragged : Model -> SetId -> Int -> Bool
+isDragged model set i =
+    case model.drag of
+        Just d ->
+            d.set == set && d.element == i
 
-    else
-        0
+        Nothing ->
+            False
 
 
 {-| A press of the main button on an element: the start of a drag, or of a click.

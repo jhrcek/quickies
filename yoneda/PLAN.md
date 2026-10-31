@@ -187,9 +187,13 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
       injective / surjective / bijective functions (disabled when the sizes forbid them).
       Pure logic in `Math/Triangle.elm` (tests in `tests/TriangleTest.elm`); uses `elm/random`
       with a seed in the model (from `Main`'s flags), so `update` stays synchronous.
-      "Minimize crossings" reorders the elements within each set (labels stay) to reduce crossing
-      arrows: `Math/Crossings.elm` counts proper segment crossings and does block coordinate descent
-      (all n! orders of one set at a time); the order is view state, not in the deep link.
+      "Element order: natural / fewest crossings / manual" decides where the elements of each set
+      are drawn (labels stay). Fewest crossings: `Math/Crossings.elm` counts proper segment
+      crossings, starts from the orders that group A and B by fiber over C (for every order of C),
+      refines the best few by block coordinate descent (all n! orders of one set at a time, scored
+      from per-element tables) and prefers contiguous fibers on ties; it is recomputed after every
+      wholesale change, while dragging or editing an arrow by hand switches to manual. The mode
+      is in the deep link (`o`), a manual order is not.
       B is drawn along the anti-diagonal (bottom left to top right): A and C then lie on opposite
       sides of B and the orders agree around the triangle, so f, g and h = f ; g can all be drawn
       without self-crossings (about 30% fewer crossings after minimizing on random triangles than

@@ -62,7 +62,15 @@ suite =
                         Page.Playground.Composition.fromQuery
                         Page.Playground.Composition.init
                         [ ( "m", "lifting" ), ( "a", "2" ), ( "b", "4" ), ( "c", "1" ), ( "f", "3,-1" ), ( "g", "0,0,-1,0" ), ( "h", "0,5" ) ]
-                        |> Expect.equal [ ( "m", "lifting" ), ( "a", "2" ), ( "b", "4" ), ( "c", "1" ), ( "f", "3,-1" ), ( "g", "0,0,-1,0" ), ( "h", "0,-1" ) ]
+                        |> Expect.equal [ ( "m", "lifting" ), ( "a", "2" ), ( "b", "4" ), ( "c", "1" ), ( "f", "3,-1" ), ( "g", "0,0,-1,0" ), ( "h", "0,-1" ), ( "o", "natural" ) ]
+            , test "composition playground: the fewest crossings ordering is reproduced" <|
+                \_ ->
+                    roundTrip Page.Playground.Composition.toQuery
+                        Page.Playground.Composition.fromQuery
+                        Page.Playground.Composition.init
+                        [ ( "o", "min" ) ]
+                        |> List.filter (\( key, _ ) -> key == "o")
+                        |> Expect.equal [ ( "o", "min" ) ]
             , stable "functor playground" Page.Playground.Functor.toQuery (Page.Playground.Functor.fromQuery [] []) Page.Playground.Functor.init (Page.Playground.Functor.toQuery Page.Playground.Functor.init)
             ]
         , describe "functor playground"

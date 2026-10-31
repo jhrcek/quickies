@@ -3,6 +3,7 @@ module Math.Triangle exposing
     , Partial
     , Role(..)
     , Triangle
+    , apply
     , clear
     , commutationFailures
     , compose
@@ -79,6 +80,13 @@ empty n =
     Array.repeat n Nothing
 
 
+{-| The image of an element, if it is mapped.
+-}
+apply : Partial -> Int -> Maybe Int
+apply p i =
+    Array.get i p |> Maybe.andThen identity
+
+
 get : Role -> Triangle -> Partial
 get role t =
     case role of
@@ -132,10 +140,9 @@ source elements are dropped, new ones unmapped, targets out of range become unma
 -}
 resize : Int -> Int -> Partial -> Partial
 resize n m p =
-    Array.initialize ((n - 1) + 1)
+    Array.initialize n
         (\i ->
-            Array.get i p
-                |> Maybe.andThen identity
+            apply p i
                 |> Maybe.andThen
                     (\j ->
                         if j < m then
@@ -173,7 +180,7 @@ unmapped p =
 -}
 compose : Partial -> Partial -> Partial
 compose f g =
-    Array.map (Maybe.andThen (\j -> Array.get j g |> Maybe.andThen identity)) f
+    Array.map (Maybe.andThen (apply g)) f
 
 
 {-| The elements `a` of `A` where `g(f(a))` and `h(a)` are both defined and differ, with

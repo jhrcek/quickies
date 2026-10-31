@@ -89,8 +89,11 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   functions and solutions are drawn from a `Random.Seed` in its model, never via
   `Random.generate`: page updates must be synchronous, since several state changes in quick
   succession race with `Main`'s `replaceUrl` echoes and ping-pong the URL. The drawing order of
-  the elements (`Math/Crossings.elm` minimizes arrow crossings on demand; the reader can also
-  drag an element along its set) is not in the URL. Element clicks arrive as a press without
+  the elements follows the "Element order" mode (`Ordering`): natural, fewest crossings
+  (`Math/Crossings.elm`, recomputed by `arrange` after every wholesale change: random function,
+  resize, mode, solution, clear, deep link) or manual (a drag, or a hand edit of an arrow while
+  in fewest crossings, so that nothing moves while the reader aims). The mode is in the URL
+  (`o=natural|min`); a manual order is not, and leaves `o` out. Element clicks arrive as a press without
   movement (`DragStart` then `DragEnd`), not as `onClick`.
 - Yoneda playground (`Page/Playground/Yoneda.elm`, pure logic in `Math/YonedaFill.elm`): fill in
   α : Hom(A,−) ⇒ F cell by cell (a cell = an arrow out of A), naturality propagates the choices.
