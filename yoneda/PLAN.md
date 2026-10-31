@@ -190,6 +190,13 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
       "Minimize crossings" reorders the elements within each set (labels stay) to reduce crossing
       arrows: `Math/Crossings.elm` counts proper segment crossings and does block coordinate descent
       (all n! orders of one set at a time); the order is view state, not in the deep link.
+      B is drawn along the anti-diagonal (bottom left to top right): A and C then lie on opposite
+      sides of B and the orders agree around the triangle, so f, g and h = f ; g can all be drawn
+      without self-crossings (about 30% fewer crossings after minimizing on random triangles than
+      with B along the main diagonal).
+      Elements can also be dragged along their set (pointer events on the element, move / up /
+      leave on the stage): the others shift live to make room and the order is committed on
+      release; a press released within 4px of where it started is a click (select / map).
 
 Possible follow-ups (not planned): per-chapter "copy link" button, encoding edits of the
 Set-valued functor in chapter 5 (only the example name is stored today; 15 may make this easy),

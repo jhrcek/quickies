@@ -25,7 +25,8 @@ Unlike the chapters, the playground always uses the diagrammatic composition ord
 import Array exposing (Array)
 import Html exposing (Html, button, div, input, p, span, text)
 import Html.Attributes exposing (class, classList, disabled, style, title, type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (on, onClick, onInput)
+import Json.Decode as Decode exposing (Decoder)
 import KaTeX
 import Math.Crossings as Crossings
 import Math.Triangle as Triangle exposing (Kind(..), Partial, Role(..), Triangle)
@@ -55,18 +56,35 @@ type alias Model =
     , selected : Maybe ( SetId, Int )
     , seed : Random.Seed
     , order : Array (List Int) -- per set (A, B, C): the element drawn in each slot
+    , drag : Maybe Drag
+    }
+
+
+{-| An element being dragged along its set to a new slot. `start` is the pointer at the
+press (client pixels), `origin` the element's position then and `point` the pointer now
+(picture coordinates). A press released before the pointer `moved` is a click.
+-}
+type alias Drag =
+    { set : SetId
+    , element : Int
+    , start : ( Float, Float )
+    , origin : ( Float, Float )
+    , point : ( Float, Float )
+    , moved : Bool
     }
 
 
 type Msg
     = SetMode Mode
     | SetSize SetId Int
-    | ClickElement SetId Int
     | Randomize Role Kind
     | Solve
     | ClearUnknown
     | Untangle
     | ResetOrder
+    | DragStart SetId Int ( Float, Float )
+    | DragMove ( Float, Float ) Float
+    | DragEnd
 
 
 maxSize : Int
@@ -88,6 +106,7 @@ init =
     , selected = Nothing
     , seed = Random.initialSeed 0
     , order = identityOrders { a = 3, b = 3, c = 2 }
+    , drag = Nothing
     }
 
 
@@ -148,8 +167,51 @@ update msg model =
         ResetOrder ->
             { model | order = identityOrders t }
 
-        ClickElement set i ->
-            clickElement set i model
+        DragStart set i start ->
+            let
+                origin =
+                    elementPoint model set i
+            in
+            { model | drag = Just { set = set, element = i, start = start, origin = origin, point = origin, moved = False } }
+
+        DragMove ( x, y ) width ->
+            case model.drag of
+                Just d ->
+                    let
+                        ( dx, dy ) =
+                            ( x - Tuple.first d.start, y - Tuple.second d.start )
+
+                        -- the picture is scaled to the stage's width
+                        scale =
+                            if width > 0 then
+                                pictureWidth / width
+
+                            else
+                                1
+                    in
+                    { model
+                        | drag =
+                            Just
+                                { d
+                                    | point = ( Tuple.first d.origin + dx * scale, Tuple.second d.origin + dy * scale )
+                                    , moved = d.moved || dx * dx + dy * dy > dragThreshold * dragThreshold
+                                }
+                    }
+
+                Nothing ->
+                    model
+
+        DragEnd ->
+            case model.drag of
+                Just d ->
+                    if d.moved then
+                        { model | drag = Nothing, order = draggedOrder model }
+
+                    else
+                        clickElement d.set d.element { model | drag = Nothing }
+
+                Nothing ->
+                    model
 
         Randomize role kind ->
             randomize role kind model
@@ -364,6 +426,7 @@ fromQuery q model =
     , selected = Nothing
     , seed = model.seed
     , order = fitOrders { a = a, b = b, c = c } model.order
+    , drag = Nothing
     , triangle =
         { a = a
         , b = b
@@ -423,11 +486,111 @@ slotOf model set i =
         |> Maybe.withDefault i
 
 
-{-| Where element `i` of a set is drawn.
+{-| Where element `i` of a set is drawn: the dragged element on its set's track under the
+pointer, the others in their slots.
 -}
 elementPoint : Model -> SetId -> Int -> ( Float, Float )
 elementPoint model set i =
-    position set (sizeOf set model.triangle) (slotOf model set i)
+    let
+        n =
+            sizeOf set model.triangle
+    in
+    case model.drag of
+        Just d ->
+            if d.moved && d.set == set && d.element == i then
+                onTrack set n d.point
+
+            else
+                position set n (slotOf model set i)
+
+        Nothing ->
+            position set n (slotOf model set i)
+
+
+{-| How far (client pixels) the pointer must move before a press becomes a drag.
+-}
+dragThreshold : Float
+dragThreshold =
+    4
+
+
+{-| The element orders with the dragged element moved to the slot nearest the pointer
+(the elements in between shift by one to make room).
+-}
+draggedOrder : Model -> Array (List Int)
+draggedOrder model =
+    case model.drag of
+        Just d ->
+            if d.moved then
+                let
+                    i =
+                        setIndex d.set
+
+                    slot =
+                        nearestSlot d.set (sizeOf d.set model.triangle) d.point
+                in
+                Array.set i (moveTo d.element slot (Array.get i model.order |> Maybe.withDefault [])) model.order
+
+            else
+                model.order
+
+        Nothing ->
+            model.order
+
+
+{-| Put `e` at index `slot` of the list, taking it out of where it was.
+-}
+moveTo : a -> Int -> List a -> List a
+moveTo e slot list =
+    let
+        rest =
+            List.filter ((/=) e) list
+    in
+    List.take slot rest ++ e :: List.drop slot rest
+
+
+nearestSlot : SetId -> Int -> ( Float, Float ) -> Int
+nearestSlot set n ( px, py ) =
+    List.range 0 (n - 1)
+        |> List.sortBy
+            (\slot ->
+                let
+                    ( x, y ) =
+                        position set n slot
+                in
+                (x - px) ^ 2 + (y - py) ^ 2
+            )
+        |> List.head
+        |> Maybe.withDefault 0
+
+
+{-| The point of a set's track (the segment from its first to its last slot) nearest to
+the given point.
+-}
+onTrack : SetId -> Int -> ( Float, Float ) -> ( Float, Float )
+onTrack set n ( px, py ) =
+    let
+        ( x0, y0 ) =
+            position set n 0
+
+        ( x1, y1 ) =
+            position set n (n - 1)
+
+        ( dx, dy ) =
+            ( x1 - x0, y1 - y0 )
+
+        len2 =
+            dx * dx + dy * dy
+    in
+    if len2 == 0 then
+        ( x0, y0 )
+
+    else
+        let
+            s =
+                clamp 0 1 (((px - x0) * dx + (py - y0) * dy) / len2)
+        in
+        ( x0 + s * dx, y0 + s * dy )
 
 
 {-| The picture's slots and arrows, for counting and minimizing crossings.
@@ -465,7 +628,12 @@ layout model =
 
 
 view : Model -> Html Msg
-view model =
+view committed =
+    let
+        -- while an element is dragged, show the order it would make
+        model =
+            { committed | order = draggedOrder committed }
+    in
     div [ class "ct-page" ]
         [ div [ class "ct-side" ]
             [ goalBar model
@@ -850,7 +1018,7 @@ setAnchor set =
             ( 100, 30 )
 
         SetB ->
-            ( 680, 90 )
+            ( 720, 200 )
 
         SetC ->
             ( 480, 600 )
@@ -971,8 +1139,16 @@ spacing =
     46
 
 
-{-| Position of element `i` of a set of size `n`: `A` a column, `B` a diagonal, `C` a row,
-so that every function's arrows leave and enter their sets from one side.
+{-| Position of slot `i` of a set of size `n`: `A` a column (top to bottom), `B` the
+anti-diagonal (top right to bottom left), `C` a row (left to right).
+
+`B` runs from bottom left to top right so that `A` lies on one side of its line and `C` on
+the other: `f`'s arrows arrive from one side and `g`'s leave from the other. The orders on
+the three sides then agree all the way around (top of `A` ~ top of `B` ~ right of `C`, and
+top of `A` ~ right of `C` for `h`), so a commuting triangle can be drawn with no crossings
+among the arrows of any one function. Lining `B` up the other way would make `h` cross
+whenever `f` and `g` do not.
+
 -}
 position : SetId -> Int -> Int -> ( Float, Float )
 position set n i =
@@ -985,7 +1161,7 @@ position set n i =
             ( 100, 200 + k * spacing )
 
         SetB ->
-            ( 500 + k * 50 / sqrt 2, 200 + k * 50 / sqrt 2 )
+            ( 530 - k * 50 / sqrt 2, 195 + k * 50 / sqrt 2 )
 
         SetC ->
             ( 480 + k * spacing, 540 )
@@ -1023,7 +1199,23 @@ pictureHeight =
 -}
 stage : Model -> Html Msg
 stage model =
-    div [ class "ct-stage" ]
+    div
+        (classList [ ( "ct-stage", True ), ( "dragging", model.drag /= Nothing ) ]
+            :: (if model.drag /= Nothing then
+                    [ on "pointermove"
+                        (Decode.map2 DragMove
+                            clientPoint
+                            (Decode.at [ "currentTarget", "clientWidth" ] Decode.float)
+                        )
+                    , on "pointerup" (Decode.succeed DragEnd)
+                    , on "pointercancel" (Decode.succeed DragEnd)
+                    , on "pointerleave" (Decode.succeed DragEnd)
+                    ]
+
+                else
+                    []
+               )
+        )
         (Svg.svg [ SA.viewBox ("0 0 " ++ String.fromFloat pictureWidth ++ " " ++ String.fromFloat pictureHeight) ]
             (List.map (setShape model.triangle) [ SetA, SetB, SetC ]
                 ++ List.concatMap (arrows model) [ H, F, G ]
@@ -1044,7 +1236,7 @@ hint model =
             "Now click the image of " ++ el i ++ " ∈ B in C to set g(" ++ el i ++ ")."
 
         _ ->
-            "Click an element of A or B, then its image in B or C. Dashed arrows belong to the function to find."
+            "Click an element of A or B, then its image in B or C. Drag an element along its set to reorder the set. Dashed arrows belong to the function to find."
 
 
 setShape : Triangle -> SetId -> Svg msg
@@ -1195,6 +1387,9 @@ elements model set =
                 fails =
                     set == SetA && List.member i failing
 
+                dragged =
+                    Maybe.map (\d -> d.set == set && d.element == i) model.drag == Just True
+
                 stroke =
                     if selected then
                         "#222"
@@ -1212,20 +1407,19 @@ elements model set =
                                     "#555"
             in
             Svg.g
-                (style "cursor"
-                    (if clickable then
+                [ style "cursor"
+                    (if dragged then
+                        "grabbing"
+
+                     else if clickable then
                         "pointer"
 
                      else
-                        "default"
+                        "grab"
                     )
-                    :: (if clickable then
-                            [ Svg.Events.onClick (ClickElement set i) ]
-
-                        else
-                            []
-                       )
-                )
+                , style "touch-action" "none"
+                , Svg.Events.on "pointerdown" (pressed set i)
+                ]
                 [ Svg.title [] [ Svg.text (el i ++ " ∈ " ++ setName set) ]
                 , if fails then
                     Svg.circle [ SA.cx (String.fromFloat x), SA.cy (String.fromFloat y), SA.r (String.fromFloat (radius + 5)), SA.fill "none", SA.stroke "#c0392b", SA.strokeWidth "2", SA.strokeDasharray "3 2" ] []
@@ -1264,4 +1458,36 @@ elements model set =
                     [ Svg.text (el i) ]
                 ]
     in
-    List.map element (List.range 0 (n - 1))
+    -- the dragged element last, so that it is drawn over its neighbours
+    List.range 0 (n - 1)
+        |> List.sortBy (\i -> boolToInt (Maybe.map (\d -> d.set == set && d.element == i) model.drag == Just True))
+        |> List.map element
+
+
+boolToInt : Bool -> Int
+boolToInt b =
+    if b then
+        1
+
+    else
+        0
+
+
+{-| A press of the main button on an element: the start of a drag, or of a click.
+-}
+pressed : SetId -> Int -> Decoder Msg
+pressed set i =
+    Decode.field "button" Decode.int
+        |> Decode.andThen
+            (\button ->
+                if button == 0 then
+                    Decode.map (DragStart set i) clientPoint
+
+                else
+                    Decode.fail "not the main button"
+            )
+
+
+clientPoint : Decoder ( Float, Float )
+clientPoint =
+    Decode.map2 Tuple.pair (Decode.field "clientX" Decode.float) (Decode.field "clientY" Decode.float)
