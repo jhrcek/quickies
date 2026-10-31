@@ -45,7 +45,8 @@ type Chapter
 
 
 type Playground
-    = CategoryPlayground
+    = CompositionPlayground
+    | CategoryPlayground
     | FunctorPlayground
     | HomFunctorsPlayground
     | YonedaPlayground
@@ -53,12 +54,15 @@ type Playground
 
 allPlaygrounds : List Playground
 allPlaygrounds =
-    [ CategoryPlayground, FunctorPlayground, HomFunctorsPlayground, YonedaPlayground ]
+    [ CompositionPlayground, CategoryPlayground, FunctorPlayground, HomFunctorsPlayground, YonedaPlayground ]
 
 
 playgroundTitle : Playground -> String
 playgroundTitle playground =
     case playground of
+        CompositionPlayground ->
+            "Composition in Set"
+
         CategoryPlayground ->
             "Category"
 
@@ -75,6 +79,9 @@ playgroundTitle playground =
 playgroundSlug : Playground -> String
 playgroundSlug playground =
     case playground of
+        CompositionPlayground ->
+            "composition"
+
         CategoryPlayground ->
             "category"
 

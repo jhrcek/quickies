@@ -12,6 +12,7 @@ import Page.Functors
 import Page.Groups
 import Page.HomFunctors
 import Page.NaturalTransformations
+import Page.Playground.Composition
 import Page.Playground.Functor
 import Page.Sets
 import Page.YonedaEmbedding
@@ -54,6 +55,14 @@ suite =
             , stable "natural transformations" Page.NaturalTransformations.toQuery (Page.NaturalTransformations.fromQuery [] []) Page.NaturalTransformations.init (Page.NaturalTransformations.toQuery Page.NaturalTransformations.init)
             , stable "yoneda lemma" Page.YonedaLemma.toQuery (Page.YonedaLemma.fromQuery [] []) Page.YonedaLemma.init (Page.YonedaLemma.toQuery Page.YonedaLemma.init)
             , stable "yoneda embedding" Page.YonedaEmbedding.toQuery (Page.YonedaEmbedding.fromQuery []) Page.YonedaEmbedding.init (Page.YonedaEmbedding.toQuery Page.YonedaEmbedding.init)
+            , stable "composition playground" Page.Playground.Composition.toQuery Page.Playground.Composition.fromQuery Page.Playground.Composition.init (Page.Playground.Composition.toQuery Page.Playground.Composition.init)
+            , test "composition playground: partial mappings and mode are reproduced" <|
+                \_ ->
+                    roundTrip Page.Playground.Composition.toQuery
+                        Page.Playground.Composition.fromQuery
+                        Page.Playground.Composition.init
+                        [ ( "m", "lifting" ), ( "a", "2" ), ( "b", "4" ), ( "c", "1" ), ( "f", "3,-1" ), ( "g", "0,0,-1,0" ), ( "h", "0,5" ) ]
+                        |> Expect.equal [ ( "m", "lifting" ), ( "a", "2" ), ( "b", "4" ), ( "c", "1" ), ( "f", "3,-1" ), ( "g", "0,0,-1,0" ), ( "h", "0,-1" ) ]
             , stable "functor playground" Page.Playground.Functor.toQuery (Page.Playground.Functor.fromQuery [] []) Page.Playground.Functor.init (Page.Playground.Functor.toQuery Page.Playground.Functor.init)
             ]
         , describe "functor playground"

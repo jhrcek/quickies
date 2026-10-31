@@ -40,6 +40,7 @@ import Page.HomFunctors
 import Page.Intro
 import Page.NaturalTransformations
 import Page.Playground.Category
+import Page.Playground.Composition
 import Page.Playground.Functor
 import Page.Playground.HomFunctors
 import Page.Playground.Yoneda
@@ -85,6 +86,7 @@ type alias Model =
     , naturalTransformations : Page.NaturalTransformations.Model
     , yonedaLemma : Page.YonedaLemma.Model
     , yonedaEmbedding : Page.YonedaEmbedding.Model
+    , compositionPlayground : Page.Playground.Composition.Model
     , categoryPlayground : Page.Playground.Category.Model
     , functorPlayground : Page.Playground.Functor.Model
     , homFunctorsPlayground : Page.Playground.HomFunctors.Model
@@ -113,6 +115,7 @@ init flags url key =
     , naturalTransformations = Page.NaturalTransformations.init
     , yonedaLemma = Page.YonedaLemma.init
     , yonedaEmbedding = Page.YonedaEmbedding.init
+    , compositionPlayground = Page.Playground.Composition.withSeed (decodeSeed flags) Page.Playground.Composition.init
     , categoryPlayground = Page.Playground.Category.init
     , functorPlayground = Page.Playground.Functor.init
     , homFunctorsPlayground = Page.Playground.HomFunctors.init
@@ -121,6 +124,13 @@ init flags url key =
         |> rememberReturn
         |> applyQuery query
         |> syncUrl
+
+
+{-| A random number from `index.html`, seeding the random choices of the composition playground.
+-}
+decodeSeed : Decode.Value -> Int
+decodeSeed flags =
+    Decode.decodeValue (Decode.field "seed" Decode.int) flags |> Result.withDefault 0
 
 
 {-| The custom categories stored in local storage (a JSON string, or null). Entries that
@@ -327,6 +337,9 @@ applyQuery query model =
         Glossary ->
             model
 
+        Playground CompositionPlayground ->
+            { model | compositionPlayground = Page.Playground.Composition.fromQuery query model.compositionPlayground }
+
         Playground CategoryPlayground ->
             { model | categoryPlayground = Page.Playground.Category.fromQuery model.customs query model.categoryPlayground }
 
@@ -377,6 +390,9 @@ queryFor chapter model =
 
         Glossary ->
             []
+
+        Playground CompositionPlayground ->
+            Page.Playground.Composition.toQuery model.compositionPlayground
 
         Playground CategoryPlayground ->
             []
@@ -462,6 +478,7 @@ type Msg
     | NaturalTransformationsMsg Page.NaturalTransformations.Msg
     | YonedaLemmaMsg Page.YonedaLemma.Msg
     | YonedaEmbeddingMsg Page.YonedaEmbedding.Msg
+    | CompositionPlaygroundMsg Page.Playground.Composition.Msg
     | CategoryPlaygroundMsg Page.Playground.Category.Msg
     | FunctorPlaygroundMsg Page.Playground.Functor.Msg
     | HomFunctorsPlaygroundMsg Page.Playground.HomFunctors.Msg
@@ -521,6 +538,9 @@ update msg model =
 
         YonedaEmbeddingMsg m ->
             syncIfChanged model { model | yonedaEmbedding = Page.YonedaEmbedding.update m model.yonedaEmbedding }
+
+        CompositionPlaygroundMsg m ->
+            syncIfChanged model { model | compositionPlayground = Page.Playground.Composition.update m model.compositionPlayground }
 
         CategoryPlaygroundMsg m ->
             let
@@ -621,6 +641,9 @@ viewPlayground model playground =
             ]
         , div [ class "playground-body" ]
             [ case playground of
+                CompositionPlayground ->
+                    Html.map CompositionPlaygroundMsg (Page.Playground.Composition.view model.compositionPlayground)
+
                 CategoryPlayground ->
                     Html.map CategoryPlaygroundMsg (Page.Playground.Category.view model.customs model.categoryPlayground)
 

@@ -177,6 +177,19 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
       (slow / normal / fast), "Step k of n", the current step's equation
       α_Y(f) = α(p ; g) = F(g)(α_X(p)) = z, and "Show all" / "Done" to leave the walkthrough. The focus
       follows the current step, so the picture and "Why this value?" show its square.
+- [x] 20. Composition in Set playground (`#/playground/composition`, 2026-10-31, first in the
+      sidebar's playground list): sets A, B, C (0-6 elements, named 1, 2, ...) in a triangle with
+      f : A → B, g : B → C, h : A → C, all editable by clicking a source element, then its image.
+      Three symmetric modes, each with one function "to find" (switching empties it and fills the
+      two given ones with random functions): composition (find h = f ; g), extension (find g, with the
+      number of solutions |C|^(B outside im f) or why none exists) and lifting (find f, product
+      of fiber sizes). "Pick a random solution" / "Clear" for the unknown, random any /
+      injective / surjective / bijective functions (disabled when the sizes forbid them).
+      Pure logic in `Math/Triangle.elm` (tests in `tests/TriangleTest.elm`); uses `elm/random`
+      with a seed in the model (from `Main`'s flags), so `update` stays synchronous.
+      "Minimize crossings" reorders the elements within each set (labels stay) to reduce crossing
+      arrows: `Math/Crossings.elm` counts proper segment crossings and does block coordinate descent
+      (all n! orders of one set at a time); the order is view state, not in the deep link.
 
 Possible follow-ups (not planned): per-chapter "copy link" button, encoding edits of the
 Set-valued functor in chapter 5 (only the example name is stored today; 15 may make this easy),

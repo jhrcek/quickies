@@ -39,7 +39,8 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
 - `KaTeX.elm` - `<math-tex>` custom element wrapper (defined in `index.html`).
 - `Ports.elm` - the only ports: `storeCustomCategories` / `storeCustomFunctors` write the
   custom categories / functors (JSON) to local storage; `index.html` passes the stored JSON
-  back as `Main`'s flags `{ categories, functors }`.
+  back as `Main`'s flags `{ categories, functors, seed }` (`seed`: a random number for the
+  composition playground).
 - Custom categories: `Main.customs : List Example`, built in the category playground
   (`Page/Playground/Category.elm`, pure logic in `Math/CustomCategory.elm`: drafts keyed by
   labels, validation, backtracking auto-fill, JSON codec). Chapters 4-9 and the hom functor
@@ -82,6 +83,13 @@ Requires elm 0.19.2 (available via `nix develop` in the repo root).
   the same Model/Msg/update/view/toQuery/fromQuery shape as chapters, but always use the
   diagrammatic composition order (no `CompositionOrder` argument). `View/SetPicture.viewStyled`
   restyles the Set picture (solid element dots, grey arrows, single emphasized element arrows).
+- Composition in Set playground (`Page/Playground/Composition.elm`, pure logic in
+  `Math/Triangle.elm`): a triangle f : A → B, g : B → C, h : A → C of possibly partial
+  functions; composition / extension / lifting modes say which function is unknown. Random
+  functions and solutions are drawn from a `Random.Seed` in its model, never via
+  `Random.generate`: page updates must be synchronous, since several state changes in quick
+  succession race with `Main`'s `replaceUrl` echoes and ping-pong the URL. The drawing order of
+  the elements (`Math/Crossings.elm` minimizes arrow crossings on demand) is not in the URL.
 - Yoneda playground (`Page/Playground/Yoneda.elm`, pure logic in `Math/YonedaFill.elm`): fill in
   α : Hom(A,−) ⇒ F cell by cell (a cell = an arrow out of A), naturality propagates the choices.
   It is the only page with a subscription (an animation frame tick while forced cells are being
