@@ -197,6 +197,9 @@ Planned (agreed 2026-10-19): a Yoneda playground, preceded by a functor playgrou
       Elements can also be dragged along their set (pointer events on the element, move / up /
       leave on the stage): the others shift live to make room and the order is committed on
       release; a press released within 4px of where it started is a click (select / map).
+      "Arrow colors: by function / by fiber over C" (view state, not in the deep link): by fiber,
+      every arrow takes the color of the element of C its path ends at (g and h arrows: their
+      target; f arrows: g of their target, grey while unmapped) and C's elements are tinted.
 
 Possible follow-ups (not planned): per-chapter "copy link" button, encoding edits of the
 Set-valued functor in chapter 5 (only the example name is stored today; 15 may make this easy),

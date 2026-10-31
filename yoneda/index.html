@@ -88,6 +88,12 @@
         button.active, button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
         button:disabled { opacity: 0.5; cursor: default; }
         button.small { padding: 0 8px; min-width: 26px; line-height: 1.5; }
+        .segmented { display: inline-flex; }
+        .segmented > button { border-radius: 0; position: relative; }
+        .segmented > button + button { margin-left: -1px; }
+        .segmented > button:first-child { border-radius: 4px 0 0 4px; }
+        .segmented > button:last-child { border-radius: 0 4px 4px 0; }
+        .segmented > button:hover, .segmented > button.active { z-index: 1; }
 
         .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.82rem; margin-right: 6px; border: 1px solid; }
         .badge.ok { color: var(--ok); border-color: var(--ok); background: #eaf6ee; }

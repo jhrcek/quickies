@@ -24,7 +24,7 @@ Unlike the chapters, the playground always uses the diagrammatic composition ord
 
 import Array exposing (Array)
 import Html exposing (Html, button, div, input, p, span, text)
-import Html.Attributes exposing (class, classList, disabled, style, title, type_, value)
+import Html.Attributes exposing (attribute, class, classList, disabled, style, title, type_, value)
 import Html.Events exposing (on, onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
 import KaTeX
@@ -50,8 +50,17 @@ type SetId
     | SetC
 
 
+{-| How arrows are colored: by the function they belong to, or by the element of `C`
+their path ends at (the fibers over `C`).
+-}
+type Coloring
+    = ByFunction
+    | ByFiber
+
+
 type alias Model =
     { mode : Mode
+    , coloring : Coloring
     , triangle : Triangle
     , selected : Maybe ( SetId, Int )
     , seed : Random.Seed
@@ -82,6 +91,7 @@ type Msg
     | ClearUnknown
     | Untangle
     | ResetOrder
+    | SetColoring Coloring
     | DragStart SetId Int ( Float, Float )
     | DragMove ( Float, Float ) Float
     | DragEnd
@@ -102,6 +112,7 @@ init =
             Array.fromList [ Just 0, Just 1, Just 1 ]
     in
     { mode = Composition
+    , coloring = ByFunction
     , triangle = { a = 3, b = 3, c = 2, f = f, g = g, h = Triangle.empty 3 }
     , selected = Nothing
     , seed = Random.initialSeed 0
@@ -166,6 +177,9 @@ update msg model =
 
         ResetOrder ->
             { model | order = identityOrders t }
+
+        SetColoring coloring ->
+            { model | coloring = coloring }
 
         DragStart set i start ->
             let
@@ -423,6 +437,7 @@ fromQuery q model =
                     Triangle.resize n m old
     in
     { mode = mode
+    , coloring = model.coloring
     , selected = Nothing
     , seed = model.seed
     , order = fitOrders { a = a, b = b, c = c } model.order
@@ -676,6 +691,13 @@ toolbar model =
                     )
                 ]
             ]
+        , div [ class "controls" ]
+            [ span [ class "muted" ] [ text "Arrow colors:" ]
+            , span [ class "segmented", attribute "role" "group", attribute "aria-label" "Arrow colors" ]
+                [ coloringButton model ByFunction "by function" "Color each arrow by its function: f, g or h"
+                , coloringButton model ByFiber "by fiber over C" "Color each arrow by the element of C its path ends at (f's arrows by g of their target; grey while that is unmapped)"
+                ]
+            ]
         , p [ class "muted ct-hint" ] [ text (hint model) ]
         ]
 
@@ -691,6 +713,63 @@ roleName role =
 
         H ->
             "h"
+
+
+coloringButton : Model -> Coloring -> String -> String -> Html Msg
+coloringButton model coloring label tooltip =
+    button
+        [ class "small"
+        , classList [ ( "active", model.coloring == coloring ) ]
+        , onClick (SetColoring coloring)
+        , attribute "aria-pressed"
+            (if model.coloring == coloring then
+                "true"
+
+             else
+                "false"
+            )
+        , title tooltip
+        ]
+        [ text label ]
+
+
+{-| Colors of the fibers over the elements of `C` (Okabe-Ito, distinguishable with color
+vision deficiencies), and pale versions to fill the elements of `C` with.
+-}
+fiberColor : Int -> String
+fiberColor j =
+    pick j [ "#e69f00", "#56b4e9", "#009e73", "#d55e00", "#cc79a7", "#0072b2" ] "#999"
+
+
+fiberFill : Int -> String
+fiberFill j =
+    pick j [ "#f9e7bf", "#d5ecf9", "#bfe7dc", "#f4d7bf", "#f2dde9", "#bfdcec" ] "#fff"
+
+
+pick : Int -> List String -> String -> String
+pick j colors default =
+    List.drop (modBy (List.length colors) j) colors |> List.head |> Maybe.withDefault default
+
+
+{-| The color of an arrow of the given function into `j`.
+-}
+arrowColor : Model -> Role -> Int -> String
+arrowColor model role j =
+    case model.coloring of
+        ByFunction ->
+            roleColor role
+
+        ByFiber ->
+            case role of
+                F ->
+                    -- the arrow lies on the path i ↦ j ↦ g(j)
+                    Array.get j model.triangle.g
+                        |> Maybe.andThen identity
+                        |> Maybe.map fiberColor
+                        |> Maybe.withDefault "#999"
+
+                _ ->
+                    fiberColor j
 
 
 roleColor : Role -> String
@@ -1313,13 +1392,16 @@ arrows model role =
 
                         emphasized =
                             model.selected == Just ( s, i )
+
+                        color =
+                            arrowColor model role j
                     in
                     [ Svg.line
                         ([ SA.x1 (String.fromFloat (Tuple.first start))
                          , SA.y1 (String.fromFloat (Tuple.second start))
                          , SA.x2 (String.fromFloat (Tuple.first tip - ux * 8))
                          , SA.y2 (String.fromFloat (Tuple.second tip - uy * 8))
-                         , SA.stroke (roleColor role)
+                         , SA.stroke color
                          , SA.strokeWidth
                             (if emphasized then
                                 "3.5"
@@ -1337,7 +1419,7 @@ arrows model role =
                                )
                         )
                         []
-                    , ArrowHead.view { tip = tip, from = start, size = 10, color = roleColor role }
+                    , ArrowHead.view { tip = tip, from = start, size = 10, color = color }
                     ]
 
                 Nothing ->
@@ -1433,6 +1515,9 @@ elements model set =
                     , SA.fill
                         (if selected then
                             "#ffd54f"
+
+                         else if set == SetC && model.coloring == ByFiber then
+                            fiberFill i
 
                          else
                             "#fff"
