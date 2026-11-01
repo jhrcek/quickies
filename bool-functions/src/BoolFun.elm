@@ -9,6 +9,8 @@ module BoolFun exposing
     , Restriction
     , algebraicNormalForm
     , arityOf
+    , canonicalCnf
+    , canonicalDnf
     , chowParameters
     , clauseToFunction
     , cofactor
@@ -706,6 +708,46 @@ clauseToFunction arity lits =
         |> toRows
         |> List.map not
         |> unsafeFromRows arity
+
+
+{-| The canonical disjunctive normal form (CDNF): one minterm per row where
+the function is 1, in row order. Each minterm is a full list of literals (no
+`DontCare`), in the same order as `varNames`: a variable is `Positive` where its
+input bit is 1, `Negative` where it is 0. Empty for the constant-false function.
+-}
+canonicalDnf : BF -> List (List Literal)
+canonicalDnf =
+    canonicalTerms True
+
+
+{-| The canonical conjunctive normal form (CCNF): one maxterm (clause) per row
+where the function is 0, in row order. Each maxterm is a full list of literals
+(no `DontCare`), in the same order as `varNames`: a variable is `Negative`
+where its input bit is 1, `Positive` where it is 0, so the clause is false
+exactly at that row. Empty for the constant-true function.
+-}
+canonicalCnf : BF -> List (List Literal)
+canonicalCnf =
+    canonicalTerms False
+
+
+{-| Full-length terms for the rows where the function equals `rowValue`: a
+literal is `Positive` where the input bit equals `rowValue`, `Negative`
+otherwise.
+-}
+canonicalTerms : Bool -> BF -> List (List Literal)
+canonicalTerms rowValue ((BF { arity }) as bf) =
+    let
+        literal bit =
+            if bit == rowValue then
+                Positive
+
+            else
+                Negative
+    in
+    inputs arity
+        |> List.filter (\i -> eval bf i == rowValue)
+        |> List.map (\i -> List.map literal (inputBits arity i))
 
 
 negateLiteral : Literal -> Literal

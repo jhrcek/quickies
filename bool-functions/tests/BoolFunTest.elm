@@ -28,6 +28,7 @@ suite =
         , variablesTests
         , implicantTests
         , clauseTests
+        , canonicalFormTests
         , primeImplicantTests
         , chowTests
         , anfTests
@@ -1195,6 +1196,52 @@ clauseTests =
                 B.clauseToFunction 2 [ B.Positive, B.Negative ]
                     |> B.toRows
                     |> Expect.equalLists [ True, False, True, True ]
+        ]
+
+
+canonicalFormTests : Test
+canonicalFormTests =
+    describe "canonicalDnf / canonicalCnf"
+        [ fuzz fnFuzzer "OR of the CDNF minterms is f" <|
+            \f ->
+                B.canonicalDnf f
+                    |> List.map (B.implicantToFunction << B.implicantFromLiterals (B.arityOf f))
+                    |> B.disjunction (B.arityOf f)
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction f))
+        , fuzz fnFuzzer "AND of the CCNF maxterms is f" <|
+            \f ->
+                B.canonicalCnf f
+                    |> List.map (B.clauseToFunction (B.arityOf f))
+                    |> B.conjunction (B.arityOf f)
+                    |> Maybe.map describeFunction
+                    |> Expect.equal (Just (describeFunction f))
+        , fuzz fnFuzzer "one full-length term per 1-row (CDNF) / 0-row (CCNF)" <|
+            \f ->
+                let
+                    n =
+                        B.arityOf f
+
+                    ones =
+                        count identity (B.toRows f)
+
+                    fullLength =
+                        List.all (\t -> List.length t == n && not (List.member B.DontCare t))
+                in
+                ( ( List.length (B.canonicalDnf f), fullLength (B.canonicalDnf f) )
+                , ( List.length (B.canonicalCnf f), fullLength (B.canonicalCnf f) )
+                )
+                    |> Expect.equal ( ( ones, True ), ( 2 ^ n - ones, True ) )
+        , test "a ⊕ b at arity 2" <|
+            \_ ->
+                B.fromRows 2 [ False, True, True, False ]
+                    |> Maybe.map (\f -> ( B.canonicalDnf f, B.canonicalCnf f ))
+                    |> Expect.equal
+                        (Just
+                            ( [ [ B.Negative, B.Positive ], [ B.Positive, B.Negative ] ]
+                            , [ [ B.Positive, B.Positive ], [ B.Negative, B.Negative ] ]
+                            )
+                        )
         ]
 
 

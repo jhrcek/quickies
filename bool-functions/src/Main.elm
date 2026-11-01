@@ -217,6 +217,43 @@ type Msg
     | RemoveTerm NormalForm Int -- term index
     | ToggleLiteral NormalForm Int Int -- term index, variable index
     | ResetTerms NormalForm
+    | OpenInEditor EditorForm BoolFun.BF
+
+
+{-| A representation of a function that can be opened in one of the term
+editors. The terms are computed only when the link is clicked, so rendering the
+detail page doesn't pay for e.g. prime implicants nobody asked for.
+-}
+type EditorForm
+    = Cdnf -- canonical disjunctive normal form (SOP editor)
+    | Ccnf -- canonical conjunctive normal form (POS editor)
+    | Bcf -- Blake canonical form: OR of all prime implicants (SOP editor)
+
+
+editorFormNormalForm : EditorForm -> NormalForm
+editorFormNormalForm form =
+    case form of
+        Cdnf ->
+            Sop
+
+        Ccnf ->
+            Pos
+
+        Bcf ->
+            Sop
+
+
+editorFormTerms : EditorForm -> BoolFun.BF -> List Term
+editorFormTerms form bf =
+    case form of
+        Cdnf ->
+            BoolFun.canonicalDnf bf
+
+        Ccnf ->
+            BoolFun.canonicalCnf bf
+
+        Bcf ->
+            List.map BoolFun.implicantToLiterals (BoolFun.primeImplicants bf)
 
 
 type Delta
@@ -406,6 +443,16 @@ update msg model =
         ResetTerms normalForm ->
             ( setTerms normalForm (defaultTerms (routeArity model)) model
             , Cmd.none
+            )
+
+        OpenInEditor form bf ->
+            let
+                normalForm =
+                    editorFormNormalForm form
+            in
+            ( setTerms normalForm (editorFormTerms form bf) model
+            , Nav.pushUrl model.key
+                (Route.render (Arity (BoolFun.arityOf bf) (editorRoute normalForm)))
             )
 
 
@@ -739,6 +786,7 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                                     )
                                     bf
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
+                                , viewOpenInEditorLinks bf
                                 , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors
                                 , viewProperty settings arity functionIndex propSubroute cofactors bf
                                 ]
@@ -762,6 +810,18 @@ viewTermEditor settings normalForm arity terms =
         [ viewTermsList settings normalForm arity terms
         , viewTermsTruthTable settings normalForm arity terms
         ]
+
+
+{-| The route of the editor for a normal form.
+-}
+editorRoute : NormalForm -> ArityRoute
+editorRoute normalForm =
+    case normalForm of
+        Sop ->
+            SopEditor
+
+        Pos ->
+            PosEditor
 
 
 {-| The name of the normal form, as used in page text.
@@ -905,7 +965,14 @@ viewLiteralChip settings normalForm termIndex varIndex name lit =
     Html.button
         [ Events.onClick (ToggleLiteral normalForm termIndex varIndex)
         , HA.title "Toggle: variable → negated → don't-care"
-        , HA.style "min-width" "2.5em"
+
+        -- Fixed width, wide enough for the widest literal (¬x), so chips don't
+        -- change size as literals cycle. Horizontal padding is dropped so the
+        -- width is all content area; the literal is centered within it.
+        , HA.style "width" "3em"
+        , HA.style "padding-left" "0"
+        , HA.style "padding-right" "0"
+        , HA.style "text-align" "center"
         , HA.style "cursor" "pointer"
         , HA.style "opacity"
             (if dimmed then
@@ -1253,6 +1320,34 @@ viewImplicantsToggle showImplicantsInTable propSubroute bf =
 
     else
         Html.text ""
+
+
+{-| Links opening the function's canonical forms in the term editors. The
+counterpart of the "This SOP expression represents function N" link the
+editors show under their truth table.
+-}
+viewOpenInEditorLinks : BoolFun.BF -> Html Msg
+viewOpenInEditorLinks bf =
+    let
+        item form acronym explanation =
+            Html.li []
+                [ Html.button
+                    [ HA.class "link-button"
+                    , Events.onClick (OpenInEditor form bf)
+                    ]
+                    [ Html.text acronym ]
+                , Html.span [ HA.class "form-explanation" ]
+                    [ Html.text (" – " ++ explanation) ]
+                ]
+    in
+    Html.div [ HA.class "open-in-editor" ]
+        [ Html.text "Open as:"
+        , Html.ul []
+            [ item Cdnf "CDNF" "canonical disjunctive normal form, in SOP editor"
+            , item Ccnf "CCNF" "canonical conjunctive normal form, in POS editor"
+            , item Bcf "BCF" "Blake canonical form (all prime implicants), in SOP editor"
+            ]
+        ]
 
 
 viewProperty : Settings -> Int -> Natural -> PropertyRoute -> List BoolFun.Cofactors -> BoolFun.BF -> Html Msg
@@ -1902,6 +1997,18 @@ styles =
     color: #00e;
     text-decoration: underline;
     cursor: pointer;
+}
+
+.open-in-editor {
+    margin: 4px 10px;
+}
+.open-in-editor ul {
+    margin: 2px 0;
+    padding-left: 1.5em;
+}
+.form-explanation {
+    color: #888;
+    font-size: 0.85em;
 }
 
 .restriction-cell {
