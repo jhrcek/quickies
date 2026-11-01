@@ -21,7 +21,7 @@ import Url
 
 {-
    TODO:
-   - add "implicant" playground to function table, it should be possible to set each of the function's variablex to pos/neg/don't care
+   - add "implicant" playground to function table, it should be possible to set each of the function's variables to pos/neg/don't care
    - now that we're paging the list of all functions (and so display just few at a time), we can display more details about each function:
         - essential variables
         - monotonicity in each variable
@@ -1035,37 +1035,47 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofacto
                         isPinned || hoveredRestriction == Just r
                 in
                 Html.td
-                    [ Events.onMouseEnter (HoverRestriction (Just r))
+                    [ HA.class "restriction-cell"
+                    , Events.onMouseEnter (HoverRestriction (Just r))
                     , Events.onMouseLeave (HoverRestriction Nothing)
                     ]
-                    [ Html.a
+                    (Html.a
                         [ Route.href
                             (Arity (arity - 1)
                                 (Function newIndex propSubroute)
                             )
                         ]
                         [ Html.text (N.toDecimalString newIndex) ]
-                    , Html.span
-                        [ HA.class "pin-slot"
-                        , Events.onClick
-                            (PinRestriction
-                                (if isPinned then
-                                    Nothing
+                        :: (if showPin then
+                                -- Absolutely positioned over the cell's corner, so
+                                -- it takes no space in the layout and long indices
+                                -- don't make the cell wrap.
+                                [ Html.span
+                                    [ HA.class "pin"
+                                    , HA.title
+                                        (if isPinned then
+                                            "Unpin restriction"
 
-                                 else
-                                    Just r
-                                )
-                            )
-                        ]
-                        [ Html.text
-                            (if showPin then
-                                "📌"
+                                         else
+                                            "Pin restriction"
+                                        )
+                                    , Events.onClick
+                                        (PinRestriction
+                                            (if isPinned then
+                                                Nothing
 
-                             else
-                                ""
-                            )
-                        ]
-                    ]
+                                             else
+                                                Just r
+                                            )
+                                        )
+                                    ]
+                                    [ Html.text "📌" ]
+                                ]
+
+                            else
+                                []
+                           )
+                    )
 
             valueRow value =
                 Html.tr []
@@ -1093,14 +1103,32 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofacto
                         , valueRow True
                         ]
                     ]
-                , case effectiveRestriction pinnedRestriction hoveredRestriction of
-                    Just highlight ->
-                        case List.head (List.drop (highlight.varIndex - 1) cofactors) of
-                            Just highlightedCofactors ->
-                                viewRestrictionSummary arity highlight highlightedCofactors
+                , let
+                    -- The summary is always rendered, just hidden when nothing is
+                    -- highlighted. Its KaTeX row headers can be taller than the
+                    -- Restrictions table, so adding/removing it on hover would make
+                    -- everything below jump. Its size doesn't depend on which
+                    -- restriction is shown, so any placeholder reserves the space.
+                    ( summaryRestriction, visible ) =
+                        case effectiveRestriction pinnedRestriction hoveredRestriction of
+                            Just highlight ->
+                                ( highlight, True )
 
                             Nothing ->
-                                Html.text ""
+                                ( { varIndex = 1, value = False }, False )
+                  in
+                  case List.head (List.drop (summaryRestriction.varIndex - 1) cofactors) of
+                    Just highlightedCofactors ->
+                        Html.div
+                            (if visible then
+                                []
+
+                             else
+                                [ HA.style "visibility" "hidden"
+                                , HA.attribute "aria-hidden" "true"
+                                ]
+                            )
+                            [ viewRestrictionSummary arity summaryRestriction highlightedCofactors ]
 
                     Nothing ->
                         Html.text ""
@@ -1876,17 +1904,49 @@ styles =
     cursor: pointer;
 }
 
-.pin-slot {
-    display: inline-block;
-    width: 1.25em;
-    text-align: center;
+.restriction-cell {
+    position: relative;
+    white-space: nowrap;
+}
+.restriction-cell .pin {
+    position: absolute;
+    top: -0.6em;
+    right: -0.6em;
+    z-index: 1;
+    font-size: 0.85em;
+    line-height: 1;
+    padding: 2px;
+    border-radius: 50%;
+    border: 1px solid transparent;
     cursor: pointer;
+    transition: transform 0.1s, background-color 0.1s;
+}
+/* Make it obvious which of the two click targets is under the mouse. */
+.restriction-cell .pin:hover {
+    background-color: #fff3c4;
+    border-color: #c9a227;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transform: scale(1.25);
+}
+.restriction-cell a {
+    padding: 0 2px;
+    border-radius: 3px;
+}
+.restriction-cell a:hover {
+    background-color: #dde8ff;
+    outline: 1px solid #00e;
+}
+/* While the pin is hovered, the link is visibly not the target. */
+.restriction-cell:has(.pin:hover) a {
+    opacity: 0.4;
 }
 .restriction-hint {
     color: #888;
     font-size: 0.85em;
-    min-height: 1.2em;
+    height: 1.2em;
+    line-height: 1.2em;
     margin: 2px 10px;
+    white-space: nowrap;
 }
 .restrictions-layout {
     display: flex;
