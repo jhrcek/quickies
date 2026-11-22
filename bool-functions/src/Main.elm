@@ -808,9 +808,9 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
 -- TERM EDITORS (SOP / POS)
 
 
-{-| A term editor page: an editable list of terms on the left and a truth table
-of the function they define on the right. In the SOP editor that is the OR of
-product terms, in the POS editor the AND of clauses.
+{-| A term editor page: the expression on the left, one term per line, and a
+truth table of the function it defines on the right. In the SOP editor that is
+the OR of product terms, in the POS editor the AND of clauses.
 -}
 viewTermEditor : Settings -> NormalForm -> Int -> Bool -> List Term -> Html Msg
 viewTermEditor settings normalForm arity showTerms terms =
@@ -819,7 +819,7 @@ viewTermEditor settings normalForm arity showTerms terms =
         , HA.style "gap" "2em"
         , HA.style "align-items" "flex-start"
         ]
-        [ viewTermsList settings normalForm arity terms
+        [ viewTermsFormula settings normalForm arity terms
         , viewTermsTruthTable settings normalForm arity showTerms terms
         ]
 
@@ -895,44 +895,67 @@ viewTerm settings normalForm arity term =
             BoolFun.View.viewClause settings term
 
 
-{-| Left column: one editable row per term, plus Add/Reset controls.
+{-| Left column: the expression typeset as `f(a,b,…)` followed by one line per
+term, each starting with an operator (`=` for the first term), all left-aligned.
+Hovering a term's line turns it into editing controls (see `viewTermRow`).
+Below the expression are the Add/Reset buttons.
 -}
-viewTermsList : Settings -> NormalForm -> Int -> List Term -> Html Msg
-viewTermsList settings normalForm arity terms =
+viewTermsFormula : Settings -> NormalForm -> Int -> List Term -> Html Msg
+viewTermsFormula settings normalForm arity terms =
     let
         termRows =
-            if List.isEmpty terms then
-                [ Html.div
-                    [ HA.style "color" "#888", HA.style "font-style" "italic" ]
-                    [ Html.text
-                        (case normalForm of
-                            Sop ->
-                                "No terms — the function is constant-false."
+            case terms of
+                [] ->
+                    [ formulaRow [] "=" [ KaTeX.inline (emptyExpressionTex normalForm) ] ]
 
-                            Pos ->
-                                "No clauses — the function is constant-true."
+                _ ->
+                    List.indexedMap
+                        (\termIndex term ->
+                            viewTermRow settings
+                                normalForm
+                                arity
+                                (if termIndex == 0 then
+                                    "="
+
+                                 else
+                                    lineStartOperatorTex settings normalForm
+                                )
+                                termIndex
+                                term
                         )
-                    ]
-                ]
-
-            else
-                List.indexedMap (viewTermRow settings normalForm arity) terms
+                        terms
     in
     -- The 10px margin matches the .truth-table margin so both columns align.
     Html.div [ HA.style "margin" "10px" ]
-        [ Html.div [] termRows
+        [ Html.div [ HA.class "term-formula" ]
+            (Html.div [ HA.class "formula-row" ] [ KaTeX.inline (BoolFun.View.functionLabelTex arity) ]
+                :: termRows
+            )
         , Html.div [ HA.style "margin-top" "0.5em" ]
             [ Html.button [ Events.onClick (AddTerm normalForm) ] [ Html.text ("Add " ++ termNoun normalForm) ]
             , Html.text " "
             , Html.button [ Events.onClick (ResetTerms normalForm) ] [ Html.text "Reset" ]
             ]
+        , Html.div [ HA.class "form-explanation", HA.style "margin-top" "0.5em" ]
+            [ Html.text ("Hover over a " ++ termNoun normalForm ++ " to edit it.") ]
         ]
 
 
-{-| One term: a clickable literal chip per variable, then a remove button.
+{-| A line of the expression: an operator column followed by the content.
 -}
-viewTermRow : Settings -> NormalForm -> Int -> Int -> Term -> Html Msg
-viewTermRow settings normalForm arity termIndex term =
+formulaRow : List (Html.Attribute msg) -> String -> List (Html msg) -> Html msg
+formulaRow attrs operatorTex content =
+    Html.div (HA.class "formula-row" :: attrs)
+        (Html.span [ HA.class "formula-op" ] [ KaTeX.inline operatorTex ] :: content)
+
+
+{-| One term's line. It shows the typeset term, and while hovered a clickable
+literal chip per variable plus a remove button instead. Both are stacked in
+the same grid cell and only their visibility is swapped (see the `.term-cell`
+styles), so the line and the whole column keep their size and nothing jumps.
+-}
+viewTermRow : Settings -> NormalForm -> Int -> String -> Int -> Term -> Html Msg
+viewTermRow settings normalForm arity operatorTex termIndex term =
     let
         chips =
             List.map2
@@ -948,13 +971,69 @@ viewTermRow settings normalForm arity termIndex term =
                 ]
                 [ Html.text "✗" ]
     in
-    Html.div
-        [ HA.style "display" "flex"
-        , HA.style "align-items" "center"
-        , HA.style "gap" "0.25em"
-        , HA.style "margin-bottom" "0.25em"
+    formulaRow [ HA.class "term-row" ]
+        operatorTex
+        [ Html.span [ HA.class "term-cell" ]
+            [ Html.span [ HA.class "term-view" ] [ KaTeX.inline (termTex settings normalForm arity term) ]
+            , Html.span [ HA.class "term-edit" ] (chips ++ [ removeButton ])
+            ]
         ]
-        (chips ++ [ removeButton ])
+
+
+{-| TeX for a single term of the expression. Terms with more than one literal
+are parenthesized where needed for readability: always in POS, and in SOP only
+in the symbols style (the compact style relies on juxtaposition binding tighter
+than `+`).
+-}
+termTex : Settings -> NormalForm -> Int -> Term -> String
+termTex settings normalForm arity term =
+    let
+        parenthesize needsParens tex =
+            if needsParens && List.length (List.filter ((/=) BoolFun.DontCare) term) > 1 then
+                "(" ++ tex ++ ")"
+
+            else
+                tex
+    in
+    case normalForm of
+        Sop ->
+            BoolFun.View.implicantTex settings (BoolFun.implicantFromLiterals arity term)
+                |> parenthesize (settings.formula == Settings.Symbols)
+
+        Pos ->
+            BoolFun.View.clauseTex settings term
+                |> parenthesize True
+
+
+{-| The expression with no terms: an empty SOP is `⊥`, an empty POS is `⊤`.
+-}
+emptyExpressionTex : NormalForm -> String
+emptyExpressionTex normalForm =
+    case normalForm of
+        Sop ->
+            "\\bot"
+
+        Pos ->
+            "\\top"
+
+
+{-| The operator starting each term's line after the first. The compact POS
+style has no conjunction symbol (clauses are juxtaposed), so there it is empty.
+-}
+lineStartOperatorTex : Settings -> NormalForm -> String
+lineStartOperatorTex settings normalForm =
+    case ( normalForm, settings.formula ) of
+        ( Sop, Settings.Symbols ) ->
+            "\\lor"
+
+        ( Sop, Settings.Compact ) ->
+            "+"
+
+        ( Pos, Settings.Symbols ) ->
+            "\\land"
+
+        ( Pos, Settings.Compact ) ->
+            ""
 
 
 {-| A single literal, clickable to cycle variable → negated → don't-care.
@@ -2036,6 +2115,52 @@ styles =
     margin: 2px 0;
     padding-left: 1.5em;
 }
+.term-formula {
+    font-size: 1.2em;
+}
+/* Fixed line height: tall enough for the literal chips, so a line doesn't
+   change height when hovering swaps the typeset term for the chips. */
+.formula-row {
+    display: flex;
+    align-items: center;
+    height: 2em;
+}
+.formula-op {
+    flex: none;
+    width: 1.3em;
+}
+.term-row {
+    border-radius: 4px;
+}
+.term-row:hover {
+    background-color: #f0f0f0;
+}
+/* The typeset term and its editing controls share one grid cell; hovering only
+   swaps their visibility, so the cell is always as wide as the wider of them. */
+.term-cell {
+    display: grid;
+    align-items: center;
+}
+.term-cell > * {
+    grid-area: 1 / 1;
+}
+.term-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.25em;
+    visibility: hidden;
+}
+.term-edit button {
+    font-size: 0.85em;
+    height: 1.9em;
+}
+.term-row:hover .term-view {
+    visibility: hidden;
+}
+.term-row:hover .term-edit {
+    visibility: visible;
+}
+
 .form-explanation {
     color: #888;
     font-size: 0.85em;
