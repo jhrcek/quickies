@@ -68,6 +68,10 @@ type alias Model =
     -- normalized to the current arity whenever its editor route is entered.
     , sopTerms : List Term
     , posTerms : List Term
+
+    -- Whether the term editors' truth table shows one column per term / clause
+    -- (shared by the SOP and POS editors).
+    , showTermsInEditorTable : Bool
     }
 
 
@@ -194,6 +198,7 @@ init _ url key =
       , hoveredRestriction = Nothing
       , sopTerms = defaultTerms arity
       , posTerms = defaultTerms arity
+      , showTermsInEditorTable = True
       }
     , Cmd.none
     )
@@ -217,6 +222,7 @@ type Msg
     | RemoveTerm NormalForm Int -- term index
     | ToggleLiteral NormalForm Int Int -- term index, variable index
     | ResetTerms NormalForm
+    | SetShowTermsInEditorTable Bool
     | OpenInEditor EditorForm BoolFun.BF
 
 
@@ -380,6 +386,11 @@ update msg model =
             , Cmd.none
             )
 
+        SetShowTermsInEditorTable show ->
+            ( { model | showTermsInEditorTable = show }
+            , Cmd.none
+            )
+
         ToggleSettings ->
             ( { model | settingsOpen = not model.settingsOpen }
             , Cmd.none
@@ -497,6 +508,7 @@ viewBody model =
                         model.hoveredRestriction
                         model.sopTerms
                         model.posTerms
+                        model.showTermsInEditorTable
                         route
                     ]
 
@@ -735,8 +747,8 @@ functionControls renderLink arity functionIndex =
         ]
 
 
-viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List Term -> List Term -> Route -> Html Msg
-viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction sopTerms posTerms route =
+viewRoute : Settings -> Bool -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List Term -> List Term -> Bool -> Route -> Html Msg
+viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction sopTerms posTerms showTermsInEditorTable route =
     case route of
         Home ->
             Html.div []
@@ -757,10 +769,10 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                     viewAllFunctions settings arity page
 
                 SopEditor ->
-                    viewTermEditor settings Sop arity sopTerms
+                    viewTermEditor settings Sop arity showTermsInEditorTable sopTerms
 
                 PosEditor ->
-                    viewTermEditor settings Pos arity posTerms
+                    viewTermEditor settings Pos arity showTermsInEditorTable posTerms
 
                 Function functionIndex propSubroute ->
                     case BoolFun.mkBF arity functionIndex of
@@ -800,15 +812,15 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
 of the function they define on the right. In the SOP editor that is the OR of
 product terms, in the POS editor the AND of clauses.
 -}
-viewTermEditor : Settings -> NormalForm -> Int -> List Term -> Html Msg
-viewTermEditor settings normalForm arity terms =
+viewTermEditor : Settings -> NormalForm -> Int -> Bool -> List Term -> Html Msg
+viewTermEditor settings normalForm arity showTerms terms =
     Html.div
         [ HA.style "display" "flex"
         , HA.style "gap" "2em"
         , HA.style "align-items" "flex-start"
         ]
         [ viewTermsList settings normalForm arity terms
-        , viewTermsTruthTable settings normalForm arity terms
+        , viewTermsTruthTable settings normalForm arity showTerms terms
         ]
 
 
@@ -988,26 +1000,27 @@ viewLiteralChip settings normalForm termIndex varIndex name lit =
 {-| Right column: a truth table with one column per variable, one per term
 (showing where that term holds), and a final column for their combination.
 Mirrors the function-detail truth table; the result column is read-only here
-since the function is defined by the terms. Below the table, a link to the
-detail page of the function the expression represents.
+since the function is defined by the terms. Below the table, a checkbox to
+hide the per-term columns and a link to the detail page of the function the
+expression represents.
 -}
-viewTermsTruthTable : Settings -> NormalForm -> Int -> List Term -> Html Msg
-viewTermsTruthTable settings normalForm arity terms =
+viewTermsTruthTable : Settings -> NormalForm -> Int -> Bool -> List Term -> Html Msg
+viewTermsTruthTable settings normalForm arity showTerms terms =
     let
         termFns =
             List.map (termFunction normalForm arity) terms
     in
     case combineTerms normalForm arity termFns of
         Just fn ->
-            viewTermsTruthTableFor settings normalForm arity terms termFns fn
+            viewTermsTruthTableFor settings normalForm arity showTerms terms termFns fn
 
         Nothing ->
             -- Unreachable: every term is normalized to the editor's arity.
             Html.text ("The " ++ normalFormName normalForm ++ " terms don't match the arity of the editor.")
 
 
-viewTermsTruthTableFor : Settings -> NormalForm -> Int -> List Term -> List BoolFun.BF -> BoolFun.BF -> Html Msg
-viewTermsTruthTableFor settings normalForm arity terms termFns fn =
+viewTermsTruthTableFor : Settings -> NormalForm -> Int -> Bool -> List Term -> List BoolFun.BF -> BoolFun.BF -> Html Msg
+viewTermsTruthTableFor settings normalForm arity showTerms terms termFns fn =
     let
         rowCount =
             2 ^ arity
@@ -1026,14 +1039,22 @@ viewTermsTruthTableFor settings normalForm arity terms termFns fn =
                 []
 
         termHeaderCells =
-            List.indexedMap
-                (\idx term -> Html.th (firstTermBorder idx) [ viewTerm settings normalForm arity term ])
-                terms
+            if showTerms then
+                List.indexedMap
+                    (\idx term -> Html.th (firstTermBorder idx) [ viewTerm settings normalForm arity term ])
+                    terms
+
+            else
+                []
 
         termBodyCells i =
-            List.indexedMap
-                (\idx termFn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval termFn i))
-                termFns
+            if showTerms then
+                List.indexedMap
+                    (\idx termFn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval termFn i))
+                    termFns
+
+            else
+                []
     in
     Html.div []
         [ Html.table [ HA.class "truth-table" ]
@@ -1055,6 +1076,15 @@ viewTermsTruthTableFor settings normalForm arity terms termFns fn =
                                 )
                         )
                 )
+            ]
+        , Html.label [ HA.style "display" "block", HA.style "margin" "10px" ]
+            [ Html.input
+                [ HA.type_ "checkbox"
+                , HA.checked showTerms
+                , Events.onCheck SetShowTermsInEditorTable
+                ]
+                []
+            , Html.text (" Show " ++ termNoun normalForm ++ "s")
             ]
         , Html.div [ HA.style "margin" "10px" ]
             [ Html.text ("This " ++ normalFormName normalForm ++ " expression represents function ")
