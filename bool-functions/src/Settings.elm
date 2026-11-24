@@ -1,10 +1,13 @@
 module Settings exposing
-    ( FormulaStyle(..)
+    ( BoolStyle(..)
+    , FormulaStyle(..)
     , Settings
     , conjunctionTex
     , default
     , disjunctionTex
     , negationTex
+    , showBool
+    , showBoolInFormula
     , viewFunctionName
     )
 
@@ -17,18 +20,64 @@ type FormulaStyle
     | Compact -- x̄, xy
 
 
-
--- TODO make it configurable how to display each value (TRUE vs T vs unicode checkmark?)
+type BoolStyle
+    = Words -- False / True
+    | Digits -- 0 / 1
+    | Marks -- ✗ / ✓
+    | ColorOnly -- no text, just the cell's background color
 
 
 type alias Settings =
     { formula : FormulaStyle
+    , bool : BoolStyle
     }
 
 
 default : Settings
 default =
-    { formula = Symbols }
+    { formula = Symbols
+    , bool = Words
+    }
+
+
+{-| Display a boolean value according to the chosen style.
+-}
+showBool : Settings -> Bool -> String
+showBool settings b =
+    case ( settings.bool, b ) of
+        ( Words, True ) ->
+            "True"
+
+        ( Words, False ) ->
+            "False"
+
+        ( Digits, True ) ->
+            "1"
+
+        ( Digits, False ) ->
+            "0"
+
+        ( Marks, True ) ->
+            "✓"
+
+        ( Marks, False ) ->
+            "✗"
+
+        ( ColorOnly, _ ) ->
+            ""
+
+
+{-| Like `showBool`, but for places with no background color to carry the value
+(e.g. inside a formula), where `ColorOnly` falls back to `0 / 1`.
+-}
+showBoolInFormula : Settings -> Bool -> String
+showBoolInFormula settings =
+    case settings.bool of
+        ColorOnly ->
+            showBool { settings | bool = Digits }
+
+        _ ->
+            showBool settings
 
 
 {-| TeX for the negation of a (single-character) variable name according to the

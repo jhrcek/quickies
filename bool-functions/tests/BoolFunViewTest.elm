@@ -31,7 +31,7 @@ viewImplicantTests =
                     |> Expect.equal "a \\land \\neg b"
         , test "compact style: a b̄" <|
             \_ ->
-                implicantTex { formula = Settings.Compact } [ B.Positive, B.Negative, B.DontCare ]
+                implicantTex { formula = Settings.Compact, bool = Settings.Words } [ B.Positive, B.Negative, B.DontCare ]
                     |> Expect.equal "a\\overline{b}"
         , test "don't-cares are left out" <|
             \_ ->
@@ -39,7 +39,7 @@ viewImplicantTests =
                     |> Expect.equal "\\neg b \\land d"
         , test "the empty implicant is ⊤ in both styles" <|
             \_ ->
-                [ Settings.default, { formula = Settings.Compact } ]
+                [ Settings.default, { formula = Settings.Compact, bool = Settings.Words } ]
                     |> List.map (\settings -> implicantTex settings [ B.DontCare, B.DontCare ])
                     |> Expect.equalLists [ "\\top", "\\top" ]
         ]
@@ -54,7 +54,7 @@ viewClauseTests =
                     |> Expect.equal "a \\lor \\neg b"
         , test "compact style: a + b̄" <|
             \_ ->
-                V.clauseTex { formula = Settings.Compact } [ B.Positive, B.Negative, B.DontCare ]
+                V.clauseTex { formula = Settings.Compact, bool = Settings.Words } [ B.Positive, B.Negative, B.DontCare ]
                     |> Expect.equal "a + \\overline{b}"
         , test "don't-cares are left out" <|
             \_ ->
@@ -62,7 +62,7 @@ viewClauseTests =
                     |> Expect.equal "\\neg b \\lor d"
         , test "the empty clause is ⊥ in both styles" <|
             \_ ->
-                [ Settings.default, { formula = Settings.Compact } ]
+                [ Settings.default, { formula = Settings.Compact, bool = Settings.Words } ]
                     |> List.map (\settings -> V.clauseTex settings [ B.DontCare, B.DontCare ])
                     |> Expect.equalLists [ "\\bot", "\\bot" ]
         ]
@@ -71,10 +71,18 @@ viewClauseTests =
 boolHelpersTests : Test
 boolHelpersTests =
     describe "showBool / boolColor"
-        [ test "showBool spells out the value" <|
+        [ test "showBool respects the boolean display style" <|
             \_ ->
-                List.map V.showBool [ True, False ]
-                    |> Expect.equalLists [ "True", "False" ]
+                [ Settings.Words, Settings.Digits, Settings.Marks, Settings.ColorOnly ]
+                    |> List.map
+                        (\style ->
+                            List.map (Settings.showBool { formula = Settings.Symbols, bool = style }) [ True, False ]
+                        )
+                    |> Expect.equalLists [ [ "True", "False" ], [ "1", "0" ], [ "✓", "✗" ], [ "", "" ] ]
+        , test "showBoolInFormula falls back to 0 / 1 for color only" <|
+            \_ ->
+                List.map (Settings.showBoolInFormula { formula = Settings.Symbols, bool = Settings.ColorOnly }) [ True, False ]
+                    |> Expect.equalLists [ "1", "0" ]
         , test "boolColor differs for True and False" <|
             \_ ->
                 V.boolColor True
@@ -95,6 +103,6 @@ viewAlgebraicNormalFormTests =
                     |> Expect.equal "1 \\oplus a \\oplus b \\land c"
         , test "compact style: 1 ⊕ a ⊕ bc" <|
             \_ ->
-                V.algebraicNormalFormTex { formula = Settings.Compact } 3 [ 0, 4, 3 ]
+                V.algebraicNormalFormTex { formula = Settings.Compact, bool = Settings.Words } 3 [ 0, 4, 3 ]
                     |> Expect.equal "1 \\oplus a \\oplus bc"
         ]

@@ -216,6 +216,7 @@ type Msg
     | SetShowImplicantsInTable Bool
     | ToggleSettings
     | SetFormulaStyle Settings.FormulaStyle
+    | SetBoolStyle Settings.BoolStyle
     | HoverRestriction (Maybe BoolFun.Restriction)
     | PinRestriction (Maybe BoolFun.Restriction)
     | AddTerm NormalForm
@@ -397,7 +398,20 @@ update msg model =
             )
 
         SetFormulaStyle style ->
-            ( { model | settings = { formula = style } }
+            let
+                settings =
+                    model.settings
+            in
+            ( { model | settings = { settings | formula = style } }
+            , Cmd.none
+            )
+
+        SetBoolStyle style ->
+            let
+                settings =
+                    model.settings
+            in
+            ( { model | settings = { settings | bool = style } }
             , Cmd.none
             )
 
@@ -591,6 +605,39 @@ viewSettings isOpen settings =
                 , label
                 ]
 
+        boolRadio style =
+            radio "bool"
+                (settings.bool == style)
+                (SetBoolStyle style)
+                (case style of
+                    Settings.ColorOnly ->
+                        Html.span []
+                            [ Html.text "color only ("
+                            , colorSwatch False
+                            , Html.text " / "
+                            , colorSwatch True
+                            , Html.text ")"
+                            ]
+
+                    _ ->
+                        let
+                            styled =
+                                { settings | bool = style }
+                        in
+                        Html.text (Settings.showBool styled False ++ " / " ++ Settings.showBool styled True)
+                )
+
+        colorSwatch b =
+            Html.span
+                [ HA.style "display" "inline-block"
+                , HA.style "width" "0.9em"
+                , HA.style "height" "0.9em"
+                , HA.style "vertical-align" "middle"
+                , HA.style "border" "1px solid black"
+                , HA.style "background-color" (BoolFun.View.boolColor b)
+                ]
+                []
+
         popup =
             if isOpen then
                 Html.div [ HA.class "settings-popup" ]
@@ -604,6 +651,13 @@ viewSettings isOpen settings =
                             (settings.formula == Settings.Compact)
                             (SetFormulaStyle Settings.Compact)
                             (Html.span [] [ Html.text "compact (", KaTeX.inline "x\\overline{y}", Html.text ")" ])
+                        ]
+                    , Html.fieldset []
+                        [ Html.legend [] [ Html.text "Boolean display" ]
+                        , boolRadio Settings.Words
+                        , boolRadio Settings.Digits
+                        , boolRadio Settings.Marks
+                        , boolRadio Settings.ColorOnly
                         ]
                     ]
 
@@ -799,7 +853,7 @@ viewRoute settings showImplicantsInTable pinnedRestriction hoveredRestriction so
                                     bf
                                 , viewImplicantsToggle showImplicantsInTable propSubroute bf
                                 , viewOpenInEditorLinks bf
-                                , viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors
+                                , viewRestrictions settings arity propSubroute pinnedRestriction hoveredRestriction cofactors
                                 , viewProperty settings arity functionIndex propSubroute cofactors bf
                                 ]
 
@@ -1129,7 +1183,7 @@ viewTermsTruthTableFor settings normalForm arity showTerms terms termFns fn =
         termBodyCells i =
             if showTerms then
                 List.indexedMap
-                    (\idx termFn -> BoolFun.View.boolCellWith (firstTermBorder idx) (BoolFun.eval termFn i))
+                    (\idx termFn -> BoolFun.View.boolCellWith settings (firstTermBorder idx) (BoolFun.eval termFn i))
                     termFns
 
             else
@@ -1149,9 +1203,9 @@ viewTermsTruthTableFor settings normalForm arity showTerms terms termFns fn =
                     |> List.map
                         (\i ->
                             Html.tr []
-                                (List.map BoolFun.View.boolCell (BoolFun.inputBits arity i)
+                                (List.map (BoolFun.View.boolCell settings) (BoolFun.inputBits arity i)
                                     ++ termBodyCells i
-                                    ++ [ BoolFun.View.boolCellWith [ doubleBorder ] (BoolFun.eval fn i) ]
+                                    ++ [ BoolFun.View.boolCellWith settings [ doubleBorder ] (BoolFun.eval fn i) ]
                                 )
                         )
                 )
@@ -1188,8 +1242,8 @@ effectiveRestriction pinnedRestriction hoveredRestriction =
             hoveredRestriction
 
 
-viewRestrictions : Int -> PropertyRoute -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List BoolFun.Cofactors -> Html Msg
-viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofactors =
+viewRestrictions : Settings -> Int -> PropertyRoute -> Maybe BoolFun.Restriction -> Maybe BoolFun.Restriction -> List BoolFun.Cofactors -> Html Msg
+viewRestrictions settings arity propSubroute pinnedRestriction hoveredRestriction cofactors =
     if arity <= 1 then
         Html.text ""
 
@@ -1256,8 +1310,10 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofacto
             valueRow value =
                 Html.tr []
                     (Html.th
-                        [ HA.style "background-color" (BoolFun.View.boolColor value) ]
-                        [ Html.text (BoolFun.View.showBool value) ]
+                        (HA.style "background-color" (BoolFun.View.boolColor value)
+                            :: BoolFun.View.boolSquareAttrs settings
+                        )
+                        [ Html.text (Settings.showBool settings value) ]
                         -- cofactors are 0-based, variable indices 1-based
                         :: List.indexedMap (\i -> cell value (i + 1)) cofactors
                     )
@@ -1304,7 +1360,7 @@ viewRestrictions arity propSubroute pinnedRestriction hoveredRestriction cofacto
                                 , HA.attribute "aria-hidden" "true"
                                 ]
                             )
-                            [ viewRestrictionSummary arity summaryRestriction highlightedCofactors ]
+                            [ viewRestrictionSummary settings arity summaryRestriction highlightedCofactors ]
 
                     Nothing ->
                         Html.text ""
@@ -1336,8 +1392,8 @@ whole, instead of as rows interleaved through the main truth table. Like the mai
 truth table, clicking a body cell edits the function by toggling the corresponding
 bit of its index.
 -}
-viewRestrictionSummary : Int -> BoolFun.Restriction -> BoolFun.Cofactors -> Html Msg
-viewRestrictionSummary arity highlight highlightedCofactors =
+viewRestrictionSummary : Settings -> Int -> BoolFun.Restriction -> BoolFun.Cofactors -> Html Msg
+viewRestrictionSummary settings arity highlight highlightedCofactors =
     let
         columns =
             List.range 0 (2 ^ (arity - 1) - 1)
@@ -1348,7 +1404,7 @@ viewRestrictionSummary arity highlight highlightedCofactors =
                     (List.indexedMap
                         (\i name ->
                             if i == highlight.varIndex - 1 then
-                                "\\text{" ++ BoolFun.View.showBool value ++ "}"
+                                "\\text{" ++ Settings.showBoolInFormula settings value ++ "}"
 
                             else
                                 name
@@ -1390,7 +1446,7 @@ viewRestrictionSummary arity highlight highlightedCofactors =
                                     else
                                         []
                             in
-                            BoolFun.View.boolCellWith (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
+                            BoolFun.View.boolCellWith settings (clickAttr :: highlightAttrs) (BoolFun.eval cofactor i)
                         )
                         columns
             in
@@ -1968,11 +2024,11 @@ functionRow settings arity index bf =
                     Nothing ->
                         []
                )
-            ++ [ BoolFun.View.boolCell (BoolFun.isFalsityPreserving bf)
-               , BoolFun.View.boolCell (BoolFun.isTruthPreserving bf)
-               , BoolFun.View.boolCell (PostProperties.monotone bf).holds
-               , BoolFun.View.boolCell (PostProperties.affine bf).holds
-               , BoolFun.View.boolCell (BoolFun.isSelfDual bf)
+            ++ [ BoolFun.View.boolCell settings (BoolFun.isFalsityPreserving bf)
+               , BoolFun.View.boolCell settings (BoolFun.isTruthPreserving bf)
+               , BoolFun.View.boolCell settings (PostProperties.monotone bf).holds
+               , BoolFun.View.boolCell settings (PostProperties.affine bf).holds
+               , BoolFun.View.boolCell settings (BoolFun.isSelfDual bf)
                ]
         )
 
@@ -2072,6 +2128,11 @@ styles =
 .truth-table th, .truth-table td {
     border: 1px solid black;
     padding: 2px;
+}
+.bool-square {
+    width: 1.2em;
+    height: 1.2em;
+    text-align: center;
 }
 
 .settings-cog {

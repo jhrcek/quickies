@@ -3,12 +3,12 @@ module BoolFun.View exposing
     , boolCell
     , boolCellWith
     , boolColor
+    , boolSquareAttrs
     , clauseTex
     , functionLabelTex
     , highlightCellAttrs
     , implicantTex
     , monomialTex
-    , showBool
     , truthTable
     , viewAlgebraicNormalForm
     , viewClause
@@ -107,7 +107,7 @@ truthTable flipBitInFunctionIndex settings maybeRestriction implicants bf =
         implicantBodyCells i =
             List.indexedMap
                 (\idx implFn ->
-                    boolCellWith
+                    boolCellWith settings
                         (firstImplicantBorder idx)
                         (eval implFn i)
                 )
@@ -135,10 +135,10 @@ truthTable flipBitInFunctionIndex settings maybeRestriction implicants bf =
                     (\i ->
                         Html.tr []
                             (List.indexedMap
-                                (\c b -> boolCellWith (highlightIf (highlightVarCell c i) b) b)
+                                (\c b -> boolCellWith settings (highlightIf (highlightVarCell c i) b) b)
                                 (inputBits arity i)
                                 ++ implicantBodyCells i
-                                ++ [ boolCellWith
+                                ++ [ boolCellWith settings
                                         -- TODO fix width/height to prevent jumping when changing to different functions
                                         ([ Events.onClick (flipBitInFunctionIndex i)
                                          , doubleBorder
@@ -153,16 +153,36 @@ truthTable flipBitInFunctionIndex settings maybeRestriction implicants bf =
         ]
 
 
-boolCell : Bool -> Html a
-boolCell b =
-    boolCellWith [] b
+boolCell : Settings -> Bool -> Html a
+boolCell settings b =
+    boolCellWith settings [] b
 
 
-boolCellWith : List (Attribute a) -> Bool -> Html a
-boolCellWith attrs b =
+boolCellWith : Settings -> List (Attribute a) -> Bool -> Html a
+boolCellWith settings attrs b =
     Html.td
-        (A.style "background-color" (boolColor b) :: attrs)
-        [ Html.text (showBool b) ]
+        (A.style "background-color" (boolColor b) :: boolSquareAttrs settings ++ attrs)
+        [ Html.text (Settings.showBool settings b) ]
+
+
+{-| Attributes making a cell that shows a boolean value square, for the
+single-character styles (`0 / 1`, `✗ / ✓`) and for the text-less color-only
+style. The `False / True` style is left alone, as words are naturally wider.
+-}
+boolSquareAttrs : Settings -> List (Attribute a)
+boolSquareAttrs settings =
+    case settings.bool of
+        Settings.Words ->
+            []
+
+        Settings.Digits ->
+            [ A.class "bool-square" ]
+
+        Settings.Marks ->
+            [ A.class "bool-square" ]
+
+        Settings.ColorOnly ->
+            [ A.class "bool-square" ]
 
 
 boolColor : Bool -> String
@@ -201,15 +221,6 @@ highlightCellAttrs b =
     , A.style "outline" "2px solid #000"
     , A.style "outline-offset" "-2px"
     ]
-
-
-showBool : Bool -> String
-showBool b =
-    if b then
-        "True"
-
-    else
-        "False"
 
 
 {-| Typeset form of an implicant: a conjunction of literals using the variable
