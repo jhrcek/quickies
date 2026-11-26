@@ -10,6 +10,7 @@ mkdir -p "$BUILD_DIR"
 # Define projects with descriptions
 declare -A projects
 projects=(
+  ["3-sat"]="Interactive step-by-step explainer of how 3-SAT is solved, from brute force to CDCL"
   ["base-converter"]="Visualize conversions to different number bases"
   ["bayes"]="Manipulable to explore Bayes' theorem"
   ["bezout"]="Euclid's Algoritm and Bezout's identity visualization"
