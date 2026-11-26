@@ -151,7 +151,7 @@ view m =
             ]
         , div [ class "fig chart" ] [ chart m ]
         , progress m
-        , insight "A phase transition, like water freezing"
+        , insight "A sharp threshold"
             [ p
                 [ t "As n grows, the % satisfiable curve sharpens into a cliff at α ≈ 4.27: below it almost every formula is satisfiable, above it almost none is. And the hardest formulas sit exactly at the cliff — the dead-end curve peaks there, and the peak grows exponentially with n. Try 10, then 30 variables."
                 ]

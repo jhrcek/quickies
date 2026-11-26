@@ -154,9 +154,9 @@ view m =
                 , t ": every problem in NP can be translated into SAT efficiently. A polynomial-time algorithm for 3-SAT would therefore prove P = NP, the most famous open problem in computer science."
                 ]
             , p
-                [ t "The best proven worst-case algorithms for 3-SAT run in roughly 1.3ⁿ steps instead of 2ⁿ — a huge improvement, still exponential. The "
+                [ t "The best proven worst-case bounds for 3-SAT are around O(1.307ⁿ), from refinements of the randomized PPSZ algorithm (Paturi, Pudlák, Saks, Zane) — a huge improvement over 2ⁿ, still exponential. The "
                 , em "Exponential Time Hypothesis"
-                , t " conjectures that no algorithm does fundamentally better than cⁿ for some c > 1."
+                , t " (Impagliazzo and Paturi, 1999) conjectures this is unavoidable: there is a δ > 0 such that 3-SAT has no O(2^(δn)) algorithm. The stronger SETH says the base for k-SAT must approach 2 as k grows."
                 ]
             , p [ t "So the rest of this journey is not about beating the wall in the worst case. It is about never walking into it on the formulas people actually care about." ]
             ]

@@ -132,7 +132,9 @@ view m =
             , strong "x₃ must be true"
             , t ". A clause with every literal false but one unassigned is a "
             , strong "unit clause"
-            , t ", and it forces its last literal. Setting that literal can make other clauses unit, and the forced moves cascade."
+            , t ", and it forces its last literal — the implication reading from the Clauses step in action. Setting that literal can make other clauses unit, and the forced moves cascade. Repeating this to a fixpoint is called "
+            , strong "unit propagation"
+            , t " or Boolean constraint propagation (BCP)."
             ]
         , p [ t "Tap switches to make decisions (? → T → F → ?). Amber clauses are unit. Then propagate, one step at a time or all at once." ]
         , Ui.varToggles n a (state m) Cycle
@@ -200,6 +202,7 @@ view m =
                 , em "two"
                 , t " of its literals are false. Propagation alone gets stuck, and somebody has to guess. That one extra literal is the gap between linear time and NP-completeness."
                 ]
+            , p [ t "2-SAT is not the only island of tractability. For Horn formulas (at most one positive literal per clause) unit propagation alone is a complete decision procedure: propagate from the empty assignment, and if there is no conflict, setting every remaining variable to F gives a model. Schaefer's dichotomy theorem (1978) says this is the whole story for Boolean constraint satisfaction: a constraint language is polynomial if it falls into one of six classes (Horn, dual-Horn, 2-CNF, affine, 0-valid, 1-valid) and NP-complete otherwise." ]
             ]
         , insight "Making it fast: watched literals"
             [ p [ t "Real solvers spend most of their time propagating, so they avoid scanning every clause. Each clause watches just two of its unfalsified literals; a clause is only revisited when one of its watches becomes false. As long as both watched literals are not false, the clause cannot be unit or conflicting. Backtracking then costs nothing: the watches stay valid." ]

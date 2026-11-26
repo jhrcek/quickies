@@ -31,11 +31,11 @@ view a =
         [ p
             [ t "A "
             , strong "Boolean variable"
-            , t " is a switch: true (T) or false (F). We name them x₁, x₂, x₃, … A "
+            , t " takes a value in {T, F}; we name them x₁, x₂, x₃, … A "
             , strong "literal"
-            , t " is a variable or its negation: x₂ is true when x₂ is, ¬x₂ is true when x₂ is not."
+            , t " is a variable (positive literal) or its negation (negative literal). For a literal ℓ we write ℓ̄ for its complement, so the complement of ¬x₂ is x₂. Every variable contributes two complementary literals, and under any assignment exactly one of them is true."
             ]
-        , p [ t "Tap the switches and watch both literals of each variable. Exactly one of them is always true." ]
+        , p [ t "Toggle the variables and watch both literals of each." ]
         , Ui.varToggles 3 a (always Ui.Free) Toggle
         , table [ class "tt" ]
             [ thead [] [ tr [] [ th [] [ text "variable" ], th [] [ text "positive literal" ], th [] [ text "negative literal" ] ] ]
@@ -54,9 +54,9 @@ view a =
         , p
             [ t "An "
             , strong "assignment"
-            , t " gives every variable a value. With n variables there are 2ⁿ of them; here that is 8. A "
+            , t " is a function α : {x₁, …, xₙ} → {T, F}; there are 2ⁿ of them, here 8. A "
             , em "partial"
-            , t " assignment leaves some variables open (shown as ?). Solvers live in partial assignments most of the time."
+            , t " assignment is defined only on a subset of the variables (the rest shown as ?). Equivalently, it is a consistent set of literals: one that never contains both ℓ and ℓ̄. Solvers spend almost all their time extending, shrinking and reasoning about partial assignments."
             ]
         , insight "How solvers store literals"
             [ p

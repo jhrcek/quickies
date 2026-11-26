@@ -160,12 +160,16 @@ view m =
     div []
         [ p
             [ strong "Conflict-Driven Clause Learning"
-            , t " keeps DPLL's loop but changes what happens at a conflict. Every forced literal remembers the clause that forced it, so a conflict can be traced back to its causes:"
+            , t " keeps DPLL's loop but changes what happens at a conflict. Every forced literal remembers the clause that forced it (its "
+            , em "reason"
+            , t "). These reasons form the "
+            , strong "implication graph"
+            , t ", a DAG whose sources are decisions, so a conflict can be traced back to its causes:"
             ]
         , ol [ class "steps" ]
             [ li [] [ t "Start from the false clause. Its literals are false because of earlier assignments." ]
             , li [] [ t "Pick the most recently forced literal of the current level and replace it by the reasons that forced it. Formally this is ", strong "resolution", t ": from (A ∨ x) and (B ∨ ¬x) derive (A ∨ B)." ]
-            , li [] [ t "Repeat until only one literal from the current level is left — the ", strong "first unique implication point", t " (1UIP)." ]
+            , li [] [ t "Repeat until only one literal from the current level is left — the ", strong "first unique implication point", t " (1UIP). In graph terms it is the dominator of the conflict closest to it: every path from the current decision to the conflict passes through it." ]
             , li [] [ t "Learn that clause. Then ", strong "backjump", t " to the second-highest level in it, possibly skipping many levels. The learned clause is now unit and flips the UIP automatically." ]
             ]
         , Ui.playControls

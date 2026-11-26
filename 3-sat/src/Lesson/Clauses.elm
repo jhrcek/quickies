@@ -50,9 +50,9 @@ view m =
         [ p
             [ t "A "
             , strong "clause"
-            , t " is an OR of literals. It is true as soon as "
+            , t " is a disjunction of literals, conveniently treated as a set {ℓ₁, …, ℓₖ}. It is satisfied as soon as "
             , em "one"
-            , t " of its literals is true, and false only when all of them are false. In 3-SAT every clause has three literals."
+            , t " of its literals is true, and falsified only when all of them are false. In 3-SAT every clause has exactly three literals, on three distinct variables."
             ]
         , p [ t "Tap a literal in the clause to flip its sign; tap a row of the table (or the switches) to try an assignment." ]
         , div [ class "big-clause" ]
@@ -101,7 +101,14 @@ view m =
             , strong (List.map (\v -> Ui.varName v ++ "=" ++ tf (Dict.get v vetoed)) [ 1, 2, 3 ] |> String.join ", ")
             , t ". So think of a clause as a "
             , em "veto"
-            , t ": it forbids one specific combination of its three variables and allows the other seven. Flip a sign and watch the veto move."
+            , t ": it forbids one specific combination of its three variables and allows the other seven. Flip a sign and watch the veto move. By De Morgan, (ℓ₁ ∨ ℓ₂ ∨ ℓ₃) ≡ ¬(ℓ̄₁ ∧ ℓ̄₂ ∧ ℓ̄₃): a clause is exactly the negation of the partial assignment it forbids."
+            ]
+        , p
+            [ t "Another equivalent reading will matter a lot later: (ℓ₁ ∨ ℓ₂ ∨ ℓ₃) ≡ (ℓ̄₁ ∧ ℓ̄₂) → ℓ₃, and likewise for any choice of the conclusion. Once two literals are false, the clause "
+            , em "implies"
+            , t " the third. Two edge cases: the "
+            , strong "empty clause"
+            , t " □ has no literal that could be true and is unsatisfiable, while a clause containing both x and ¬x is a tautology and can be dropped."
             ]
         , insight "7/8 and a free theorem"
             [ p [ t "A random assignment satisfies a 3-clause with probability 7/8. Add this up over m clauses: on average a random assignment leaves m/8 clauses unsatisfied." ]

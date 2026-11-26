@@ -65,11 +65,20 @@ view m =
     in
     div []
         [ p
-            [ t "A 3-CNF "
-            , strong "formula"
-            , t " is an AND of clauses (CNF = conjunctive normal form). It is "
+            [ t "A formula in "
+            , strong "conjunctive normal form"
+            , t " (CNF) is a conjunction of clauses, so again it can be treated as a set of clauses; 3-CNF means every clause has three literals. It is "
             , strong "satisfiable"
-            , t " if one assignment makes every clause true at once. Each clause vetoes one pattern; you need an assignment that dodges all vetoes."
+            , t " if some assignment (a "
+            , em "model"
+            , t ") makes every clause true. In the veto picture, each clause excludes a subcube of {T, F}ⁿ of size 2ⁿ⁻³, and the formula is satisfiable iff these subcubes fail to cover the whole cube."
+            ]
+        , p
+            [ t "Why CNF? Every propositional formula has an equivalent CNF, but distributing ∨ over ∧ can blow it up exponentially. The "
+            , strong "Tseitin transformation"
+            , t " avoids that: introduce a fresh variable for every subformula and add a few clauses defining it. The result is not equivalent but "
+            , em "equisatisfiable"
+            , t ", and only linearly larger. That is why CNF is the universal input format of SAT solvers."
             ]
         , p [ t "Your turn. This puzzle is guaranteed solvable. Green clauses are satisfied, red ones are not." ]
         , Ui.varToggles numVars m.assignment (always Ui.Free) Toggle
@@ -90,9 +99,9 @@ view m =
             ]
         , insight "Checking is easy, finding is hard"
             [ p
-                [ t "Verifying a proposed answer takes one pass over the clauses. Problems whose yes-answers can be checked that fast form the class "
+                [ t "Verifying a proposed model takes one linear pass over the clauses. "
                 , strong "NP"
-                , t ". Finding the answer is another matter: you probably flipped switches, fixed one red clause, broke another, and went back and forth."
+                , t " is precisely the class of decision problems whose yes-instances have a polynomial-size certificate checkable in polynomial time; for SAT the certificate is the model itself. Finding one is another matter: you probably fixed one red clause, broke another, and went back and forth."
                 ]
             , p
                 [ t "What you just did by hand — flip a variable that fixes a red clause, accept that it may break others — is "

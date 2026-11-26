@@ -109,7 +109,7 @@ view m =
         [ p
             [ t "Combine the last two ideas and you get "
             , strong "DPLL"
-            , t " (Davis, Putnam, Logemann, Loveland, 1962), the ancestor of every complete SAT solver:"
+            , t " (Davis, Putnam, Logemann, Loveland, 1962), the ancestor of every complete SAT solver. The 1960 Davis–Putnam procedure eliminated variables by resolution and ran out of memory; the 1962 version replaced that with splitting, i.e. backtracking search. In outline:"
             ]
         , TrailView.pseudo
             [ "loop:"
@@ -148,6 +148,7 @@ view m =
                 , t " decision. But the real culprit may be a decision made ten levels earlier. DPLL then flips decision 10, fails, flips 9, fails, … re-exploring the same doomed territory over and over. It also forgets everything it learned the moment it backtracks."
                 ]
             , p [ t "Both problems have one fix: when a conflict happens, work out which decisions actually caused it, and remember that. That is the next step." ]
+            , p [ t "(The original DPLL also had a pure-literal rule: a variable occurring with only one sign can be set to satisfy all its clauses. It is omitted here, as in most modern solvers, because it is expensive to maintain and rarely pays off.)" ]
             ]
         , insight "An UNSAT run is a proof"
             [ p [ t "When DPLL answers UNSAT, its search tree is a certificate: every leaf is a falsified clause, every branch covers both values of a variable. Read bottom-up, it is a resolution proof that the formula has no solution. Short proofs ⇔ fast runs, and some formulas (the pigeonhole principle, famously) only have exponentially long resolution proofs — so no DPLL-style solver can be fast on them." ]

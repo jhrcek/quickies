@@ -90,10 +90,10 @@ info s =
             Info "Variables and literals" "Literals" "literals"
 
         Clauses ->
-            Info "Clauses: little vetoes" "Clauses" "clauses"
+            Info "Clauses: disjunctions as vetoes" "Clauses" "clauses"
 
         Formulas ->
-            Info "Formulas: satisfy them all" "Formulas" "formulas"
+            Info "CNF formulas and satisfiability" "Formulas" "formulas"
 
         BruteForce ->
             Info "Brute force and the wall of 2ⁿ" "Brute force" "brute-force"
