@@ -95,6 +95,10 @@ view m =
     in
     div []
         [ p [ t "The obvious algorithm is ", wiki "Brute-force search" "brute-force search", t ": try every assignment, one after another, and check each. It always works. Here are all 32 assignments of a random 5-variable formula; each square is one assignment, counted in binary." ]
+        , Ui.viewClauses
+            (Maybe.map (F.assignmentFromIndex n) m.selected |> Maybe.withDefault Dict.empty)
+            (always Ui.NoMark)
+            m.formula.clauses
         , Ui.row
             [ Ui.btnIf (m.checked < total) "Check next" Step
             , if m.playing then

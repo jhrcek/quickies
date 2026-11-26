@@ -126,7 +126,12 @@ step noise maxFlips s =
                         Random.step (Random.float 0 1) seed1
 
                     ( randomVar, seed3 ) =
-                        Random.step (Random.uniform best vars) seed2
+                        case vars of
+                            v :: vs ->
+                                Random.step (Random.uniform v vs) seed2
+
+                            [] ->
+                                ( best, seed2 )
 
                     ( chosen, how ) =
                         if bestBreak == 0 then

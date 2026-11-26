@@ -156,6 +156,13 @@ view m =
 
             else
                 Ui.NoMark
+
+        learnedMark c =
+            if Just c == focus then
+                Ui.LearnedFocus
+
+            else
+                Ui.Learned
     in
     div []
         [ p
@@ -201,9 +208,26 @@ view m =
             text ""
 
           else
+            let
+                newest =
+                    List.take 8 s.learned
+
+                -- Also show the focused learned clause if it is older than the newest 8.
+                shownLearned =
+                    case focus of
+                        Just c ->
+                            if List.member c s.learned && not (List.member c newest) then
+                                newest ++ [ c ]
+
+                            else
+                                newest
+
+                        Nothing ->
+                            newest
+            in
             div []
                 [ Ui.h3 "Learned clauses (newest first)"
-                , Ui.viewClauses a (always Ui.Learned) (List.take 8 s.learned)
+                , Ui.viewClauses a learnedMark shownLearned
                 ]
         , Ui.h3 "Original clauses"
         , Ui.viewClauses a mark s.formula.clauses

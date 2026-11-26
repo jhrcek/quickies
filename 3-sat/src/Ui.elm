@@ -134,6 +134,7 @@ type ClauseMark
     = NoMark
     | Focus
     | Learned
+    | LearnedFocus
 
 
 viewClause : Assignment -> ClauseMark -> Clause -> Html msg
@@ -155,7 +156,10 @@ viewClause a mark c =
     in
     span
         [ class ("clause " ++ status)
-        , classList [ ( "c-focus", mark == Focus ), ( "c-learned", mark == Learned ) ]
+        , classList
+            [ ( "c-focus", mark == Focus || mark == LearnedFocus )
+            , ( "c-learned", mark == Learned || mark == LearnedFocus )
+            ]
         ]
         (span [ class "paren" ] [ text "(" ]
             :: (List.map (viewLit a) c |> List.intersperse (span [ class "or" ] [ text "∨" ]))

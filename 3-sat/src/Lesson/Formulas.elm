@@ -34,13 +34,28 @@ numClauses =
 init : Random.Seed -> Model
 init seed0 =
     let
-        ( ( f, _ ), seed ) =
-            Random.step (G.planted numVars numClauses 3) seed0
+        start =
+            F.completeWith False numVars Dict.empty
+
+        -- Redraw until the all-False start is not already a solution.
+        draw seed =
+            let
+                ( ( f, _ ), next ) =
+                    Random.step (G.planted numVars numClauses 3) seed
+            in
+            if F.satisfies f start then
+                draw next
+
+            else
+                ( f, next )
+
+        ( formula, seed1 ) =
+            draw seed0
     in
-    { formula = f
-    , assignment = F.completeWith False numVars Dict.empty
+    { formula = formula
+    , assignment = start
     , flips = 0
-    , seed = seed
+    , seed = seed1
     }
 
 
