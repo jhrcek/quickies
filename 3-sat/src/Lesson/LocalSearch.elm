@@ -10,7 +10,7 @@ import Sat.WalkSat as W
 import Svg
 import Svg.Attributes as SA
 import Time
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -186,11 +186,13 @@ view m =
         , Ui.details ("Show the " ++ String.fromInt (List.length unsat) ++ " unsatisfied clauses")
             [ Ui.viewClauses s.assignment (always Ui.NoMark) unsat ]
         , insight "Try the extremes"
-            [ p [ t "Set p = 0: pure greed. It plunges quickly, then gets stuck in a local minimum, cycling between a few near-solutions. Set p = 1: a pure random walk, which wanders aimlessly. Somewhere around 0.4–0.6 the walk is greedy enough to make progress and random enough to escape traps." ]
+            [ p [ t "Set p = 0: pure greed. It plunges quickly, then gets stuck in a local minimum, cycling between a few near-solutions. Set p = 1: a pure ", wiki "Random walk" "random walk", t ", which wanders aimlessly. Somewhere around 0.4–0.6 the walk is greedy enough to make progress and random enough to escape traps." ]
             ]
         , insight "A random walk that beats 2ⁿ"
             [ p
-                [ t "Schöning (1999) analysed the pure version: random start, flip a random variable of a random violated clause, restart after 3n flips. Fix any solution S. The chosen clause is violated now but satisfied by S, so at least one of its three variables disagrees with S: with probability at least 1/3 the flip moves you one step closer to S. A gambler's-ruin argument then shows the expected running time is about (4/3)ⁿ — exponentially faster than 2ⁿ, and still one of the best known bounds."
+                [ t "Schöning (1999) analysed the pure version: random start, flip a random variable of a random violated clause, restart after 3n flips. Fix any solution S. The chosen clause is violated now but satisfied by S, so at least one of its three variables disagrees with S: with probability at least 1/3 the flip moves you one step closer to S. A "
+                , wiki "Gambler's ruin" "gambler's-ruin"
+                , t " argument then shows the expected running time is about (4/3)ⁿ — exponentially faster than 2ⁿ, and still one of the best known bounds."
                 ]
             , p [ t "The catch: local search is incomplete. It can find a solution, but it can never tell you there is none. For proofs of unsatisfiability you need the systematic solvers from before." ]
             ]

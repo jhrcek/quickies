@@ -7,7 +7,7 @@ import Random
 import Sat.Formula as F exposing (Assignment, Clause, Formula)
 import Sat.Generate as G
 import Sat.Propagate as P exposing (Implication)
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -133,7 +133,7 @@ view m =
             , t ". A clause with every literal false but one unassigned is a "
             , strong "unit clause"
             , t ", and it forces its last literal — the implication reading from the Clauses step in action. Setting that literal can make other clauses unit, and the forced moves cascade. Repeating this to a fixpoint is called "
-            , strong "unit propagation"
+            , Html.strong [] [ wiki "Unit propagation" "unit propagation" ]
             , t " or Boolean constraint propagation (BCP)."
             ]
         , p [ t "Tap switches to make decisions (? → T → F → ?). Amber clauses are unit. Then propagate, one step at a time or all at once." ]
@@ -195,14 +195,18 @@ view m =
         , Ui.viewClauses a mark m.formula.clauses
         , insight "Why 2-SAT is easy and 3-SAT is not"
             [ p
-                [ t "With two literals per clause, (a ∨ b) is the pair of implications ¬a → b and ¬b → a: one false literal immediately forces the other. Build a graph from those arrows and the formula is unsatisfiable exactly when some x and ¬x reach each other — checkable in linear time (Aspvall, Plass and Tarjan, 1979)."
+                [ t "With "
+                , wiki "2-satisfiability" "two literals per clause"
+                , t ", (a ∨ b) is the pair of implications ¬a → b and ¬b → a: one false literal immediately forces the other. Collect those arrows into the "
+                , wiki "Implication graph" "implication graph"
+                , t ", and the formula is unsatisfiable exactly when some x and ¬x reach each other — checkable in linear time (Aspvall, Plass and Tarjan, 1979)."
                 ]
             , p
                 [ t "A 3-clause stays silent until "
                 , em "two"
                 , t " of its literals are false. Propagation alone gets stuck, and somebody has to guess. That one extra literal is the gap between linear time and NP-completeness."
                 ]
-            , p [ t "2-SAT is not the only island of tractability. For Horn formulas (at most one positive literal per clause) unit propagation alone is a complete decision procedure: propagate from the empty assignment, and if there is no conflict, setting every remaining variable to F gives a model. Schaefer's dichotomy theorem (1978) says this is the whole story for Boolean constraint satisfaction: a constraint language is polynomial if it falls into one of six classes (Horn, dual-Horn, 2-CNF, affine, 0-valid, 1-valid) and NP-complete otherwise." ]
+            , p [ t "2-SAT is not the only island of tractability. For ", wiki "Horn-satisfiability" "Horn formulas", t " (at most one positive literal per clause) unit propagation alone is a complete decision procedure: propagate from the empty assignment, and if there is no conflict, setting every remaining variable to F gives a model. ", wiki "Schaefer's dichotomy theorem" "Schaefer's dichotomy theorem", t " (1978) says this is the whole story for Boolean constraint satisfaction: a constraint language is polynomial if it falls into one of six classes (Horn, dual-Horn, 2-CNF, affine, 0-valid, 1-valid) and NP-complete otherwise." ]
             ]
         , insight "Making it fast: watched literals"
             [ p [ t "Real solvers spend most of their time propagating, so they avoid scanning every clause. Each clause watches just two of its unfalsified literals; a clause is only revisited when one of its watches becomes false. As long as both watched literals are not false, the clause cannot be unit or conflicting. Backtracking then costs nothing: the watches stay valid." ]

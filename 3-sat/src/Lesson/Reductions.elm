@@ -9,7 +9,7 @@ import Sat.Encode as E exposing (Graph)
 import Sat.Formula exposing (Clause)
 import Svg exposing (Svg)
 import Svg.Attributes as SA
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -112,7 +112,7 @@ view m =
             , em "encoding"
             , t " and let the solver do the search."
             ]
-        , p [ t "Example: colour the nodes of a graph with k colours so that neighbours always differ. One variable per (node, colour) pair, meaning “this node has this colour”, and three families of clauses:" ]
+        , p [ t "Example: ", wiki "Graph coloring" "colour the nodes of a graph", t " with k colours so that neighbours always differ. One variable per (node, colour) pair, meaning “this node has this colour”, and three families of clauses:" ]
         , div [ class "chooser" ]
             (span [ class "chooser-l" ] [ text "graph" ]
                 :: List.indexedMap (\i gr -> button [ class "chip", classList [ ( "on", i == m.graph ) ], onClick (PickGraph i) ] [ text gr.name ]) E.graphs
@@ -148,7 +148,7 @@ view m =
             [ p [ t "The colouring clauses have 2 or k literals, not exactly 3. That's fine: any long clause (l₁ ∨ l₂ ∨ l₃ ∨ l₄) can be split with a fresh variable y into (l₁ ∨ l₂ ∨ y) ∧ (¬y ∨ l₃ ∨ l₄). Both have the same satisfiability: if some lᵢ is true, choose y to satisfy the other half. This is why “3” is the magic number: 3-SAT is as hard as SAT, while 2-SAT is easy. The last stat counts variables and clauses after splitting every clause longer than 3." ]
             ]
         , insight "Where encodings run the world"
-            [ p [ t "Chip makers check hardware designs by encoding “is there an input that breaks this circuit within k clock cycles?” (bounded model checking). Linux package managers such as openSUSE's (via libsolv) resolve dependencies with a SAT solver. Sudoku is 729 variables. And in 2016 a SAT solver settled the Boolean Pythagorean triples problem, producing a 200-terabyte proof." ]
+            [ p [ t "Chip makers check hardware designs by encoding “is there an input that breaks this circuit within k clock cycles?” (", wiki "Model checking" "bounded model checking", t "). Linux package managers such as openSUSE's (via libsolv) resolve dependencies with a SAT solver. Sudoku is 729 variables. And in 2016 a SAT solver settled the ", wiki "Boolean Pythagorean triples problem" "Boolean Pythagorean triples problem", t ", producing a 200-terabyte proof." ]
             ]
         ]
 

@@ -6,7 +6,7 @@ import Sat.Dpll as D
 import Sat.Generate as G
 import Time
 import TrailView
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -108,8 +108,12 @@ view m =
     div []
         [ p
             [ t "Combine the last two ideas and you get "
-            , strong "DPLL"
-            , t " (Davis, Putnam, Logemann, Loveland, 1962), the ancestor of every complete SAT solver. The 1960 Davis–Putnam procedure eliminated variables by resolution and ran out of memory; the 1962 version replaced that with splitting, i.e. backtracking search. In outline:"
+            , Html.strong [] [ wiki "DPLL algorithm" "DPLL" ]
+            , t " (Davis, Putnam, Logemann, Loveland, 1962), the ancestor of every complete SAT solver. The 1960 "
+            , wiki "Davis–Putnam algorithm" "Davis–Putnam procedure"
+            , t " eliminated variables by "
+            , wiki "Resolution (logic)" "resolution"
+            , t " and ran out of memory; the 1962 version replaced that with splitting, i.e. backtracking search. In outline:"
             ]
         , TrailView.pseudo
             [ "loop:"
@@ -151,7 +155,7 @@ view m =
             , p [ t "(The original DPLL also had a pure-literal rule: a variable occurring with only one sign can be set to satisfy all its clauses. It is omitted here, as in most modern solvers, because it is expensive to maintain and rarely pays off.)" ]
             ]
         , insight "An UNSAT run is a proof"
-            [ p [ t "When DPLL answers UNSAT, its search tree is a certificate: every leaf is a falsified clause, every branch covers both values of a variable. Read bottom-up, it is a resolution proof that the formula has no solution. Short proofs ⇔ fast runs, and some formulas (the pigeonhole principle, famously) only have exponentially long resolution proofs — so no DPLL-style solver can be fast on them." ]
+            [ p [ t "When DPLL answers UNSAT, its search tree is a certificate: every leaf is a falsified clause, every branch covers both values of a variable. Read bottom-up, it is a resolution proof that the formula has no solution. Short proofs ⇔ fast runs, and some formulas (the ", wiki "Pigeonhole principle" "pigeonhole principle", t ", famously) only have exponentially long resolution proofs — so no DPLL-style solver can be fast on them." ]
             ]
         ]
 

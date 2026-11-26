@@ -10,7 +10,7 @@ import Sat.Generate as G
 import Svg exposing (Svg)
 import Svg.Attributes as SA
 import Time
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -110,7 +110,9 @@ view m =
         [ p
             [ t "Brute force fills in every variable before looking at a single clause. Smarter: assign variables one at a time and check the clauses "
             , em "as you go"
-            , t ". The moment some clause has all three literals false, no completion of this partial assignment can work — so abandon the whole branch."
+            , t ". The moment some clause has all three literals false, no completion of this partial assignment can work — so abandon the whole branch. This is "
+            , wiki "Backtracking" "backtracking"
+            , t "."
             ]
         , p [ t "Below is the search tree for a 4-variable formula. Going left sets the variable to T, right sets it to F. The faint tree is everything brute force would visit." ]
         , Ui.playControls

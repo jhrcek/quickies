@@ -11,7 +11,7 @@ import Sat.Generate as G
 import Svg exposing (Svg)
 import Svg.Attributes as SA
 import Task
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Point =
@@ -135,7 +135,7 @@ view m =
             , strong "clause density"
             , t " α = m / n."
             ]
-        , p [ t "Few clauses: loads of solutions, and a solver stumbles onto one immediately. Very many clauses: the formula is riddled with contradictions, and the solver finds one quickly. In between, something dramatic happens. Run the experiment: for each density, generate random formulas, solve each with DPLL, and record how many were satisfiable and how hard they were." ]
+        , p [ t "Few clauses: loads of solutions, and a solver stumbles onto one immediately. Very many clauses: the formula is riddled with contradictions, and the solver finds one quickly. In between, something dramatic happens: a ", wiki "Phase transition" "phase transition", t ". Run the experiment: for each density, generate random formulas, solve each with DPLL, and record how many were satisfiable and how hard they were." ]
         , chooser "variables" [ 10, 20, 30 ] m.n SetN
         , chooser "formulas per density" [ 10, 20, 40 ] m.samples SetSamples
         , Ui.row
@@ -156,7 +156,9 @@ view m =
                 [ t "As n grows, the % satisfiable curve sharpens into a cliff at α ≈ 4.27: below it almost every formula is satisfiable, above it almost none is. And the hardest formulas sit exactly at the cliff — the dead-end curve peaks there, and the peak grows exponentially with n. Try 10, then 30 variables."
                 ]
             , p
-                [ t "The value 4.267 was predicted by statistical physicists (Mézard, Parisi and Zecchina, 2002) using methods for spin glasses, which also gave a new algorithm, survey propagation. For 3-SAT the exact threshold is still "
+                [ t "The value 4.267 was predicted by statistical physicists (Mézard, Parisi and Zecchina, 2002) using methods for "
+                , wiki "Spin glass" "spin glasses"
+                , t ", which also gave a new algorithm, survey propagation. For 3-SAT the exact threshold is still "
                 , em "not proven"
                 , t "; the best rigorous bounds are roughly 3.52 ≤ α ≤ 4.49. For large k, Ding, Sly and Sun proved the physicists right in 2015."
                 ]

@@ -6,7 +6,7 @@ import Html.Attributes exposing (class, classList)
 import Html.Events exposing (onClick)
 import ListX as LE
 import Sat.Formula as F exposing (Assignment, Clause)
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -101,21 +101,27 @@ view m =
             , strong (List.map (\v -> Ui.varName v ++ "=" ++ tf (Dict.get v vetoed)) [ 1, 2, 3 ] |> String.join ", ")
             , t ". So think of a clause as a "
             , em "veto"
-            , t ": it forbids one specific combination of its three variables and allows the other seven. Flip a sign and watch the veto move. By De Morgan, (ℓ₁ ∨ ℓ₂ ∨ ℓ₃) ≡ ¬(ℓ̄₁ ∧ ℓ̄₂ ∧ ℓ̄₃): a clause is exactly the negation of the partial assignment it forbids."
+            , t ": it forbids one specific combination of its three variables and allows the other seven. Flip a sign and watch the veto move. By "
+            , wiki "De Morgan's laws" "De Morgan"
+            , t ", (ℓ₁ ∨ ℓ₂ ∨ ℓ₃) ≡ ¬(ℓ̄₁ ∧ ℓ̄₂ ∧ ℓ̄₃): a clause is exactly the negation of the partial assignment it forbids."
             ]
         , p
             [ t "Another equivalent reading will matter a lot later: (ℓ₁ ∨ ℓ₂ ∨ ℓ₃) ≡ (ℓ̄₁ ∧ ℓ̄₂) → ℓ₃, and likewise for any choice of the conclusion. Once two literals are false, the clause "
             , em "implies"
             , t " the third. Two edge cases: the "
             , strong "empty clause"
-            , t " □ has no literal that could be true and is unsatisfiable, while a clause containing both x and ¬x is a tautology and can be dropped."
+            , t " □ has no literal that could be true and is unsatisfiable, while a clause containing both x and ¬x is a "
+            , wiki "Tautology (logic)" "tautology"
+            , t " and can be dropped."
             ]
         , insight "7/8 and a free theorem"
             [ p [ t "A random assignment satisfies a 3-clause with probability 7/8. Add this up over m clauses: on average a random assignment leaves m/8 clauses unsatisfied." ]
             , p
                 [ t "If m < 8 that average is below 1, so "
                 , em "some"
-                , t " assignment leaves zero unsatisfied: every 3-CNF with at most 7 clauses is satisfiable, without searching at all. This is the probabilistic method in one line. The smallest unsatisfiable 3-CNF is the 8 clauses vetoing all 8 sign patterns of the same three variables."
+                , t " assignment leaves zero unsatisfied: every 3-CNF with at most 7 clauses is satisfiable, without searching at all. This is the "
+                , wiki "Probabilistic method" "probabilistic method"
+                , t " in one line. The smallest unsatisfiable 3-CNF is the 8 clauses vetoing all 8 sign patterns of the same three variables."
                 ]
             , p [ t "The same averaging shows you can always satisfy 7/8 of the clauses. Håstad proved (2001) that guaranteeing even slightly more than 7/8 in polynomial time is NP-hard, so this trivial bound is exactly optimal." ]
             ]

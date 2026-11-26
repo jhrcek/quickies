@@ -24,6 +24,7 @@ module Ui exposing
     , varToggles
     , viewClauses
     , viewLit
+    , wiki
     )
 
 {-| Shared view helpers. Lessons build only from these and plain Html,
@@ -238,6 +239,21 @@ em s =
 strong : String -> Html msg
 strong s =
     Html.strong [] [ text s ]
+
+
+{-| Link the first mention of a concept to its Wikipedia article.
+`wiki "NP-completeness" "NP-complete"` links the text "NP-complete".
+The article title may include a section anchor ("Article#Section").
+-}
+wiki : String -> String -> Html msg
+wiki article label =
+    Html.a
+        [ Html.Attributes.href ("https://en.wikipedia.org/wiki/" ++ String.replace " " "_" article)
+        , Html.Attributes.target "_blank"
+        , Html.Attributes.rel "noopener"
+        , class "wiki"
+        ]
+        [ text label ]
 
 
 code : String -> Html msg

@@ -8,7 +8,7 @@ import Sat.Dpll as D
 import Sat.Generate as G
 import Time
 import TrailView
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (em, insight, p, strong, t, wiki)
 
 
 type alias Comparison =
@@ -169,8 +169,8 @@ view m =
         , ol [ class "steps" ]
             [ li [] [ t "Start from the false clause. Its literals are false because of earlier assignments." ]
             , li [] [ t "Pick the most recently forced literal of the current level and replace it by the reasons that forced it. Formally this is ", strong "resolution", t ": from (A ∨ x) and (B ∨ ¬x) derive (A ∨ B)." ]
-            , li [] [ t "Repeat until only one literal from the current level is left — the ", strong "first unique implication point", t " (1UIP). In graph terms it is the dominator of the conflict closest to it: every path from the current decision to the conflict passes through it." ]
-            , li [] [ t "Learn that clause. Then ", strong "backjump", t " to the second-highest level in it, possibly skipping many levels. The learned clause is now unit and flips the UIP automatically." ]
+            , li [] [ t "Repeat until only one literal from the current level is left — the ", strong "first unique implication point", t " (1UIP). In graph terms it is the ", wiki "Dominator (graph theory)" "dominator", t " of the conflict closest to it: every path from the current decision to the conflict passes through it." ]
+            , li [] [ t "Learn that clause. Then ", Html.strong [] [ wiki "Backjumping" "backjump" ], t " to the second-highest level in it, possibly skipping many levels. The learned clause is now unit and flips the UIP automatically." ]
             ]
         , Ui.playControls
             { running = s.status == C.Running
@@ -220,7 +220,7 @@ view m =
                 , em "every"
                 , t " assignment containing the same root cause, in every future branch. DPLL keeps re-discovering the same contradiction; CDCL hits it once."
                 ]
-            , p [ t "On a random formula of 12 variables the gap is modest. On industrial formulas — with structure, where the same few causes reappear constantly — learning is the difference between seconds and the age of the universe. It is also proof-theoretically stronger: with restarts, CDCL can simulate general resolution, while DPLL is stuck with tree-like resolution." ]
+            , p [ t "On a random formula of 12 variables the gap is modest. On industrial formulas — with structure, where the same few causes reappear constantly — learning is the difference between seconds and the age of the universe. It is also ", wiki "Proof complexity" "proof-theoretically stronger", t ": with restarts, CDCL can simulate general resolution, while DPLL is stuck with tree-like resolution." ]
             ]
         ]
 

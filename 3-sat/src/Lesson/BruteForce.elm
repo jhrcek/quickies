@@ -8,7 +8,7 @@ import Random
 import Sat.Formula as F exposing (Formula)
 import Sat.Generate as G
 import Time
-import Ui exposing (em, insight, p, strong, t)
+import Ui exposing (insight, p, strong, t, wiki)
 
 
 type alias Model =
@@ -94,7 +94,7 @@ view m =
             List.range 0 (m.checked - 1) |> List.filter (\i -> F.satisfies m.formula (F.assignmentFromIndex n i)) |> List.length
     in
     div []
-        [ p [ t "The obvious algorithm: try every assignment, one after another, and check each. It always works. Here are all 32 assignments of a random 5-variable formula; each square is one assignment, counted in binary." ]
+        [ p [ t "The obvious algorithm is ", wiki "Brute-force search" "brute-force search", t ": try every assignment, one after another, and check each. It always works. Here are all 32 assignments of a random 5-variable formula; each square is one assignment, counted in binary." ]
         , Ui.row
             [ Ui.btnIf (m.checked < total) "Check next" Step
             , if m.playing then
@@ -151,11 +151,13 @@ view m =
             [ p
                 [ t "In 1971 Cook (and independently Levin) showed SAT is "
                 , strong "NP-complete"
-                , t ": every problem in NP can be translated into SAT efficiently. A polynomial-time algorithm for 3-SAT would therefore prove P = NP, the most famous open problem in computer science."
+                , t ": every problem in NP can be translated into SAT efficiently. A polynomial-time algorithm for 3-SAT would therefore prove "
+                , wiki "P versus NP problem" "P = NP"
+                , t ", the most famous open problem in computer science."
                 ]
             , p
                 [ t "The best proven worst-case bounds for 3-SAT are around O(1.307ⁿ), from refinements of the randomized PPSZ algorithm (Paturi, Pudlák, Saks, Zane) — a huge improvement over 2ⁿ, still exponential. The "
-                , em "Exponential Time Hypothesis"
+                , Html.em [] [ wiki "Exponential time hypothesis" "Exponential Time Hypothesis" ]
                 , t " (Impagliazzo and Paturi, 1999) conjectures this is unavoidable: there is a δ > 0 such that 3-SAT has no O(2^(δn)) algorithm. The stronger SETH says the base for k-SAT must approach 2 as k grows."
                 ]
             , p [ t "So the rest of this journey is not about beating the wall in the worst case. It is about never walking into it on the formulas people actually care about." ]
