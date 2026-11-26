@@ -33,6 +33,8 @@ import Url
        - show CDNF / CCNF for of the current function,
        - show blake canonical form (prime implicants with subsumption relationships)
        - show whether given DNF is orthogonal (disjoint implicants)
+       - in the context of CNF add display of pure literals
+           - "In the context of a formula in the conjunctive normal form, a literal is pure if the literal's complement does not appear in the formula."
 
 -}
 
