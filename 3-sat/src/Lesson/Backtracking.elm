@@ -24,6 +24,7 @@ type alias Model =
 
 type Msg
     = Step
+    | Back
     | Play
     | Pause
     | Tick
@@ -55,6 +56,9 @@ update msg m =
     case msg of
         Step ->
             { m | shown = min total (m.shown + 1) }
+
+        Back ->
+            { m | shown = max 1 (m.shown - 1), playing = False }
 
         Tick ->
             if m.shown >= total then
@@ -118,6 +122,8 @@ view m =
         , Ui.playControls
             { running = m.shown < total
             , playing = m.playing
+            , canBack = m.shown > 1
+            , onBack = Back
             , onStep = Step
             , onPlay = Play
             , onPause = Pause

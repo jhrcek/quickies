@@ -22,6 +22,7 @@ type alias Model =
 
 type Msg
     = Step
+    | Back
     | Play
     | Pause
     | Tick
@@ -54,6 +55,22 @@ update msg m =
     case msg of
         Step ->
             { m | checked = min total (m.checked + 1), selected = Just m.checked }
+
+        Back ->
+            let
+                checked =
+                    max 0 (m.checked - 1)
+            in
+            { m
+                | checked = checked
+                , playing = False
+                , selected =
+                    if checked > 0 then
+                        Just (checked - 1)
+
+                    else
+                        Nothing
+            }
 
         Tick ->
             if m.checked >= total then
@@ -100,7 +117,8 @@ view m =
             (always Ui.NoMark)
             m.formula.clauses
         , Ui.row
-            [ Ui.btnIf (m.checked < total) "Check next" Step
+            [ Ui.btnIf (m.checked > 0) "Back" Back
+            , Ui.btnIf (m.checked < total) "Check next" Step
             , if m.playing then
                 Ui.btnPrimary "Pause" Pause
 

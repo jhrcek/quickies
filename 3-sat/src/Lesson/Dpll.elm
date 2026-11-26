@@ -7,10 +7,12 @@ import Sat.Generate as G
 import Time
 import TrailView
 import Ui exposing (em, insight, p, strong, t, wiki)
+import Undo
 
 
 type alias Model =
     { state : D.State
+    , past : List D.State
     , playing : Bool
     , seed : Random.Seed
     }
@@ -18,6 +20,7 @@ type alias Model =
 
 type Msg
     = Step
+    | Back
     | Play
     | Pause
     | Tick
@@ -37,18 +40,21 @@ init seed0 =
         ( formula, seed ) =
             Random.step (G.formula n 36 3) seed0
     in
-    { state = D.init formula, playing = False, seed = seed }
+    { state = D.init formula, past = [], playing = False, seed = seed }
 
 
 update : Msg -> Model -> Model
 update msg m =
     case msg of
         Step ->
-            { m | state = D.step m.state }
+            Undo.advance D.step m
+
+        Back ->
+            Undo.back { m | playing = False }
 
         Tick ->
             if m.state.status == D.Running then
-                { m | state = D.step m.state }
+                Undo.advance D.step m
 
             else
                 { m | playing = False }
@@ -60,10 +66,10 @@ update msg m =
             { m | playing = False }
 
         Reset ->
-            { m | state = D.init m.state.formula, playing = False }
+            { m | state = D.init m.state.formula, past = [], playing = False }
 
         Finish ->
-            { m | state = D.solve m.state.formula, playing = False }
+            Undo.advanceUntil (\s -> s.status /= D.Running) D.step { m | playing = False }
 
         New ->
             init m.seed
@@ -129,6 +135,8 @@ view m =
         , Ui.playControls
             { running = s.status == D.Running
             , playing = m.playing
+            , canBack = Undo.canBack m
+            , onBack = Back
             , onStep = Step
             , onPlay = Play
             , onPause = Pause

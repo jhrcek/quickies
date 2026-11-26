@@ -11,10 +11,12 @@ import Svg
 import Svg.Attributes as SA
 import Time
 import Ui exposing (em, insight, p, strong, t, wiki)
+import Undo
 
 
 type alias Model =
     { state : W.State
+    , past : List W.State
     , noise : Float
     , playing : Bool
     , seed : Random.Seed
@@ -23,6 +25,7 @@ type alias Model =
 
 type Msg
     = Step
+    | Back
     | Play
     | Pause
     | Tick
@@ -55,18 +58,33 @@ init seed0 =
         ( s, seed2 ) =
             Random.step Random.independentSeed seed1
     in
-    { state = W.init s formula, noise = 0.5, playing = False, seed = seed2 }
+    { state = W.init s formula, past = [], noise = 0.5, playing = False, seed = seed2 }
 
 
 update : Msg -> Model -> Model
 update msg m =
     case msg of
         Step ->
-            { m | state = W.step m.noise maxFlips m.state }
+            Undo.advance (W.step m.noise maxFlips) m
+
+        Back ->
+            Undo.back { m | playing = False }
 
         Tick ->
             if m.state.status == W.Searching then
-                { m | state = W.step m.noise maxFlips (W.step m.noise maxFlips m.state) }
+                -- Two flips per tick, recorded separately so Back undoes one flip.
+                let
+                    flip =
+                        Undo.advance (W.step m.noise maxFlips)
+
+                    m1 =
+                        flip m
+                in
+                if m1.state.status == W.Searching then
+                    flip m1
+
+                else
+                    m1
 
             else
                 { m | playing = False }
@@ -82,7 +100,7 @@ update msg m =
                 ( s, seed ) =
                     Random.step Random.independentSeed m.seed
             in
-            { m | state = W.init s m.state.formula, seed = seed, playing = False }
+            { m | state = W.init s m.state.formula, past = [], seed = seed, playing = False }
 
         New ->
             let
@@ -131,7 +149,8 @@ view m =
             ]
         , p [ t ("Below: a satisfiable formula with " ++ String.fromInt n ++ " variables and " ++ String.fromInt m_ ++ " clauses (ratio 4.2). Each square is a variable; the outlined one was flipped last.") ]
         , Ui.row
-            [ Ui.btnIf (s.status == W.Searching) "Flip" Step
+            [ Ui.btnIf (Undo.canBack m) "Back" Back
+            , Ui.btnIf (s.status == W.Searching) "Flip" Step
             , if m.playing then
                 Ui.btnPrimary "Pause" Pause
 

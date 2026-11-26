@@ -315,14 +315,15 @@ eventLine =
     div [ class "event" ]
 
 
-{-| Step / Play / Reset buttons shared by every algorithm stepper.
+{-| Back / Step / Play / Reset buttons shared by every algorithm stepper.
 -}
 playControls :
-    { running : Bool, playing : Bool, onStep : msg, onPlay : msg, onPause : msg, onReset : msg, onFinish : msg }
+    { running : Bool, playing : Bool, canBack : Bool, onBack : msg, onStep : msg, onPlay : msg, onPause : msg, onReset : msg, onFinish : msg }
     -> Html msg
 playControls c =
     row
-        [ btnIf c.running "Step" c.onStep
+        [ btnIf c.canBack "Back" c.onBack
+        , btnIf c.running "Step" c.onStep
         , if c.playing then
             btnPrimary "Pause" c.onPause
 

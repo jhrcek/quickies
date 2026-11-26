@@ -9,6 +9,7 @@ import Sat.Generate as G
 import Time
 import TrailView
 import Ui exposing (em, insight, p, strong, t, wiki)
+import Undo
 
 
 type alias Comparison =
@@ -17,6 +18,7 @@ type alias Comparison =
 
 type alias Model =
     { state : C.State
+    , past : List C.State
     , playing : Bool
     , seed : Random.Seed
     , comparison : Maybe Comparison
@@ -25,6 +27,7 @@ type alias Model =
 
 type Msg
     = Step
+    | Back
     | Play
     | Pause
     | Tick
@@ -46,38 +49,33 @@ init seed0 =
         ( formula, seed ) =
             Random.step (G.formula n 52 3) seed0
     in
-    { state = C.init formula, playing = False, seed = seed, comparison = Nothing }
+    { state = C.init formula, past = [], playing = False, seed = seed, comparison = Nothing }
 
 
 update : Msg -> Model -> Model
 update msg m =
     case msg of
         Step ->
-            { m | state = C.step m.state }
+            Undo.advance C.step m
+
+        Back ->
+            Undo.back { m | playing = False }
 
         ToNextConflict ->
             let
-                go s =
-                    let
-                        s2 =
-                            C.step s
-                    in
-                    case s2.event of
+                stop s =
+                    case s.event of
                         C.Learned _ ->
-                            s2
+                            True
 
                         _ ->
-                            if s2.status == C.Running then
-                                go s2
-
-                            else
-                                s2
+                            s.status /= C.Running
             in
-            { m | state = go m.state, playing = False }
+            Undo.advanceUntil stop C.step { m | playing = False }
 
         Tick ->
             if m.state.status == C.Running then
-                { m | state = C.step m.state }
+                Undo.advance C.step m
 
             else
                 { m | playing = False }
@@ -89,10 +87,10 @@ update msg m =
             { m | playing = False }
 
         Reset ->
-            { m | state = C.init m.state.formula, playing = False }
+            { m | state = C.init m.state.formula, past = [], playing = False }
 
         Finish ->
-            { m | state = C.solve m.state.formula, playing = False }
+            Undo.advanceUntil (\s -> s.status /= C.Running) C.step { m | playing = False }
 
         Compare ->
             let
@@ -182,6 +180,8 @@ view m =
         , Ui.playControls
             { running = s.status == C.Running
             , playing = m.playing
+            , canBack = Undo.canBack m
+            , onBack = Back
             , onStep = Step
             , onPlay = Play
             , onPause = Pause
