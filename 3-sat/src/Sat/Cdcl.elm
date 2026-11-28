@@ -1,6 +1,7 @@
 module Sat.Cdcl exposing
     ( Analysis
     , Event(..)
+    , Pending
     , Resolution
     , State
     , Stats
@@ -18,7 +19,9 @@ Differences from DPLL:
 
   - on a conflict, _analyse_ it: resolve the conflicting clause with the
     reasons of its literals until exactly one literal from the current
-    decision level remains (the first Unique Implication Point, 1UIP);
+    decision level remains (the first Unique Implication Point, 1UIP).
+    Each resolution is its own `step`, so lessons can show the clause
+    moving back through the implication graph;
   - _learn_ the resulting clause, so this mistake can never recur;
   - _backjump_ to the second-highest level in the learned clause, possibly
     skipping many levels at once. The learned clause then becomes unit and
@@ -26,7 +29,6 @@ Differences from DPLL:
 
 -}
 
-import Dict exposing (Dict)
 import Sat.Formula as F exposing (Assignment, Clause, Formula, Literal)
 import Sat.Propagate as P
 import Sat.Trail as T exposing (Entry)
@@ -52,6 +54,17 @@ type alias Analysis =
     , uip : Literal
     , backjumpTo : Int
     , fromLevel : Int
+    , trailBefore : List Entry
+    }
+
+
+{-| A conflict being analysed: `current` starts as the conflict clause and
+is resolved with one reason per step. Resolutions are newest first.
+-}
+type alias Pending =
+    { conflict : Clause
+    , current : Clause
+    , resolutions : List Resolution
     }
 
 
@@ -60,6 +73,7 @@ type Event
     | Decided Literal
     | Propagated Literal Clause
     | ConflictOn Clause
+    | Resolved Resolution
     | Learned Analysis
     | FoundModel
     | ProvedUnsat Clause
@@ -81,7 +95,7 @@ type alias State =
     , level : Int
     , status : Status
     , event : Event
-    , pendingConflict : Maybe Clause
+    , analysis : Maybe Pending
     , stats : Stats
     }
 
@@ -94,7 +108,7 @@ init f =
     , level = 0
     , status = Running
     , event = Started
-    , pendingConflict = Nothing
+    , analysis = Nothing
     , stats = { decisions = 0, propagations = 0, conflicts = 0, steps = 0, maxJump = 0 }
     }
 
@@ -127,24 +141,32 @@ step s0 =
             stats =
                 s.stats
         in
-        case s.pendingConflict of
-            Just c ->
+        case s.analysis of
+            Just pending ->
                 if s.level == 0 then
-                    { s | status = Unsat, event = ProvedUnsat c, pendingConflict = Nothing }
+                    { s | status = Unsat, event = ProvedUnsat pending.conflict, analysis = Nothing }
 
                 else
-                    let
-                        an =
-                            analyze s.trail s.level c
-                    in
-                    { s
-                        | pendingConflict = Nothing
-                        , learned = an.learned :: s.learned
-                        , trail = List.filter (\e -> e.level <= an.backjumpTo) s.trail
-                        , level = an.backjumpTo
-                        , event = Learned an
-                        , stats = { stats | maxJump = max stats.maxJump (s.level - an.backjumpTo) }
-                    }
+                    case resolveOnce s.trail s.level pending.current of
+                        Just r ->
+                            { s
+                                | analysis = Just { pending | current = r.resolvent, resolutions = r :: pending.resolutions }
+                                , event = Resolved r
+                            }
+
+                        Nothing ->
+                            let
+                                an =
+                                    finish s.trail s.level pending
+                            in
+                            { s
+                                | analysis = Nothing
+                                , learned = an.learned :: s.learned
+                                , trail = List.filter (\e -> e.level <= an.backjumpTo) s.trail
+                                , level = an.backjumpTo
+                                , event = Learned an
+                                , stats = { stats | maxJump = max stats.maxJump (s.level - an.backjumpTo) }
+                            }
 
             Nothing ->
                 let
@@ -155,7 +177,7 @@ step s0 =
                     P.Conflict c ->
                         { s
                             | event = ConflictOn c
-                            , pendingConflict = Just c
+                            , analysis = Just { conflict = c, current = c, resolutions = [] }
                             , stats = { stats | conflicts = stats.conflicts + 1 }
                         }
 
@@ -184,86 +206,74 @@ step s0 =
                                     { s | status = Unsat, event = ProvedUnsat [] }
 
 
-type alias VarInfo =
-    { level : Int, pos : Int, kind : T.Kind }
-
-
-{-| First-UIP conflict analysis. `trail` is newest first; every literal of
-`conflict` is false under it.
+{-| One step of first-UIP conflict analysis. `trail` is newest first and
+every literal of `clause` is false under it. While `clause` has two or more
+literals from `level`, replace the newest of them by its reason
+(resolution). `Nothing` means exactly one is left: that literal is the 1UIP.
 -}
-analyze : List Entry -> Int -> Clause -> Analysis
-analyze trail level conflict =
+resolveOnce : List Entry -> Int -> Clause -> Maybe Resolution
+resolveOnce trail level clause =
     let
-        n =
-            List.length trail
+        current =
+            List.filter (\l -> T.levelOf trail l == Just level) clause
+    in
+    if List.length current <= 1 then
+        Nothing
 
-        info : Dict Int VarInfo
-        info =
-            trail
-                |> List.indexedMap (\i e -> ( abs e.lit, { level = e.level, pos = n - i, kind = e.kind } ))
-                |> Dict.fromList
-
-        levelOf l =
-            Dict.get (abs l) info |> Maybe.map .level |> Maybe.withDefault 0
-
-        posOf l =
-            Dict.get (abs l) info |> Maybe.map .pos |> Maybe.withDefault 0
-
-        atLevel c =
-            List.filter (\l -> levelOf l == level) c
-
-        loop c acc =
-            let
-                current =
-                    atLevel c
-            in
-            if List.length current <= 1 then
-                finish c (List.reverse acc)
-
-            else
-                let
-                    latest =
-                        current
-                            |> List.sortBy (\l -> negate (posOf l))
-                            |> List.head
-                            |> Maybe.withDefault 0
-                in
-                case Dict.get (abs latest) info |> Maybe.map .kind of
-                    Just (T.Implied reason) ->
+    else
+        let
+            -- The trail is newest first, so the first entry mentioning a
+            -- current-level variable is the newest one.
+            newest =
+                trail
+                    |> List.filter (\e -> List.any (\l -> abs l == abs e.lit) current)
+                    |> List.head
+        in
+        case newest of
+            Just { lit, kind } ->
+                case kind of
+                    T.Implied reason ->
                         let
                             resolvent =
                                 union
-                                    (List.filter (\l -> abs l /= abs latest) c)
-                                    (List.filter (\l -> abs l /= abs latest) reason)
+                                    (List.filter (\l -> abs l /= abs lit) clause)
+                                    (List.filter (\l -> abs l /= abs lit) reason)
                         in
-                        loop resolvent ({ pivot = abs latest, reason = reason, resolvent = resolvent } :: acc)
+                        Just { pivot = abs lit, reason = reason, resolvent = resolvent }
 
                     _ ->
-                        finish c (List.reverse acc)
+                        Nothing
 
-        finish c resolutions =
-            let
-                kept =
-                    List.filter (\l -> levelOf l > 0) c
+            Nothing ->
+                Nothing
 
-                uip =
-                    atLevel kept |> List.head |> Maybe.withDefault 0
 
-                others =
-                    List.filter (\l -> l /= uip) kept
+finish : List Entry -> Int -> Pending -> Analysis
+finish trail level pending =
+    let
+        levelOf l =
+            T.levelOf trail l |> Maybe.withDefault 0
 
-                jump =
-                    others |> List.map levelOf |> List.maximum |> Maybe.withDefault 0
-            in
-            { conflict = conflict
-            , resolutions = resolutions
-            , learned = uip :: List.sortBy abs others
-            , uip = uip
-            , backjumpTo = jump
-            , fromLevel = level
-            }
+        kept =
+            List.filter (\l -> levelOf l > 0) pending.current
+
+        uip =
+            List.filter (\l -> levelOf l == level) kept |> List.head |> Maybe.withDefault 0
+
+        others =
+            List.filter (\l -> l /= uip) kept
+
+        jump =
+            others |> List.map levelOf |> List.maximum |> Maybe.withDefault 0
     in
-    loop conflict []
+    { conflict = pending.conflict
+    , resolutions = List.reverse pending.resolutions
+    , learned = uip :: List.sortBy abs others
+    , uip = uip
+    , backjumpTo = jump
+    , fromLevel = level
+    , trailBefore = trail
+    }
 
 
 union : List Literal -> List Literal -> List Literal

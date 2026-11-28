@@ -1,4 +1,4 @@
-module Sat.Trail exposing (Entry, Kind(..), byLevel, toAssignment)
+module Sat.Trail exposing (Entry, Kind(..), byLevel, levelOf, toAssignment)
 
 {-| The trail: every assignment a solver has made, newest first,
 tagged with its decision level and why it was made.
@@ -24,6 +24,16 @@ type alias Entry =
 toAssignment : List Entry -> Assignment
 toAssignment =
     List.foldl (\e -> Dict.insert (abs e.lit) (e.lit > 0)) Dict.empty
+
+
+{-| The decision level at which the literal's variable was assigned.
+-}
+levelOf : List Entry -> Literal -> Maybe Int
+levelOf trail l =
+    trail
+        |> List.filter (\e -> abs e.lit == abs l)
+        |> List.head
+        |> Maybe.map .level
 
 
 {-| Group the trail by decision level, oldest level and oldest entry first.

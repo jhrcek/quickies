@@ -1,11 +1,14 @@
-module Lesson.Cdcl exposing (Model, Msg, init, subscriptions, update, view)
+module Lesson.Cdcl exposing (Model, Msg, example, init, subscriptions, update, view)
 
 import Html exposing (Html, div, li, ol, span, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (class)
+import ImplicationGraph
 import Random
 import Sat.Cdcl as C
 import Sat.Dpll as D
+import Sat.Formula exposing (Clause, Formula)
 import Sat.Generate as G
+import Sat.Trail as Trail
 import Time
 import TrailView
 import Ui exposing (em, insight, p, strong, t, wiki)
@@ -43,12 +46,33 @@ n =
     12
 
 
+{-| A hand-made opening formula. With decisions x₁, x₂, x₃, x₄ (all true, in
+order) the first conflict happens at level 4 and takes three resolutions; its
+1UIP is the forced x₅ rather than the decision x₄, and the backjump skips the
+irrelevant levels 2 and 3. The last two clauses only make x₂, x₃ matter.
+-}
+example : Formula
+example =
+    { numVars = 8
+    , clauses =
+        [ [ -4, 5 ]
+        , [ -5, -1, 6 ]
+        , [ -5, 7 ]
+        , [ -6, -7, 8 ]
+        , [ -6, -8 ]
+        , [ -1, 2, 3 ]
+        , [ -2, 3, 4 ]
+        ]
+    }
+
+
 init : Random.Seed -> Model
-init seed0 =
-    let
-        ( formula, seed ) =
-            Random.step (G.formula n 52 3) seed0
-    in
+init seed =
+    fresh example seed
+
+
+fresh : Formula -> Random.Seed -> Model
+fresh formula seed =
     { state = C.init formula, past = [], playing = False, seed = seed, comparison = Nothing }
 
 
@@ -65,7 +89,7 @@ update msg m =
             let
                 stop s =
                     case s.event of
-                        C.Learned _ ->
+                        C.ConflictOn _ ->
                             True
 
                         _ ->
@@ -116,7 +140,11 @@ update msg m =
             }
 
         New ->
-            init m.seed
+            let
+                ( formula, seed ) =
+                    Random.step (G.formula n 52 3) m.seed
+            in
+            fresh formula seed
 
 
 subscriptions : Model -> Sub Msg
@@ -145,6 +173,9 @@ view m =
                 C.ConflictOn c ->
                     Just c
 
+                C.Resolved r ->
+                    Just r.reason
+
                 _ ->
                     Nothing
 
@@ -165,18 +196,47 @@ view m =
     div []
         [ p
             [ strong "Conflict-Driven Clause Learning"
-            , t " keeps DPLL's loop but changes what happens at a conflict. Every forced literal remembers the clause that forced it (its "
+            , t " keeps DPLL's loop but changes what happens at a conflict. Instead of just undoing the last decision, it works out "
+            , em "which"
+            , t " assignments caused the conflict and records that as a new clause."
+            ]
+        , p
+            [ t "To do that, every literal on the trail remembers why it is there: it is either a decision, or it was forced by a clause, its "
             , em "reason"
-            , t "). These reasons form the "
+            , t ". If (¬x₁ ∨ ¬x₂ ∨ x₃) forced x₃, it did so because x₁ and x₂ were already true, so draw arrows x₁ → x₃ and x₂ → x₃. Doing this for every forced literal gives the "
             , strong "implication graph"
-            , t ", a DAG whose sources are decisions, so a conflict can be traced back to its causes:"
+            , t ", a "
+            , wiki "Directed acyclic graph" "DAG"
+            , t " whose sources are decisions. A conflict adds a node κ with arrows from the assignments that made the conflict clause false. Conflict analysis then walks this graph backwards from κ:"
             ]
         , ol [ class "steps" ]
-            [ li [] [ t "Start from the false clause. Its literals are false because of earlier assignments." ]
-            , li [] [ t "Pick the most recently forced literal of the current level and replace it by the reasons that forced it. Formally this is ", strong "resolution", t ": from (A ∨ x) and (B ∨ ¬x) derive (A ∨ B)." ]
-            , li [] [ t "Repeat until only one literal from the current level is left — the ", strong "first unique implication point", t " (1UIP). In graph terms it is the ", wiki "Dominator (graph theory)" "dominator", t " of the conflict closest to it: every path from the current decision to the conflict passes through it." ]
-            , li [] [ t "Learn that clause. Then ", Html.strong [] [ wiki "Backjumping" "backjump" ], t " to the second-highest level in it, possibly skipping many levels. The learned clause is now unit and flips the UIP automatically." ]
+            [ li []
+                [ strong "Start with the conflict clause."
+                , t " All its literals are false. Read it as a set of nodes that "
+                , em "together"
+                , t " lead to κ: a cut through the graph that separates κ from the decisions. The clause says that not all of these assignments can hold at once."
+                ]
+            , li []
+                [ strong "Look at the literals from the current level"
+                , t ", the level of the newest decision. If there are two or more, take the one assigned most recently. It cannot be the decision, which is the oldest assignment at its level, so it was forced. Replace it by the other literals of its reason. This is "
+                , strong "resolution"
+                , t ": from (A ∨ x) and (B ∨ ¬x) derive (A ∨ B). The new clause is still all false and still leads to κ. The cut has moved one step back towards the decisions."
+                ]
+            , li []
+                [ strong "Stop when exactly one current-level literal is left."
+                , t " Why one? Undo the current level and every other literal of the clause is still false, so the clause is unit: it immediately forces something new. With two or more, it would just be satisfiable again and teach the solver nothing right now. The node where this first happens is the "
+                , strong "first unique implication point"
+                , t " (1UIP). Every path from the current decision to κ passes through it: it is a "
+                , wiki "Dominator (graph theory)" "dominator"
+                , t " of the conflict. The walk always ends, because at worst the decision itself is the one node left."
+                ]
+            , li []
+                [ strong "Learn the clause and "
+                , Html.strong [] [ wiki "Backjumping" "backjump" ]
+                , t " to the second-highest level among its literals (level 0 if it has only one). At that level all its literals except the UIP's are still false, so it is unit and forces the UIP's negation. The levels skipped in between had nothing to do with the conflict, so nothing is lost by undoing them."
+                ]
             ]
+        , p [ t "Step through the example below. Once a conflict happens, each Step performs one resolution, and the graph shows the clause being analysed moving back from κ." ]
         , Ui.playControls
             { running = s.status == C.Running
             , playing = m.playing
@@ -191,12 +251,8 @@ view m =
         , Ui.row [ Ui.btnIf (s.status == C.Running) "Run to next conflict" ToNextConflict ]
         , Ui.eventLine [ eventText s ]
         , statusBanner s
-        , case s.event of
-            C.Learned an ->
-                analysisView an
-
-            _ ->
-                text ""
+        , analysisView s
+        , graphView s
         , TrailView.view s.trail
         , Ui.stats
             [ Ui.stat "decisions" (String.fromInt s.stats.decisions)
@@ -231,7 +287,7 @@ view m =
                 ]
         , Ui.h3 "Original clauses"
         , Ui.viewClauses a mark s.formula.clauses
-        , Ui.row [ Ui.btn "Compare with DPLL" Compare, Ui.btn "New formula" New ]
+        , Ui.row [ Ui.btn "Compare with DPLL" Compare, Ui.btn "New random formula" New ]
         , case m.comparison of
             Just cmp ->
                 comparisonView cmp
@@ -249,26 +305,135 @@ view m =
         ]
 
 
-analysisView : C.Analysis -> Html msg
-analysisView an =
-    div [ class "panel analysis" ]
-        [ Ui.h3 "Conflict analysis"
-        , div [ class "res-row" ] [ span [ class "res-label" ] [ text "conflict" ], span [ class "mono" ] [ text (Ui.clauseText an.conflict) ] ]
-        , div []
-            (List.map
-                (\r ->
-                    div [ class "res-step" ]
-                        [ div [ class "res-row" ] [ span [ class "res-label" ] [ text ("resolve on " ++ Ui.varName r.pivot ++ " with") ], span [ class "mono" ] [ text (Ui.clauseText r.reason) ] ]
-                        , div [ class "res-row" ] [ span [ class "res-label" ] [ text "→" ], span [ class "mono" ] [ text (Ui.clauseText r.resolvent) ] ]
-                        ]
-                )
-                an.resolutions
-            )
-        , div [ class "res-row learned" ] [ span [ class "res-label" ] [ text "learn" ], span [ class "mono" ] [ text (Ui.clauseText an.learned) ] ]
-        , p
-            [ t ("Only " ++ Ui.litName an.uip ++ " comes from level " ++ String.fromInt an.fromLevel ++ " (the 1UIP). Backjump from level " ++ String.fromInt an.fromLevel ++ " to level " ++ String.fromInt an.backjumpTo ++ "; there the learned clause is unit and forces " ++ Ui.litName an.uip ++ ".")
+graphView : C.State -> Html msg
+graphView s =
+    let
+        plain =
+            { trail = s.trail, level = s.level, conflict = Nothing, frontier = [], resolved = [], uip = Nothing }
+
+        cfg =
+            case ( s.analysis, s.event ) of
+                ( Just pending, _ ) ->
+                    { plain
+                        | conflict = Just pending.conflict
+                        , frontier = pending.current
+                        , resolved = List.map .pivot pending.resolutions
+                    }
+
+                ( Nothing, C.Learned an ) ->
+                    { trail = an.trailBefore
+                    , level = an.fromLevel
+                    , conflict = Just an.conflict
+                    , frontier = an.learned
+                    , resolved = List.map .pivot an.resolutions
+                    , uip = Just an.uip
+                    }
+
+                _ ->
+                    plain
+    in
+    if List.isEmpty cfg.trail then
+        text ""
+
+    else
+        div []
+            [ Ui.h3 "Implication graph"
+            , ImplicationGraph.view cfg
+            , case s.event of
+                C.Learned _ ->
+                    Html.p [ class "caption" ] [ text "The graph as it was at the conflict, before the backjump. The trail below is already after it." ]
+
+                _ ->
+                    text ""
             ]
-        ]
+
+
+{-| The clause, with its literals from `level` underlined.
+-}
+clauseAt : List Trail.Entry -> Int -> Clause -> Html msg
+clauseAt trail level c =
+    if List.isEmpty c then
+        text (Ui.clauseText c)
+
+    else
+        span [ class "mono" ]
+            (text "("
+                :: List.intersperse (text " ∨ ")
+                    (List.map
+                        (\l ->
+                            if Trail.levelOf trail l == Just level then
+                                span [ class "res-cur" ] [ text (Ui.litName l) ]
+
+                            else
+                                text (Ui.litName l)
+                        )
+                        c
+                    )
+                ++ [ text ")" ]
+            )
+
+
+atLevel : List Trail.Entry -> Int -> Clause -> List Int
+atLevel trail level =
+    List.filter (\l -> Trail.levelOf trail l == Just level)
+
+
+analysisView : C.State -> Html msg
+analysisView s =
+    let
+        panel trail level conflict resolutions footer =
+            div [ class "panel analysis" ]
+                (Ui.h3 "Conflict analysis"
+                    :: div [ class "res-row" ] [ span [ class "res-label" ] [ text "conflict" ], clauseAt trail level conflict ]
+                    :: List.map
+                        (\r ->
+                            div [ class "res-step" ]
+                                [ div [ class "res-row" ] [ span [ class "res-label" ] [ text ("resolve on " ++ Ui.varName r.pivot ++ " with") ], span [ class "mono" ] [ text (Ui.clauseText r.reason) ] ]
+                                , div [ class "res-row" ] [ span [ class "res-label" ] [ text "→" ], clauseAt trail level r.resolvent ]
+                                ]
+                        )
+                        resolutions
+                    ++ footer
+                )
+    in
+    case ( s.analysis, s.event ) of
+        ( Just pending, _ ) ->
+            let
+                current =
+                    atLevel s.trail s.level pending.current
+
+                k =
+                    List.length current
+            in
+            panel s.trail
+                s.level
+                pending.conflict
+                (List.reverse pending.resolutions)
+                [ p
+                    [ t ("Underlined: literals from the current level " ++ String.fromInt s.level ++ ". There ")
+                    , t
+                        (if k == 1 then
+                            "is only one, " ++ String.concat (List.map Ui.litName current) ++ ", so this clause is the one to learn. Next step: learn it and backjump."
+
+                         else
+                            "are " ++ String.fromInt k ++ ", so keep going: next step resolves away the newest of them."
+                        )
+                    ]
+                ]
+
+        ( Nothing, C.Learned an ) ->
+            panel an.trailBefore
+                an.fromLevel
+                an.conflict
+                an.resolutions
+                [ div [ class "res-row learned" ] [ span [ class "res-label" ] [ text "learn" ], span [ class "mono" ] [ text (Ui.clauseText an.learned) ] ]
+                , p
+                    [ t ("Only " ++ Ui.litName an.uip ++ " comes from level " ++ String.fromInt an.fromLevel ++ " (the 1UIP). Backjump from level " ++ String.fromInt an.fromLevel ++ " to level " ++ String.fromInt an.backjumpTo ++ "; there the learned clause is unit and forces " ++ Ui.litName an.uip ++ ".")
+                    ]
+                ]
+
+        _ ->
+            text ""
 
 
 comparisonView : Comparison -> Html msg
@@ -310,7 +475,10 @@ eventText s =
             text (Ui.litName l ++ " is forced by " ++ Ui.clauseText c ++ ".")
 
         C.ConflictOn c ->
-            text ("Conflict: " ++ Ui.clauseText c ++ " is all false. Next step: analyse it.")
+            text ("Conflict: " ++ Ui.clauseText c ++ " is all false. Next steps: analyse it.")
+
+        C.Resolved r ->
+            text (Ui.varName r.pivot ++ " was the newest current-level assignment in the clause; replaced it by the rest of its reason " ++ Ui.clauseText r.reason ++ ".")
 
         C.Learned an ->
             text ("Learned " ++ Ui.clauseText an.learned ++ ", jumped back to level " ++ String.fromInt an.backjumpTo ++ ".")

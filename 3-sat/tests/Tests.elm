@@ -13,6 +13,7 @@ import Dict
 import Expect
 import Fuzz exposing (Fuzzer)
 import Journey
+import Lesson.Cdcl
 import Random
 import Sat.Backtrack as Backtrack
 import Sat.Cdcl as Cdcl
@@ -21,6 +22,7 @@ import Sat.Encode as Encode
 import Sat.Formula as F exposing (Formula)
 import Sat.Generate as Generate
 import Sat.Propagate as P
+import Sat.Trail as Trail
 import Sat.WalkSat as WalkSat
 import Test exposing (Test, describe, fuzz, fuzz2, test)
 
@@ -176,6 +178,56 @@ suite =
                                 loop next (acc && ok)
                     in
                     loop (Cdcl.init f) True |> Expect.equal True
+            , fuzz anyFormula "every analysis step keeps an all-false clause with a current-level literal" <|
+                \f ->
+                    let
+                        loop s acc =
+                            if s.status /= Cdcl.Running then
+                                acc
+
+                            else
+                                let
+                                    next =
+                                        Cdcl.step s
+
+                                    ok =
+                                        case ( next.event, next.analysis ) of
+                                            ( Cdcl.Resolved r, Just pending ) ->
+                                                let
+                                                    a =
+                                                        Cdcl.assignment next
+                                                in
+                                                (pending.current == r.resolvent)
+                                                    && List.all (\l -> F.literalValue a l == Just False) r.resolvent
+                                                    && List.any (\l -> Trail.levelOf next.trail l == Just next.level) r.resolvent
+
+                                            ( Cdcl.Resolved _, Nothing ) ->
+                                                False
+
+                                            _ ->
+                                                True
+                                in
+                                loop next (acc && ok)
+                    in
+                    loop (Cdcl.init f) True |> Expect.equal True
+            , test "the lesson's example has an instructive first conflict" <|
+                \_ ->
+                    let
+                        firstLearned s =
+                            case s.event of
+                                Cdcl.Learned an ->
+                                    Just an
+
+                                _ ->
+                                    if s.status == Cdcl.Running then
+                                        firstLearned (Cdcl.step s)
+
+                                    else
+                                        Nothing
+                    in
+                    firstLearned (Cdcl.init Lesson.Cdcl.example)
+                        |> Maybe.map (\an -> ( List.length an.resolutions, an.uip, ( an.fromLevel, an.backjumpTo ) ))
+                        |> Expect.equal (Just ( 3, -5, ( 4, 1 ) ))
             ]
         , describe "Backtracking"
             [ fuzz anyFormula "finds exactly the brute-force models" <|
