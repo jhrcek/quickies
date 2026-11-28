@@ -170,6 +170,31 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--teal);font-weight:500;m
 .res-row .mono{font-size:14px;overflow-wrap:anywhere}
 .res-step{border-left:2px solid var(--rule);padding-left:10px;margin:6px 0}
 .res-row.learned{border-top:1px solid var(--rule);margin-top:6px;padding-top:8px}.res-row.learned .mono{color:var(--teal);font-weight:600}
+.res-cur{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;font-weight:600}
+/* implication graph (viz-js SVG, styled through Graphviz class attributes) */
+graphviz-graph{display:block;overflow-x:auto}
+graphviz-graph:not(:defined){min-height:120px;background:var(--card);border-radius:8px}
+.ig svg{display:block;margin:0 auto;width:100%;height:auto}
+.ig text{fill:var(--ink)}
+.ig .cluster polygon{fill:none;stroke:var(--rule)}
+.ig .cluster>text{fill:var(--muted)}
+.ig .c-current polygon{fill:var(--card);stroke:var(--muted);stroke-dasharray:4 3}
+.ig .edge path{stroke:var(--muted)}.ig .edge polygon{fill:var(--muted);stroke:var(--muted)}
+.ig .n-decision polygon{fill:var(--bg);stroke:var(--ink);stroke-width:2}
+.ig .n-implied ellipse{fill:var(--amber-bg);stroke:var(--amber)}
+.ig .n-frontier ellipse,.ig .n-frontier polygon{fill:var(--teal-bg);stroke:var(--teal);stroke-width:3}
+.ig .n-resolved{opacity:.35}
+.ig .n-uip ellipse,.ig .n-uip polygon{stroke:var(--teal);stroke-width:2}
+.ig .n-conflict polygon{fill:var(--red-bg);stroke:var(--red);stroke-width:2}.ig .n-conflict text{fill:var(--red);font-weight:700}
+.ig .e-cut path{stroke:var(--teal);stroke-width:2}.ig .e-cut polygon{fill:var(--teal);stroke:var(--teal)}
+.ig .e-resolved{opacity:.35}
+.ig-key{display:inline-flex;align-items:center;gap:6px}
+.ig-swatch{display:inline-block;width:18px;height:14px;border-radius:7px;border:1px solid}
+.ig-swatch.k-decision{border:2px solid var(--ink);border-radius:2px;background:var(--bg)}
+.ig-swatch.k-implied{background:var(--amber-bg);border-color:var(--amber)}
+.ig-swatch.k-frontier{background:var(--teal-bg);border:3px solid var(--teal)}
+.ig-swatch.k-resolved{background:var(--amber-bg);border-color:var(--amber);opacity:.35}
+.ig-swatch.k-uip{border:3px double var(--teal)}
 /* pager */
 .pager{display:flex;justify-content:space-between;gap:10px;margin-top:36px;padding-top:18px;border-top:1px solid var(--ink)}
 @media(max-width:600px){.stat-v{font-size:19px}.tt{font-size:14px}.res-label{min-width:0;width:100%}.grid32 .cell{font-size:9px}.lit{font-size:14px}}
@@ -178,6 +203,40 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--teal);font-weight:500;m
 </head>
 <body>
 <div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3.31/dist/viz-global.js"></script>
+<script>
+{
+  // <graphviz-graph graph="{json}" engine="dot">: renders with viz-js. No shadow DOM,
+  // so page CSS styles the SVG through the classes Graphviz copies onto its <g>s.
+  const vizPromise = Viz.instance();
+  class GraphvizGraph extends HTMLElement {
+    static get observedAttributes() { return ['graph', 'engine']; }
+    connectedCallback() { this.render(); }
+    attributeChangedCallback(name, oldValue, newValue) { if (oldValue !== newValue && this.isConnected) this.render(); }
+    async render() {
+      const graph = this.getAttribute('graph');
+      if (!graph) return;
+      const token = this._token = (this._token || 0) + 1;
+      try {
+        const viz = await vizPromise;
+        if (token !== this._token) return;
+        const svg = viz.renderSVGElement(JSON.parse(graph), { engine: this.getAttribute('engine') || 'dot' });
+        svg.style.maxWidth = svg.getAttribute('width');
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+        this.replaceChildren(svg);
+      } catch (error) {
+        console.error('Graphviz render error:', error);
+        const box = document.createElement('div');
+        box.className = 'banner bad';
+        box.textContent = 'Could not draw the graph: ' + error.message;
+        this.replaceChildren(box);
+      }
+    }
+  }
+  customElements.define('graphviz-graph', GraphvizGraph);
+}
+</script>
 <script src="elm.min.js"></script>
 <script>
 {
